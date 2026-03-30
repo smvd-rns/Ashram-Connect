@@ -381,7 +381,7 @@ export default function AdminPanel() {
     }).filter(Boolean);
 
     if (formattedLines.length > 0) {
-      setBulkData(prev => prev + (prev ? "\n" : "") + formattedLines.join("\n"));
+      setBulkData((prev: string) => prev + (prev ? "\n" : "") + formattedLines.join("\n"));
       setSubmitMessage({ 
         type: "success", 
         text: `Imported ${formattedLines.length} rows with smart data cleaning. Review and publish.` 
@@ -1341,12 +1341,12 @@ export default function AdminPanel() {
                   <div className="px-6 py-6 sm:p-8 space-y-5 sm:space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
                     <div className="space-y-1">
                       <label className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Display Index (Portal Order)</label>
-                      <input type="number" value={activeYtChannel?.order_index || 0} onChange={e => setActiveYtChannel(prev => ({ ...prev, order_index: parseInt(e.target.value) || 0 }))} className="w-full p-3 sm:p-4 bg-slate-50 border-2 border-slate-200 rounded-xl sm:rounded-2xl focus:border-indigo-500 font-black outline-none transition-all text-sm" />
+                      <input type="number" value={activeYtChannel?.order_index || 0} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveYtChannel((prev: any) => ({ ...prev, order_index: parseInt(e.target.value) || 0 }))} className="w-full p-3 sm:p-4 bg-slate-50 border-2 border-slate-200 rounded-xl sm:rounded-2xl focus:border-indigo-500 font-black outline-none transition-all text-sm" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">YouTube Channel ID</label>
                       <div className="flex gap-3">
-                        <input type="text" value={activeYtChannel?.channel_id || ""} onChange={e => setActiveYtChannel(prev => ({ ...prev, channel_id: e.target.value }))} placeholder="UC..." className="flex-grow p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-mono text-sm outline-none transition-all" />
+                        <input type="text" value={activeYtChannel?.channel_id || ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveYtChannel((prev: any) => ({ ...prev, channel_id: e.target.value }))} placeholder="UC..." className="flex-grow p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-mono text-sm outline-none transition-all" />
                         <button onClick={handleFetchYtInfo} disabled={isFetchingYt || !activeYtChannel?.channel_id} className="px-6 bg-slate-950 text-white rounded-2xl hover:bg-black disabled:opacity-30 text-[10px] font-black uppercase tracking-widest transition-all">
                           {isFetchingYt ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fetch"}
                         </button>
@@ -1354,7 +1354,7 @@ export default function AdminPanel() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Portal Display Name</label>
-                      <input type="text" value={activeYtChannel?.name || ""} onChange={e => setActiveYtChannel(prev => ({ ...prev, name: e.target.value }))} className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-black outline-none transition-all" />
+                      <input type="text" value={activeYtChannel?.name || ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveYtChannel((prev: any) => ({ ...prev, name: e.target.value }))} className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-black outline-none transition-all" />
                     </div>
                     <div className="space-y-3">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Manual Logo Upload (Stability)</label>
@@ -1377,7 +1377,7 @@ export default function AdminPanel() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <input type="checkbox" checked={activeYtChannel?.is_active ?? true} onChange={e => setActiveYtChannel(prev => ({ ...prev, is_active: e.target.checked }))} className="w-6 h-6 accent-indigo-600 cursor-pointer" />
+                      <input type="checkbox" checked={activeYtChannel?.is_active ?? true} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveYtChannel((prev: any) => ({ ...prev, is_active: e.target.checked }))} className="w-6 h-6 accent-indigo-600 cursor-pointer" />
                       <span className="text-xs font-black text-slate-600 uppercase tracking-widest">Active in Portal</span>
                     </div>
                   </div>
@@ -1576,7 +1576,7 @@ export default function AdminPanel() {
                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rows per page:</span>
                        <select 
                          value={rowsPerPage} 
-                         onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRowsPerPage(Number(e.target.value))}
                          className="bg-slate-50 border-2 border-slate-100 px-4 py-2 rounded-xl text-xs font-black focus:outline-none focus:border-indigo-500"
                        >
                          {[5, 10, 20, 50].map(v => <option key={v} value={v}>{v}</option>)}
@@ -1676,14 +1676,14 @@ export default function AdminPanel() {
                                             <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest order-2 sm:order-1">Page <span className="text-white">{expandedPage}</span> of {totalExpandedPages || 1}</p>
                                             <div className="flex gap-2 order-1 sm:order-2 w-full sm:w-auto">
                                               <button 
-                                                onClick={() => setExpandedPage(prev => Math.max(prev - 1, 1))}
+                                                onClick={() => setExpandedPage((prev: any) => Math.max(prev - 1, 1))}
                                                 disabled={expandedPage === 1}
                                                 className="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-20 transition-all shadow-md active:scale-95 border border-white/5"
                                               >
                                                 Prev
                                               </button>
                                               <button 
-                                                onClick={() => setExpandedPage(prev => Math.min(prev + 1, totalExpandedPages))}
+                                                onClick={() => setExpandedPage((prev: any) => Math.min(prev + 1, totalExpandedPages))}
                                                 disabled={expandedPage === totalExpandedPages || totalExpandedPages === 0}
                                                 className="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-20 transition-all shadow-md active:scale-95 border border-white/5"
                                               >
@@ -1705,7 +1705,7 @@ export default function AdminPanel() {
                   {/* Main Pagination */}
                   <div className="pt-10 flex flex-col sm:flex-row justify-between items-center gap-6 border-t border-slate-50">
                     <button 
-                      onClick={() => setAnalyticsPage(prev => Math.max(prev - 1, 1))}
+                      onClick={() => setAnalyticsPage((prev: any) => Math.max(prev - 1, 1))}
                       disabled={analyticsPage === 1}
                       className="w-full sm:w-auto px-8 py-3 rounded-2xl border-2 border-slate-100 font-extrabold text-slate-400 hover:border-indigo-600 disabled:opacity-30 disabled:border-slate-50"
                     >
@@ -1723,7 +1723,7 @@ export default function AdminPanel() {
                       ))}
                     </div>
                     <button 
-                      onClick={() => setAnalyticsPage(prev => Math.min(prev + 1, totalAnalyticsPages))}
+                      onClick={() => setAnalyticsPage((prev: any) => Math.min(prev + 1, totalAnalyticsPages))}
                       disabled={analyticsPage === totalAnalyticsPages}
                       className="w-full sm:w-auto px-8 py-3 rounded-2xl border-2 border-slate-100 font-extrabold text-slate-400 hover:border-indigo-600 disabled:opacity-30 disabled:border-slate-50"
                     >
@@ -1759,7 +1759,7 @@ export default function AdminPanel() {
       const res = await fetch(`/api/youtube?channelId=${activeYtChannel.channel_id}`);
       const data = await res.json();
       if (data.channelTitle) {
-        setActiveYtChannel(prev => ({
+        setActiveYtChannel((prev: any) => ({
           ...prev,
           name: data.channelTitle,
           custom_logo: data.channelLogo
@@ -1781,7 +1781,7 @@ export default function AdminPanel() {
       const { data, error } = await supabase.storage.from('youtube-assets').upload(`logos/${fileName}`, file);
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('youtube-assets').getPublicUrl(`logos/${fileName}`);
-      setActiveYtChannel(prev => ({ ...prev, custom_logo: publicUrl }));
+      setActiveYtChannel((prev: any) => ({ ...prev, custom_logo: publicUrl }));
     } catch (err) {
       console.error(err);
       alert("Logo upload failed.");
