@@ -5,8 +5,9 @@ import Image from "next/image";
 import {
   Search, Play, Radio, Film, Layers, ExternalLink,
   Loader2, X, Clock, CheckCircle2,
-  Heart, Bookmark, Share2, Video, AlertCircle
+  Heart, Bookmark, Share2, Video, AlertCircle, Grid
 } from "lucide-react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 interface VideoItem {
   id: string;
@@ -45,6 +46,10 @@ export default function YouTubeChannelHub() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   // Cache: { [channelId]: { [tabId]: { [playlistId]: { items: [], token: "" } } } }
   const [contentCache, setContentCache] = useState<Record<string, any>>({});
   const [logoCache, setLogoCache] = useState<Record<string, string>>({});
@@ -63,14 +68,36 @@ export default function YouTubeChannelHub() {
         const data = await res.json();
         if (data.channels?.length > 0) {
           setChannels(data.channels);
-          setActiveChannel(data.channels[0]);
+          
+          // Initial deep-link check on mount
+          const urlChannelId = searchParams.get("channel");
+          if (urlChannelId) {
+            const found = data.channels.find((c: any) => c.channel_id === urlChannelId);
+            if (found) setActiveChannel(found);
+          }
         }
       } catch (err) {
         setError("Failed to load portal configuration.");
       }
     };
     fetchChannels();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle URL changes (Browser Back/Forward)
+  useEffect(() => {
+    const urlChannelId = searchParams.get("channel");
+    if (!urlChannelId) {
+      setActiveChannel(null);
+      return;
+    }
+    
+    if (channels.length > 0) {
+      const matched = channels.find(c => c.channel_id === urlChannelId);
+      if (matched && matched.id !== activeChannel?.id) {
+        setActiveChannel(matched);
+      }
+    }
+  }, [searchParams, channels, activeChannel?.id]);
 
   const currentTabContent = activeChannel 
     ? (contentCache[activeChannel.channel_id]?.[activeTab]?.[activePlaylistId || "main"] || { items: [], token: "" })
@@ -183,21 +210,85 @@ export default function YouTubeChannelHub() {
   const getEmbedUrl = () =>
     `https://www.youtube-nocookie.com/embed/${activeVideoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
 
-  if (!activeChannel) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-devo-600" /></div>;
+  // ──── VIEW A: CHANNEL SELECTION GRID ─────────────────────────────
+  if (!activeChannel) {
+    return (
+      <div className="min-h-screen bg-slate-50 py-10 sm:py-16 px-4">
+        <div className="max-w-7xl mx-auto space-y-10 sm:space-y-16">
+          
+          {/* Header */}
+          <div className="text-center space-y-3 sm:space-y-5 max-w-2xl mx-auto animate-in fade-in slide-in-from-top-4 duration-700">
+            <h1 className="text-3xl sm:text-6xl font-outfit font-black text-devo-950 tracking-tight leading-tight">
+              Spiritual <span className="text-transparent bg-clip-text bg-gradient-to-r from-devo-600 to-accent-gold">Library</span>
+            </h1>
+            <p className="text-xs sm:text-base text-devo-800 font-bold opacity-60 uppercase tracking-[0.2em]">Select a channel to begin</p>
+          </div>
 
+          {/* Grid - More Compact columns */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8 gap-x-4 sm:gap-x-6">
+            {channels.map((channel, i) => (
+              <button 
+                key={channel.id}
+                onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
+                className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700"
+                style={{ animationDelay: `${i * 50}ms` }}
+              >
+                {/* Full-Bleed Image Card Box */}
+                <div 
+                  className="relative w-full h-[180px] sm:h-[240px] rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-white"
+                >
+                  {/* Primary Full Image */}
+                  {channel.custom_logo || logoCache[channel.channel_id] ? (
+                    <Image 
+                      src={channel.custom_logo || logoCache[channel.channel_id]} 
+                      alt={channel.name} 
+                      fill 
+                      className="object-cover group-hover:scale-110 transition-transform duration-700" 
+                      unoptimized 
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-slate-50 flex items-center justify-center">
+                      <Video className="w-12 h-12 text-slate-200" />
+                    </div>
+                  )}
+                  
+                  {/* Subtle Gradient Overlay for depth */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+
+                {/* Info Below Card - No overlapping */}
+                <div className="text-center space-y-0.5 px-2">
+                  <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors">{channel.name}</h2>
+                  <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ──── VIEW B: ACTIVE CHANNEL PORTAL HUB ───────────────────────────
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 pt-6 lg:pt-0 pb-20 lg:pb-0">
       {/* ─── DESKTOP SIDEBAR (lg+) ─────────────────────────────────── */}
-      <aside className="hidden lg:flex w-24 bg-white border-r border-slate-200 flex-col items-center py-8 gap-8 sticky top-20 h-[calc(100vh-80px)] z-50 shrink-0">
-        <div className="p-2.5 bg-devo-600 rounded-2xl text-white shadow-lg mb-4">
-          <Video className="w-8 h-8" />
-        </div>
+      <aside className="hidden lg:flex w-14 xl:w-20 bg-white border-r border-slate-200 flex-col items-center py-4 xl:py-6 gap-4 xl:gap-6 sticky top-20 h-[calc(100vh-80px)] z-50 shrink-0">
+        
+        {/* Back to Library Button */}
+        <button 
+          onClick={() => router.push(pathname)}
+          title="Back to Global Library"
+          className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-black transition-all shadow-lg active:scale-95 mb-4 group"
+        >
+          <Grid className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+        </button>
 
-        <div className="flex flex-col items-center gap-6 flex-grow overflow-y-auto w-full custom-scrollbar pb-8">
+        <div className="flex flex-col items-center gap-3 xl:gap-5 flex-grow overflow-y-auto w-full custom-scrollbar pb-6 px-1">
           {channels.map((channel) => (
             <button
               key={channel.id}
-              onClick={() => { setActiveChannel(channel); setActivePlaylistId(null); setActiveVideoId(null); }}
+              onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
               title={channel.name}
               className={`relative group p-1.5 rounded-2xl transition-all duration-300 ${
                 activeChannel?.id === channel.id
@@ -205,7 +296,7 @@ export default function YouTubeChannelHub() {
                   : "hover:bg-slate-50"
               }`}
             >
-              <div className="w-14 h-14 rounded-xl overflow-hidden shadow-md border-2 border-white bg-slate-200 flex items-center justify-center">
+              <div className="w-10 h-10 xl:w-14 xl:h-14 rounded-lg xl:rounded-xl overflow-hidden shadow-md border-2 border-white bg-slate-200 flex items-center justify-center">
                 {channel.custom_logo || logoCache[channel.channel_id] ? (
                   <Image
                     src={channel.custom_logo || logoCache[channel.channel_id]}
@@ -216,7 +307,7 @@ export default function YouTubeChannelHub() {
                     unoptimized
                   />
                 ) : (
-                  <Video className="w-6 h-6 text-slate-400" />
+                  <Video className="w-5 h-5 xl:w-6 xl:h-6 text-slate-400" />
                 )}
               </div>
               {/* Tooltip */}
@@ -226,10 +317,6 @@ export default function YouTubeChannelHub() {
             </button>
           ))}
         </div>
-
-        <div className="mt-auto p-4 opacity-20">
-          <Heart className="w-6 h-6 text-slate-400" />
-        </div>
       </aside>
 
       {/* ─── MOBILE/TABLET CHANNEL TRAY (<lg) ─────────────────────────── */}
@@ -238,7 +325,7 @@ export default function YouTubeChannelHub() {
           {channels.map((channel) => (
             <button
               key={channel.id}
-              onClick={() => { setActiveChannel(channel); setActivePlaylistId(null); setActiveVideoId(null); }}
+              onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
               className={`flex-shrink-0 flex flex-col items-center gap-1.5 transition-all duration-300 ${
                 activeChannel?.id === channel.id ? "scale-105" : "opacity-60"
               }`}
@@ -316,21 +403,26 @@ export default function YouTubeChannelHub() {
 
             {/* Tab bar */}
             {!activePlaylistId ? (
-              <nav className="flex gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm sticky top-20 z-40 backdrop-blur-md bg-white/90">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === tab.id
-                        ? "bg-devo-950 text-white shadow-lg"
-                        : "text-slate-400 hover:text-devo-600 hover:bg-slate-50"
-                      }`}
-                  >
-                    <tab.icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{tab.label}</span>
-                  </button>
-                ))}
-              </nav>
+              <div className="flex bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px]">
+              <button
+                onClick={() => { setActiveTab("videos"); setActivePlaylistId(null); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
+                  activeTab === "videos" ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
+                }`}
+              >
+                <Play className="w-3.5 h-3.5 sm:w-4 h-4" />
+                Videos
+              </button>
+              <button
+                onClick={() => { setActiveTab("playlists"); setActivePlaylistId(null); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
+                  activeTab === "playlists" ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 sm:w-4 h-4" />
+                Playlists
+              </button>
+            </div>
             ) : (
               <div className="flex items-center justify-between bg-devo-950 p-4 rounded-2xl shadow-lg sticky top-20 z-40">
                 <div className="flex items-center gap-3 overflow-hidden">
@@ -441,13 +533,13 @@ export default function YouTubeChannelHub() {
 
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search this channel…"
+                placeholder="Search this channel..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:border-devo-500 shadow-sm outline-none font-bold text-sm"
+                className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl sm:rounded-2xl focus:border-devo-500 font-bold text-[11px] sm:text-xs outline-none transition-all shadow-sm"
               />
             </div>
 
