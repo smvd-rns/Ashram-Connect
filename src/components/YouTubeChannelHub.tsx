@@ -149,6 +149,8 @@ export default function YouTubeChannelHub() {
     if (activeChannel) fetchContent(activeChannel, activeTab);
   }, [activeChannel, activeTab, activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const playerRef = useRef<HTMLDivElement>(null);
+
   // Auto-select first video once initial videos load for a NEW channel/playlist
   useEffect(() => {
     const isShowingPlaylist = activePlaylistId !== null;
@@ -175,7 +177,7 @@ export default function YouTubeChannelHub() {
     }
     setActiveVideoId(vid.id);
     setIsLive(vid.type === "live");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const getEmbedUrl = () =>
@@ -352,7 +354,7 @@ export default function YouTubeChannelHub() {
             )}
 
             {/* Player */}
-            <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
+            <div ref={playerRef} className="scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
               {loading && !activeVideoId ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
                   <div className="text-center space-y-4">

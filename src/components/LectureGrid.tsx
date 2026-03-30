@@ -120,10 +120,19 @@ export default function LectureGrid({
           <div className="h-safe-top sm:h-4" />
 
           {/* Video fills the screen vertically on mobile, max-width on desktop */}
-          <div className="flex flex-col flex-1 items-center justify-center px-2 sm:px-6 gap-3 sm:gap-4 min-h-0">
+          <div className="flex flex-col flex-1 items-center justify-center px-4 sm:px-6 gap-3 sm:gap-6 min-h-0 w-full">
             
-            {/* Video Container */}
-            <div className="w-full max-w-[100vw] sm:max-w-5xl xl:max-w-7xl aspect-video bg-black sm:rounded-2xl overflow-hidden border-0 sm:border sm:border-white/10 shadow-none sm:shadow-2xl flex-shrink-0">
+            {/* Close Button Top Right */}
+            <button 
+              onClick={() => setActiveLecture(null)}
+              className="absolute top-4 right-4 sm:top-8 sm:right-8 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 active:scale-90 z-[110]"
+              aria-label="Close"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Video Container with Height Safety */}
+            <div className="w-full max-w-[100vw] sm:max-w-5xl xl:max-w-6xl aspect-video bg-black sm:rounded-3xl overflow-hidden border-0 sm:border-4 sm:border-white/10 shadow-2xl flex-shrink-0 max-h-[60vh] sm:max-h-[75vh]">
               <iframe
                 className="w-full h-full"
                 src={`https://www.youtube-nocookie.com/embed/${activeLecture.youtube_id}?autoplay=1&rel=0&controls=1&modestbranding=1`}
@@ -134,32 +143,28 @@ export default function LectureGrid({
               ></iframe>
             </div>
 
-            {/* Bottom Bar */}
-            <div className="w-full max-w-[100vw] sm:max-w-5xl xl:max-w-7xl px-3 sm:px-1">
-              {/* Title Row */}
-              <div className="mb-2 sm:mb-3">
-                <p className="text-white font-bold text-sm sm:text-base line-clamp-1">{activeLecture.title}</p>
-                <p className="text-white/50 text-xs sm:text-sm">{activeLecture.speaker_name}</p>
+            {/* Bottom Content Bar - Slimmer & Responsive */}
+            <div className="w-full max-w-[100vw] sm:max-w-5xl xl:max-w-6xl px-2 sm:px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-white font-black text-lg sm:text-xl tracking-tight line-clamp-1">{activeLecture.title}</p>
+                <p className="text-indigo-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest">{activeLecture.speaker_name}</p>
               </div>
-              {/* Buttons Row */}
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
                 <a
                   href={`https://www.youtube.com/watch?v=${activeLecture.youtube_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-[#FF0000] hover:bg-[#cc0000] text-white text-xs sm:text-sm font-bold rounded-xl sm:rounded-full transition-all shadow-lg shadow-red-900/30 active:scale-95"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-3 px-6 py-3 bg-[#FF0000] hover:bg-[#cc0000] text-white text-[10px] sm:text-xs font-black uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-red-900/40 active:scale-95"
                 >
                   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                   </svg>
-                  Watch on YouTube
+                  YouTube
                 </a>
                 <button
                   onClick={() => setActiveLecture(null)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold rounded-xl sm:rounded-full transition-all border border-white/10 active:scale-95"
-                  aria-label="Close"
+                  className="sm:hidden flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all border border-white/10"
                 >
-                  <X className="w-4 h-4 shrink-0" />
                   Close
                 </button>
               </div>
