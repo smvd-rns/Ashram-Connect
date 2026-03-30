@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter), "Inter", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Devotional Palette */
+  --color-devo-50: #fff8f0;
+  --color-devo-100: #ffeedb;
+  --color-devo-200: #ffd6ad;
+  --color-devo-300: #ffbc7a;
+  --color-devo-400: #ff9d42;
+  --color-devo-500: #f97316; /* Saffron base */
+  --color-devo-600: #ea580c;
+  --color-devo-700: #c2410c;
+  --color-devo-800: #9a3412;
+  --color-devo-900: #7c2d12;
+  --color-devo-950: #431407; /* Deep maroon */
+
+  --color-accent-gold: #fbbf24;
+  --color-accent-maroon: #831843;
+  --color-background-warm: #fcf9f2;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background-warm);
+    background-image: radial-gradient(at 0% 0%, hsla(28, 100%, 74%, 0.1) 0px, transparent 50%),
+                      radial-gradient(at 100% 0%, hsla(339, 100%, 85%, 0.1) 0px, transparent 50%);
+    background-attachment: fixed;
+    color: var(--color-devo-950);
+    @apply antialiased min-h-screen text-slate-800;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--color-devo-200);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--color-devo-300);
+  }
+}
