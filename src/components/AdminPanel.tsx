@@ -9,8 +9,9 @@ import {
   UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo, 
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
   Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck, 
-  Settings, Play, Clock, HardDrive, Plus, X, Activity
+  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid
 } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
 import { normalizeDate } from "@/lib/dateHelper";
 import AuthUI from "./AuthUI";
@@ -22,20 +23,29 @@ export default function AdminPanel() {
   const searchParams = useSearchParams();
 
   const [session, setSession] = useState<any>(null);
+  const router = useRouter();
+  const pathname = usePathname();
   const [activeView, setActiveView] = useState<ActiveView>(
     (searchParams.get("view") as ActiveView) || "home"
   );
   
-  // Keep URL in sync with active View without reloading
+  // Synchronize state with URL changes (Back/Forward buttons)
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (activeView === "home") {
-      url.searchParams.delete("view");
-    } else {
-      url.searchParams.set("view", activeView);
+    const view = searchParams.get("view") as ActiveView || "home";
+    if (view !== activeView) {
+      setActiveView(view);
     }
-    window.history.replaceState(null, "", url.toString());
-  }, [activeView]);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const navigateToView = (view: ActiveView) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (view === "home") {
+      params.delete("view");
+    } else {
+      params.set("view", view);
+    }
+    router.push(`${pathname}${params.toString() ? '?' + params.toString() : ''}`);
+  };
 
   const [uploadMode, setUploadMode] = useState<"single" | "bulk">("single");
   const [bcViewMode, setBcViewMode] = useState<"list" | "grid">("list");
@@ -573,7 +583,7 @@ export default function AdminPanel() {
               {/* BC Class Card */}
               {canUploadVideos && (
                 <button 
-                  onClick={() => setActiveView("bc-class")}
+                  onClick={() => navigateToView("bc-class")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-orange-500 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
                   <div className="absolute top-0 right-0 w-32 h-32 bg-orange-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
@@ -595,7 +605,7 @@ export default function AdminPanel() {
               {/* User Roles Card */}
               {isSuperAdmin && (
                 <button 
-                  onClick={() => setActiveView("users")}
+                  onClick={() => navigateToView("users")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-blue-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
                   <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
@@ -617,7 +627,7 @@ export default function AdminPanel() {
               {/* YouTube Channels Card */}
               {isSuperAdmin && (
                 <button 
-                  onClick={() => setActiveView("youtube-channels")}
+                  onClick={() => navigateToView("youtube-channels")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
                   <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
@@ -639,7 +649,7 @@ export default function AdminPanel() {
               {/* Usage Insights Card */}
               {isSuperAdmin && (
                 <button 
-                  onClick={() => setActiveView("usage-analytics")}
+                  onClick={() => navigateToView("usage-analytics")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-emerald-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
                   <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
@@ -679,7 +689,7 @@ export default function AdminPanel() {
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <button 
-                onClick={() => setActiveView("home")}
+                onClick={() => navigateToView("home")}
                 className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
               >
                 <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
