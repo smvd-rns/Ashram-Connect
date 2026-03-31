@@ -75,15 +75,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           let status = 0;
           let verifyType = 0;
 
+          if (line.includes("OPLOG") || tableParam?.includes("OPLOG")) {
+             return; // Skip Operation Logs (Setting changes, menu access, etc.)
+          }
+
           if (parts[0].includes("ATTLOG")) {
              userId = parts[0].split(" ").pop() || "0";
              timestampStr = parts[1] || "";
              status = parseInt(parts[2]) || 0;
              verifyType = parseInt(parts[3]) || 0;
-          } else if (parts[0].includes("OPLOG")) {
-             userId = parts[3] || parts[1] || "0";
-             timestampStr = parts[2] || "";
           } else {
+             // Standard ATTLOG without the prefix
              userId = parts[0] || "0";
              timestampStr = parts[1] || "";
              status = parseInt(parts[2]) || 0;
