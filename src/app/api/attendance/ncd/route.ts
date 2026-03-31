@@ -10,13 +10,20 @@ const supabase = createClient(
  * DEDICATED ENDPOINT FOR SECOND MACHINE (NCD8253500015)
  * Providing a clean, separate URL for the user to troubleshoot communication.
  */
-const AUTHORIZED_SNS = ["TFEE255000216", "NCD8253500015"];
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sn = searchParams.get("SN")?.toUpperCase();
 
-  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+  if (!sn) return new Response("SN_REQUIRED", { status: 400 });
+
+  const { data: machine } = await supabase
+    .from("attendance_machines")
+    .select("is_active, start_time, end_time")
+    .eq("serial_number", sn)
+    .eq("is_active", true)
+    .single();
+
+  if (!machine) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
@@ -29,9 +36,28 @@ export async function POST(req: NextRequest) {
   const table = searchParams.get("table");
   const text = await req.text();
 
-  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+  if (!sn) return new Response("SN_REQUIRED", { status: 400 });
+
+  const { data: machine } = await supabase
+    .from("attendance_machines")
+    .select("is_active, start_time, end_time")
+    .eq("serial_number", sn)
+    .eq("is_active", true)
+    .single();
+
+  if (!machine) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
+
+  const { data: settings } = await supabase
+    .from("attendance_settings")
+    .select("*")
+    .eq("id", "global")
+    .single();
+
+  const startTime = machine.start_time || "02:00:00";
+  const endTime = machine.end_time || "07:30:00";
+  const syncFromDate = settings?.sync_from_date ? new Date(settings.sync_from_date) : new Date();
 
   // Handle ATTLOG or OPLOG
   if (table === "ATTLOG" || table === "OPLOG" || text.includes("ATTLOG") || text.includes("OPLOG")) {
@@ -62,14 +88,23 @@ export async function POST(req: NextRequest) {
            verifyType = parseInt(parts[3]) || 0;
         }
 
-        // PRODUCTION FILTER: Only 2:00 AM to 7:30 AM
+        // DYNAMIC FILTERS
         if (timestampStr) {
-           const timeParts = timestampStr.split(" ")[1];
-           if (timeParts) {
-              const [h, m] = timeParts.split(":").map(Number);
-              const isInWindow = (h > 2 && h < 7) || (h === 2) || (h === 7 && m <= 30);
+           const [dateStr, timeStr] = timestampStr.split(" ");
+           const recordDate = new Date(dateStr);
+           
+           if (recordDate < syncFromDate) return;
+
+           if (timeStr) {
+              const [h, m] = timeStr.split(":").map(Number);
+              const [startH, startM] = startTime.split(":").map(Number);
+              const [endH, endM] = endTime.split(":").map(Number);
               
-              if (isInWindow) {
+              const recMinutes = h * 60 + m;
+              const startMinutes = startH * 60 + startM;
+              const endMinutes = endH * 60 + endM;
+
+              if (recMinutes >= startMinutes && recMinutes <= endMinutes) {
                  logs.push({
                      device_sn: sn,
                      zk_user_id: userId,

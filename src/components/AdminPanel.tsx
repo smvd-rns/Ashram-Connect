@@ -9,7 +9,7 @@ import {
   UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo, 
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
   Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck, 
-  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid
+  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -17,7 +17,7 @@ import { normalizeDate } from "@/lib/dateHelper";
 import AuthUI from "./AuthUI";
 import { useProfile } from "@/hooks/useProfile";
 
-type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics";
+type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines";
 
 export default function AdminPanel() {
   const searchParams = useSearchParams();
@@ -106,6 +106,14 @@ export default function AdminPanel() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [expandedRowsPerPage, setExpandedRowsPerPage] = useState(10);
 
+  // Attendance Management State
+  const [attendanceMachines, setAttendanceMachines] = useState<any[]>([]);
+  const [attendanceSettings, setAttendanceSettings] = useState<any>(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [newMachineSN, setNewMachineSN] = useState("");
+  const [newMachineDesc, setNewMachineDesc] = useState("");
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
+
   const totalAnalyticsPages = Math.ceil((history || []).length / rowsPerPage);
   const totalExpandedPages = Math.ceil((expandedUsers || []).length / expandedRowsPerPage);
 
@@ -175,11 +183,108 @@ export default function AdminPanel() {
         })
       });
       if (!response.ok) throw new Error("Failed to update profile");
-      await refreshProfile();
-    } catch (err: any) {
-      setAuthError(err.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const fetchAttendanceConfig = async () => {
+    if (!session || profile?.role !== 1) return;
+    setLoadingAttendance(true);
+    try {
+      const res = await fetch("/api/admin/attendance-config", {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      const data = await res.json();
+      if (data.machines) setAttendanceMachines(data.machines);
+      if (data.settings) setAttendanceSettings(data.settings);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
+
+  const handleAddMachine = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMachineSN) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/attendance-config", {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ 
+          action: "add_machine", 
+          data: { serial_number: newMachineSN, description: newMachineDesc } 
+        })
+      });
+      if (res.ok) {
+        setNewMachineSN("");
+        setNewMachineDesc("");
+        fetchAttendanceConfig();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsUpdatingSettings(true);
+    try {
+      const res = await fetch("/api/admin/attendance-config", {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ 
+          action: "update_settings", 
+          data: attendanceSettings 
+        })
+      });
+      if (res.ok) setSubmitMessage({ type: "success", text: "Settings updated successfully!" });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUpdatingSettings(false);
+    }
+  };
+
+  const updateMachineSettings = async (id: string, updates: any) => {
+    try {
+      const res = await fetch("/api/admin/attendance-config", {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ 
+          action: "update_machine", 
+          data: { id, ...updates } 
+        })
+      });
+      if (res.ok) fetchAttendanceConfig();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteMachine = async (id: string) => {
+    if (!confirm("Remove this machine?")) return;
+    try {
+      await fetch(`/api/admin/attendance-config?id=${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      fetchAttendanceConfig();
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -205,6 +310,7 @@ export default function AdminPanel() {
     if (activeView === "bc-class") fetchLectures();
     if (activeView === "youtube-channels") fetchYtChannels();
     if (activeView === "usage-analytics") fetchAnalytics();
+    if (activeView === "attendance-machines") fetchAttendanceConfig();
   }, [activeView, session, profile?.role]);
 
   const isSuperAdmin = profile?.role === 1;
@@ -667,19 +773,27 @@ export default function AdminPanel() {
                   </div>
                 </button>
               )}
-
-              {/* Settings Card (Placeholder) */}
-              <div className="group relative bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-xl transition-all duration-300 text-left overflow-hidden h-[260px] opacity-40 grayscale">
-                <div className="relative z-10 space-y-4">
-                  <div className="w-16 h-16 bg-slate-200 rounded-2xl flex items-center justify-center text-slate-500">
-                    <Settings className="w-8 h-8" />
+              {/* Attendance Machine Card */}
+              {isSuperAdmin && (
+                <button 
+                  onClick={() => navigateToView("attendance-machines")}
+                  className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-cyan-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
+                  <div className="relative z-10 w-12 h-12 sm:w-16 sm:h-16 bg-cyan-600 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-cyan-100 group-hover:-rotate-12 transition-transform shrink-0">
+                    <Activity className="w-6 h-6 sm:w-8 sm:h-8" />
                   </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-400">Settings</h3>
-                    <p className="text-slate-400 font-medium text-sm mt-1 leading-relaxed">Configure global platform behavior, API keys, and notification preferences. (Coming Soon)</p>
+                  <div className="relative z-10 sm:mt-4 flex-1 min-w-0">
+                    <div>
+                      <h3 className="text-lg sm:text-2xl font-black text-devo-950 uppercase tracking-tight sm:normal-case">Attendance Hub</h3>
+                      <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Manage biometric devices, authorize new serial numbers, and tune ingestion windows.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-cyan-600 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
+                      Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
+                    </div>
                   </div>
-                </div>
-              </div>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1742,6 +1856,159 @@ export default function AdminPanel() {
                   </div>
                 </div>
              </div>
+          </div>
+        )}
+
+        {/* VIEW: Attendance Machines */}
+        {activeView === "attendance-machines" && (
+          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <button 
+                onClick={() => navigateToView("home")}
+                className="flex items-center gap-2 text-cyan-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
+              >
+                <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
+              </button>
+              <h2 className="text-2xl font-outfit font-black text-devo-950 flex items-center gap-3">
+                <Activity className="w-7 h-7 text-cyan-600" /> Attendance Management
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Settings and Add Machine */}
+              <div className="lg:col-span-1 space-y-6">
+                {/* Global Settings */}
+                <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
+                   <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
+                     <Calendar className="w-5 h-5 text-slate-400" /> Sync Start Date
+                   </h3>
+                   {attendanceSettings && (
+                     <form onSubmit={handleUpdateSettings} className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ignore Records Older than:</label>
+                          <input type="date" value={attendanceSettings.sync_from_date} onChange={(e) => setAttendanceSettings({...attendanceSettings, sync_from_date: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                        </div>
+                        <button disabled={isUpdatingSettings} className="w-full bg-slate-900 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-cyan-600 transition-colors shadow-lg">
+                          {isUpdatingSettings ? "Updating..." : "Save Sync Date"}
+                        </button>
+                     </form>
+                   )}
+                </div>
+
+                {/* Add New Machine */}
+                <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
+                   <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
+                     <Plus className="w-5 h-5 text-cyan-500" /> Authorize New Machine
+                   </h3>
+                   <form onSubmit={handleAddMachine} className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Serial Number</label>
+                        <input type="text" required placeholder="e.g. NCD8253500015" value={newMachineSN} onChange={(e) => setNewMachineSN(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold uppercase" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</label>
+                        <input type="text" placeholder="e.g. Main Gate Machine" value={newMachineDesc} onChange={(e) => setNewMachineDesc(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                      </div>
+                      <button disabled={isSubmitting} className="w-full bg-cyan-600 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-black transition-colors shadow-lg">
+                        {isSubmitting ? "Adding..." : "Add Machine"}
+                      </button>
+                   </form>
+                </div>
+              </div>
+
+              {/* Machine List */}
+              <div className="lg:col-span-2">
+                <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
+                  <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h3 className="font-black text-xl text-devo-950 uppercase tracking-tight">Authorized Devices</h3>
+                    <div className="px-4 py-1 bg-cyan-50 text-cyan-600 rounded-full text-[10px] font-black uppercase">{attendanceMachines.length} Active</div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-white border-b border-slate-100">
+                          <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Device Info</th>
+                          <th className="px-8 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Window</th>
+                          <th className="px-8 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                          <th className="px-8 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {attendanceMachines.map((m) => (
+                          <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
+                            <td className="px-8 py-6">
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${m.is_active ? 'bg-cyan-50 text-cyan-600' : 'bg-slate-100 text-slate-400'}`}>
+                                  <HardDrive className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-black text-devo-950 text-base">{m.serial_number}</div>
+                                  <input 
+                                    type="text" 
+                                    className="text-slate-400 text-xs font-bold bg-transparent border-none p-0 focus:ring-0 w-full"
+                                    value={m.description || ""}
+                                    placeholder="Add description..."
+                                    onBlur={(e) => updateMachineSettings(m.id, { description: e.target.value })}
+                                    onChange={(e) => {
+                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, description: e.target.value } : item);
+                                      setAttendanceMachines(updated);
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-8 py-6">
+                               <div className="flex items-center justify-center gap-2">
+                                  <input 
+                                    type="time" 
+                                    value={m.start_time || "02:00:00"} 
+                                    className="px-2 py-1 text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-cyan-600"
+                                    onChange={(e) => {
+                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, start_time: e.target.value } : item);
+                                      setAttendanceMachines(updated);
+                                    }}
+                                    onBlur={(e) => updateMachineSettings(m.id, { start_time: e.target.value })}
+                                  />
+                                  <span className="text-slate-300 font-bold">-</span>
+                                  <input 
+                                    type="time" 
+                                    value={m.end_time || "07:30:00"} 
+                                    className="px-2 py-1 text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-cyan-600"
+                                    onChange={(e) => {
+                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, end_time: e.target.value } : item);
+                                      setAttendanceMachines(updated);
+                                    }}
+                                    onBlur={(e) => updateMachineSettings(m.id, { end_time: e.target.value })}
+                                  />
+                               </div>
+                            </td>
+                            <td className="px-8 py-6 text-center">
+                              <button 
+                                onClick={() => updateMachineSettings(m.id, { is_active: !m.is_active })}
+                                className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${m.is_active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
+                              >
+                                {m.is_active ? "Enabled" : "Disabled"}
+                              </button>
+                            </td>
+                            <td className="px-8 py-6 text-right">
+                              <button onClick={() => deleteMachine(m.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {attendanceMachines.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="px-8 py-20 text-center text-slate-300 font-bold italic">No machines registered</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
