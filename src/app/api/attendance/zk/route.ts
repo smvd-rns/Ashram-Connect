@@ -20,22 +20,12 @@ const AUTHORIZED_SNS = [
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
 
-  // Log the attempt (for debugging)
-  console.log(`[ZK-DEBUG] GET handshake from SN: ${sn}`);
+  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
+  }
 
-  const sn_upper = sn?.toUpperCase();
-  const isAuthorized = sn_upper && AUTHORIZED_SNS.includes(sn_upper);
-
-  // NO SN CHECK FOR DEBUGGING - LOG EVERYTHING
-  await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "ZK-OPEN",
-    zk_user_id: "ZK_DEBUG_GET",
-    raw_payload: `Handshake attempt from SN: ${sn}`
-  }]);
-
-  // ZKTeco Expects "OK" in plain text
   return new Response("OK", {
     headers: { "Content-Type": "text/plain" }
   });
@@ -43,43 +33,63 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
   const table = searchParams.get("table");
+  const text = await req.text();
 
-  console.log(`[ZK-DEBUG] POST data from SN: ${sn}, Table: ${table}`);
-
-  const sn_upper = sn?.toUpperCase();
-  const isAuthorized = sn_upper && AUTHORIZED_SNS.includes(sn_upper);
-
-  // NO SN CHECK FOR DEBUGGING - LOG EVERYTHING
-  await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "ZK-OPEN",
-    zk_user_id: "ZK_DEBUG_POST",
-    raw_payload: `Data push attempt from SN: ${sn} | Table: ${table}`
-  }]);
+  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
+  }
 
   try {
-    const text = await req.text();
-    
-    // Log the raw payload to Supabase for debugging (Very Helpful!)
-    await supabase.from("physical_attendance").insert([{
-      device_sn: sn || "UNKNOWN",
-      zk_user_id: "DEBUG",
-      raw_payload: `TABLE: ${table} | BODY: ${text.slice(0, 500)}`
-    }]);
-
-    if (table === "ATTLOG") {
+    // Handle ATTLOG or OPLOG
+    if (table === "ATTLOG" || table === "OPLOG" || text.includes("ATTLOG") || text.includes("OPLOG")) {
       const lines = text.trim().split("\n");
-      const logs = lines.filter(l => l.trim()).map(line => {
+      const logs: any[] = [];
+      
+      lines.forEach(line => {
+          if (!line.trim()) return;
           const parts = line.split("\t"); 
-          return {
-              device_sn: sn,
-              zk_user_id: parts[0] || "0",
-              check_time: parts[1] || new Date().toISOString(),
-              status: parseInt(parts[2]) || 0,
-              verify_type: parseInt(parts[3]) || 0,
-              raw_payload: line
-          };
+          
+          let userId = "0";
+          let timestampStr = "";
+          let status = 0;
+          let verifyType = 0;
+
+          if (parts[0].includes("ATTLOG")) {
+             userId = parts[0].split(" ").pop() || "0";
+             timestampStr = parts[1] || "";
+             status = parseInt(parts[2]) || 0;
+             verifyType = parseInt(parts[3]) || 0;
+          } else if (parts[0].includes("OPLOG")) {
+             userId = parts[3] || parts[1] || "0";
+             timestampStr = parts[2] || "";
+          } else {
+             userId = parts[0] || "0";
+             timestampStr = parts[1] || "";
+             status = parseInt(parts[2]) || 0;
+             verifyType = parseInt(parts[3]) || 0;
+          }
+
+          // PRODUCTION FILTER: Only 2:00 AM to 7:30 AM
+          if (timestampStr) {
+             const timeParts = timestampStr.split(" ")[1];
+             if (timeParts) {
+                const [h, m] = timeParts.split(":").map(Number);
+                const isInWindow = (h > 2 && h < 7) || (h === 2) || (h === 7 && m <= 30);
+                
+                if (isInWindow) {
+                   logs.push({
+                       device_sn: sn,
+                       zk_user_id: userId,
+                       check_time: timestampStr,
+                       status,
+                       verify_type: verifyType,
+                       raw_payload: line
+                   });
+                }
+             }
+          }
       });
 
       if (logs.length > 0) {
@@ -92,7 +102,6 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("[ZK-DEBUG] Error:", error.message);
-    return new Response("OK", { status: 200 }); // Return 200/OK anyway to prevent machine from retrying/stalling
+    return new Response("OK", { status: 200 });
   }
 }

@@ -10,37 +10,32 @@ const supabase = createClient(
  * CATCH-ALL DIAGNOSTIC ROUTE
  * Logs ANY request hitting /iclock/* to help identify the machine's preferred path and SN format.
  */
-export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string[] }> }) {
-  const { slug } = await params;
-  const path = slug.join("/");
-  const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+// Whitelist of machine serial numbers allowed to push data
+const AUTHORIZED_SNS = ["TFEE255000216", "NCD8253500015"];
 
-  await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "CATCH_ALL",
-    zk_user_id: "DIAGNOSTIC_GET",
-    raw_payload: `Path: /iclock/${path} | Params: ${searchParams.toString()}`
-  }]);
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const sn = searchParams.get("SN")?.toUpperCase();
+
+  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
+  }
 
   return new Response("OK", { headers: { "Content-Type": "text/plain" } });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string[] }> }) {
-  const { slug } = await params;
-  const path = slug.join("/");
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
   const tableParam = searchParams.get("table");
   const text = await req.text();
 
-  // Log the raw push for debugging
-  await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "CATCH_ALL",
-    zk_user_id: "DIAGNOSTIC_POST",
-    raw_payload: `Path: /iclock/${path} | Table: ${tableParam} | Body: ${text.slice(0, 500)}`
-  }]);
+  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+    console.warn(`[ZK-SECURITY] Unauthorized POST from SN: ${sn}`);
+    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
+  }
 
-  // Handle ATTLOG or OPLOG (eSSL/ZKTeco Push Protocol)
+  // Handle ATTLOG or OPLOG
   if (text.includes("ATTLOG") || text.includes("OPLOG") || tableParam?.includes("ATTLOG") || tableParam?.includes("OPLOG")) {
       const lines = text.trim().split("\n");
       const logs: any[] = [];
@@ -50,39 +45,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           const parts = line.split("\t"); 
           
           let userId = "0";
-          let timestamp = new Date().toISOString();
+          let timestampStr = "";
           let status = 0;
           let verifyType = 0;
 
-          // Format A: "ATTLOG 99\t2026-04-01 08:00:00\t0\t1..."
           if (parts[0].includes("ATTLOG")) {
              userId = parts[0].split(" ").pop() || "0";
-             timestamp = parts[1] || timestamp;
+             timestampStr = parts[1] || "";
              status = parseInt(parts[2]) || 0;
              verifyType = parseInt(parts[3]) || 0;
-          } 
-          // Format B: "OPLOG 101\t0\t2026-03-28 07:58:28\t118..."
-          else if (parts[0].includes("OPLOG")) {
-             // For OPLOG, the user ID is often in columns 3 or 4
+          } else if (parts[0].includes("OPLOG")) {
              userId = parts[3] || parts[1] || "0";
-             timestamp = parts[2] || timestamp;
-          }
-          // Format C: Standard tab-separated "99\t2026-04-01 08:00:00\t0\t1..."
-          else {
+             timestampStr = parts[2] || "";
+          } else {
              userId = parts[0] || "0";
-             timestamp = parts[1] || timestamp;
+             timestampStr = parts[1] || "";
              status = parseInt(parts[2]) || 0;
              verifyType = parseInt(parts[3]) || 0;
           }
 
-          logs.push({
-              device_sn: sn || "NCD8253500015",
-              zk_user_id: userId,
-              check_time: timestamp,
-              status: status,
-              verify_type: verifyType,
-              raw_payload: line
-          });
+          // PRODUCTION FILTER: Only 2:00 AM to 7:30 AM
+          if (timestampStr) {
+             const timeParts = timestampStr.split(" ")[1]; // Gets "HH:mm:ss"
+             if (timeParts) {
+                const [h, m] = timeParts.split(":").map(Number);
+                const isInWindow = (h > 2 && h < 7) || (h === 2) || (h === 7 && m <= 30);
+                
+                if (isInWindow) {
+                   logs.push({
+                       device_sn: sn,
+                       zk_user_id: userId,
+                       check_time: timestampStr,
+                       status,
+                       verify_type: verifyType,
+                       raw_payload: line
+                   });
+                }
+             }
+          }
       });
 
       if (logs.length > 0) {

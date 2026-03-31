@@ -10,47 +10,77 @@ const supabase = createClient(
  * DEDICATED ENDPOINT FOR SECOND MACHINE (NCD8253500015)
  * Providing a clean, separate URL for the user to troubleshoot communication.
  */
+const AUTHORIZED_SNS = ["TFEE255000216", "NCD8253500015"];
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
 
-  // LOG ALL HITS - NO SN CHECK FOR DEBUGGING
-  await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "NCD-OPEN",
-    zk_user_id: "NCD_DEBUG_GET",
-    raw_payload: `URL: ${req.url} | Params: ${searchParams.toString()}`
-  }]);
+  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
+  }
 
-  // Respond "OK" for handshake
   return new Response("OK", { headers: { "Content-Type": "text/plain" } });
 }
 
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
   const table = searchParams.get("table");
   const text = await req.text();
 
-  // LOG ALL HITS - NO SN CHECK FOR DEBUGGING
-  await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "NCD-OPEN",
-    zk_user_id: "NCD_DEBUG_POST",
-    raw_payload: `Table: ${table} | Body: ${text.slice(0, 500)}`
-  }]);
+  if (!sn || !AUTHORIZED_SNS.includes(sn)) {
+    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
+  }
 
-  // Standard logic to process logs if it's ATTLOG
-  if (table === "ATTLOG") {
+  // Handle ATTLOG or OPLOG
+  if (table === "ATTLOG" || table === "OPLOG" || text.includes("ATTLOG") || text.includes("OPLOG")) {
     const lines = text.trim().split("\n");
-    const logs = lines.filter(l => l.trim()).map(line => {
+    const logs: any[] = [];
+    
+    lines.forEach(line => {
+        if (!line.trim()) return;
         const parts = line.split("\t"); 
-        return {
-            device_sn: sn || "NCD8253500015",
-            zk_user_id: parts[0] || "0",
-            check_time: parts[1] || new Date().toISOString(),
-            status: parseInt(parts[2]) || 0,
-            verify_type: parseInt(parts[3]) || 0,
-            raw_payload: line
-        };
+        
+        let userId = "0";
+        let timestampStr = "";
+        let status = 0;
+        let verifyType = 0;
+
+        if (parts[0].includes("ATTLOG")) {
+           userId = parts[0].split(" ").pop() || "0";
+           timestampStr = parts[1] || "";
+           status = parseInt(parts[2]) || 0;
+           verifyType = parseInt(parts[3]) || 0;
+        } else if (parts[0].includes("OPLOG")) {
+           userId = parts[3] || parts[1] || "0";
+           timestampStr = parts[2] || "";
+        } else {
+           userId = parts[0] || "0";
+           timestampStr = parts[1] || "";
+           status = parseInt(parts[2]) || 0;
+           verifyType = parseInt(parts[3]) || 0;
+        }
+
+        // PRODUCTION FILTER: Only 2:00 AM to 7:30 AM
+        if (timestampStr) {
+           const timeParts = timestampStr.split(" ")[1];
+           if (timeParts) {
+              const [h, m] = timeParts.split(":").map(Number);
+              const isInWindow = (h > 2 && h < 7) || (h === 2) || (h === 7 && m <= 30);
+              
+              if (isInWindow) {
+                 logs.push({
+                     device_sn: sn,
+                     zk_user_id: userId,
+                     check_time: timestampStr,
+                     status,
+                     verify_type: verifyType,
+                     raw_payload: line
+                 });
+              }
+           }
+        }
     });
 
     if (logs.length > 0) {
