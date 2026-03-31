@@ -21,6 +21,12 @@ export async function GET(req: NextRequest) {
   const sn = searchParams.get("SN")?.toUpperCase();
 
   if (!sn || !AUTHORIZED_SNS.map(s => s.toUpperCase()).includes(sn)) {
+    // Log unauthorized attempt to help debug
+    await supabase.from("physical_attendance").insert([{
+      device_sn: sn || "UNKNOWN",
+      zk_user_id: "UNAUTHORIZED_GET",
+      raw_payload: `Handshake failed for SN: ${sn}`
+    }]);
     console.warn(`[ZK-HANDSHAKE] Unauthorized SN: ${sn}`);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
@@ -42,6 +48,12 @@ export async function POST(req: NextRequest) {
   const table = searchParams.get("table");
 
   if (!sn || !AUTHORIZED_SNS.map(s => s.toUpperCase()).includes(sn)) {
+    // Log unauthorized attempt to help debug
+    await supabase.from("physical_attendance").insert([{
+      device_sn: sn || "UNKNOWN",
+      zk_user_id: "UNAUTHORIZED_POST",
+      raw_payload: `Data push failed for SN: ${sn} | Table: ${table}`
+    }]);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 

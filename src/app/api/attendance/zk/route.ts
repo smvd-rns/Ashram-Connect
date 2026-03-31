@@ -12,7 +12,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const AUTHORIZED_SN = "TFEE255000216";
+// Whitelist of machine serial numbers allowed to push data
+const AUTHORIZED_SNS = [
+  "TFEE255000216", 
+  "NCD8253500015"
+];
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -21,7 +25,17 @@ export async function GET(req: NextRequest) {
   // Log the attempt (for debugging)
   console.log(`[ZK-DEBUG] GET handshake from SN: ${sn}`);
 
-  if (sn !== AUTHORIZED_SN) {
+  const sn_upper = sn?.toUpperCase();
+  const isAuthorized = sn_upper && AUTHORIZED_SNS.includes(sn_upper);
+
+  if (!isAuthorized) {
+    // Log unauthorized attempt to help debug
+    await supabase.from("physical_attendance").insert([{
+      device_sn: sn || "UNKNOWN",
+      zk_user_id: "UNAUTHORIZED_GET",
+      raw_payload: `Handshake failed for SN: ${sn}`
+    }]);
+    console.warn(`[ZK-DEBUG] Unauthorized GET from SN: ${sn}`);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
@@ -38,7 +52,17 @@ export async function POST(req: NextRequest) {
 
   console.log(`[ZK-DEBUG] POST data from SN: ${sn}, Table: ${table}`);
 
-  if (sn !== AUTHORIZED_SN) {
+  const sn_upper = sn?.toUpperCase();
+  const isAuthorized = sn_upper && AUTHORIZED_SNS.includes(sn_upper);
+
+  if (!isAuthorized) {
+    // Log unauthorized attempt to help debug
+    await supabase.from("physical_attendance").insert([{
+      device_sn: sn || "UNKNOWN",
+      zk_user_id: "UNAUTHORIZED_POST",
+      raw_payload: `Data push failed for SN: ${sn} | Table: ${table}`
+    }]);
+    console.warn(`[ZK-DEBUG] Unauthorized POST from SN: ${sn}`);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
