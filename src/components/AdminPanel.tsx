@@ -29,6 +29,15 @@ export default function AdminPanel() {
     (searchParams.get("view") as ActiveView) || "home"
   );
   
+  // -- Attendance Sub-View --
+  const [attendanceSubView, setAttendanceSubView] = useState<"devices" | "mappings">("devices");
+  const [attendanceMappings, setAttendanceMappings] = useState<any[]>([]);
+  const [mappingMachineId, setMappingMachineId] = useState("");
+  const [mappingZKId, setMappingZKId] = useState("");
+  const [mappingEmail, setMappingEmail] = useState("");
+  const [mappingSearch, setMappingSearch] = useState("");
+  const [isUploadingMapping, setIsUploadingMapping] = useState(false);
+  
   // Synchronize state with URL changes (Back/Forward buttons)
   useEffect(() => {
     const view = searchParams.get("view") as ActiveView || "home";
@@ -284,6 +293,116 @@ export default function AdminPanel() {
     }
   };
 
+  const fetchAttendanceMappings = async () => {
+    if (!session || profile?.role !== 1) return;
+    try {
+      const res = await fetch("/api/admin/attendance-mapping", {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      const data = await res.json();
+      if (data.mappings) setAttendanceMappings(data.mappings);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAddMapping = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mappingMachineId || !mappingZKId || !mappingEmail) return;
+    
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/attendance-mapping", {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({ 
+          action: "add_mapping", 
+          data: { machine_id: mappingMachineId, zk_user_id: mappingZKId, user_email: mappingEmail } 
+        })
+      });
+      if (res.ok) {
+        setMappingZKId("");
+        setMappingEmail("");
+        fetchAttendanceMappings();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const deleteMapping = async (id: string) => {
+    if (!confirm("Remove this mapping?")) return;
+    try {
+      const res = await fetch(`/api/admin/attendance-mapping?id=${id}`, { 
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      if (res.ok) fetchAttendanceMappings();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleBulkMappingUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingMapping(true);
+    const reader = new FileReader();
+    reader.onload = async (evt: any) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        const mappedData = data.map((row: any) => {
+          const rawMachine = row["Machine ID"] || row["machine_id"] || row["Machine SN"] || row["Machine Serial Number"];
+          const rawZKId = String(row["ZK User ID"] || row["zk_user_id"] || row["User ID"] || row["User Pin"]);
+          const rawEmail = row["User Email"] || row["user_email"] || row["Email"] || row["email"];
+
+          // Try to lookup UUID from Serial Number first
+          const foundMachine = attendanceMachines.find(m => m.serial_number === String(rawMachine) || m.id === rawMachine);
+          
+          if (!foundMachine) return null;
+
+          return {
+            machine_id: foundMachine.id,
+            zk_user_id: rawZKId,
+            user_email: rawEmail
+          };
+        }).filter(Boolean);
+
+        if (mappedData.length > 0) {
+          const res = await fetch("/api/admin/attendance-mapping", {
+            method: "POST",
+            headers: { 
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json" 
+            },
+            body: JSON.stringify({ action: "bulk_add_mapping", data: mappedData })
+          });
+          if (res.ok) {
+             setSubmitMessage({ type: "success", text: `Successfully mapped ${mappedData.length} users!` });
+             fetchAttendanceMappings();
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        setSubmitMessage({ type: "error", text: "Failed to parse Excel file." });
+      } finally {
+        setIsUploadingMapping(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const deleteMachine = async (id: string) => {
     if (!confirm("Remove this machine?")) return;
     try {
@@ -319,7 +438,11 @@ export default function AdminPanel() {
     if (activeView === "bc-class") fetchLectures();
     if (activeView === "youtube-channels") fetchYtChannels();
     if (activeView === "usage-analytics") fetchAnalytics();
-    if (activeView === "attendance-machines") fetchAttendanceConfig();
+    if (activeView === "attendance-machines") {
+      fetchAttendanceConfig();
+      fetchAttendanceMappings();
+      fetchUsers(); // Required for email suggestions
+    }
   }, [activeView, session, profile?.role]);
 
   const isSuperAdmin = profile?.role === 1;
@@ -1883,7 +2006,24 @@ export default function AdminPanel() {
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Sub-Tabs Switcher */}
+            <div className="flex p-1 bg-slate-100 rounded-2xl w-fit mb-8">
+              <button 
+                onClick={() => setAttendanceSubView("devices")}
+                className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${attendanceSubView === "devices" ? 'bg-white text-cyan-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                Device Management
+              </button>
+              <button 
+                onClick={() => setAttendanceSubView("mappings")}
+                className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${attendanceSubView === "mappings" ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                User Mapping Hub
+              </button>
+            </div>
+
+            {attendanceSubView === "devices" ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Instructions and Global Settings */}
               <div className="lg:col-span-1 space-y-6">
                 {/* Quick Setup Guide */}
@@ -1898,13 +2038,13 @@ export default function AdminPanel() {
                       </div>
                       <div className="flex gap-3">
                         <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">2</span>
-                        <p>Set <strong>Server Address</strong> to (do NOT add https://): <br/> 
-                           <code className="bg-black/20 p-1 rounded mt-1 inline-block select-all">ashram-connect-nine.vercel.app</code>
+                        <p>Set <strong>Server Address</strong> to: <br/> 
+                           <code className="bg-black/20 p-1 rounded mt-1 inline-block select-all">https://ashram-connect-nine.vercel.app</code>
                         </p>
                       </div>
                       <div className="flex gap-3">
                         <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">3</span>
-                        <p>Set <strong>Port</strong> to <code className="bg-black/20 px-1.5 py-0.5 rounded">80</code> and <strong>Protocol</strong> to <code className="bg-black/20 px-1.5 py-0.5 rounded">HTTP</code>.</p>
+                        <p>Set <strong>Port</strong> to <code className="bg-black/20 px-1.5 py-0.5 rounded">443</code> and <strong>Protocol</strong> to <code className="bg-black/20 px-1.5 py-0.5 rounded">HTTPS</code>.</p>
                       </div>
                       <div className="mt-4 p-3 bg-black/20 rounded-xl text-[10px] italic">
                         <strong>Note:</strong> Multiple machines use this same URL. Our server automatically identifies each one by its unique <strong>Serial Number (SN)</strong>, so there is never any confusion.
@@ -1912,7 +2052,7 @@ export default function AdminPanel() {
                    </div>
                    <button 
                      onClick={() => {
-                        navigator.clipboard.writeText("ashram-connect-nine.vercel.app");
+                        navigator.clipboard.writeText("https://ashram-connect-nine.vercel.app");
                         setSubmitMessage({ type: "success", text: "Server URL copied to clipboard!" });
                         setTimeout(() => setSubmitMessage(null), 3000);
                      }}
@@ -1999,17 +2139,20 @@ export default function AdminPanel() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="font-black text-devo-950 text-base">{m.serial_number}</div>
-                                  <input 
-                                    type="text" 
-                                    className="text-slate-400 text-xs font-bold bg-transparent border-none p-0 focus:ring-0 w-full"
-                                    value={m.description || ""}
-                                    placeholder="Add description..."
-                                    onBlur={(e) => updateMachineSettings(m.id, { description: e.target.value })}
-                                    onChange={(e) => {
-                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, description: e.target.value } : item);
-                                      setAttendanceMachines(updated);
-                                    }}
-                                  />
+                                  <div className="flex items-center gap-1 group/edit">
+                                    <input 
+                                      type="text" 
+                                      className="text-slate-400 text-xs font-bold bg-transparent border-none p-0 focus:ring-0 w-full hover:text-slate-600 focus:text-slate-900 transition-colors cursor-text"
+                                      value={m.description || ""}
+                                      placeholder="Add description..."
+                                      onBlur={(e) => updateMachineSettings(m.id, { description: e.target.value })}
+                                      onChange={(e) => {
+                                        const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, description: e.target.value } : item);
+                                        setAttendanceMachines(updated);
+                                      }}
+                                    />
+                                    <Settings className="w-3 h-3 text-slate-300 opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -2051,21 +2194,200 @@ export default function AdminPanel() {
                                 <Trash2 className="w-5 h-5" />
                               </button>
                             </td>
-                          </tr>
-                        ))}
-                        {attendanceMachines.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="px-8 py-20 text-center text-slate-300 font-bold italic">No machines registered</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
+          </tr>
+        ))}
+        {attendanceMachines.length === 0 && (
+          <tr>
+            <td colSpan={3} className="px-8 py-20 text-center text-slate-300 font-bold italic">No machines registered</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+</div>
+) : (
+  /** 
+   * NEW VIEW: USER MAPPING HUB
+   */
+  <div className="space-y-12">
+    {/* Header Controls */}
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+       <div className="md:col-span-4 space-y-2">
+         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Search Email or ID</label>
+         <div className="relative">
+           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+           <input 
+             type="text" 
+             placeholder="Find mapping..." 
+             className="w-full pl-11 pr-4 py-4 bg-white border border-slate-200 rounded-2xl font-bold shadow-sm focus:border-indigo-600 transition-all"
+             value={mappingSearch}
+             onChange={(e) => setMappingSearch(e.target.value)}
+           />
+         </div>
+       </div>
+
+       <div className="md:col-span-8 flex flex-wrap gap-4 items-center justify-end">
+          <label className="relative flex flex-col items-center justify-center px-8 py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-indigo-600 cursor-pointer group transition-all">
+            <div className="flex items-center gap-3">
+              {isUploadingMapping ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <FileSpreadsheet className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />}
+              <span className="text-xs font-black uppercase tracking-widest text-slate-400 group-hover:text-indigo-600">Bulk Excel Mapping</span>
+            </div>
+            <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleBulkMappingUpload} />
+          </label>
+          
+          <button 
+            onClick={() => {
+              const wb = XLSX.utils.book_new();
+              
+              // Sheet 1: The Template
+              const templateData = [["Machine Serial Number", "ZK User ID", "User Email"]];
+              const wsTemplate = XLSX.utils.aoa_to_sheet(templateData);
+              XLSX.utils.book_append_sheet(wb, wsTemplate, "Mapping Template");
+
+              // Sheet 2: Reference Data (Helper)
+              const refData = [["MACHINE LIST (Copy Serial Number)", "DESCRIPTION"]];
+              attendanceMachines.forEach(m => {
+                refData.push([m.serial_number, m.description || ""]);
+              });
+
+              const wsRef = XLSX.utils.aoa_to_sheet(refData);
+              XLSX.utils.book_append_sheet(wb, wsRef, "Reference Data");
+
+              XLSX.writeFile(wb, "attendance_mapping_template.xlsx");
+            }}
+            className="p-4 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-2xl border border-slate-100 transition-all"
+            title="Download Template"
+          >
+            <Download className="w-5 h-5" />
+          </button>
+       </div>
+    </div>
+
+    {/* Quick Add Form */}
+    <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-8 rounded-[2.5rem] shadow-2xl text-white">
+      <h3 className="text-lg font-black mb-6 flex items-center gap-2">
+        <UserPlus className="w-6 h-6" /> Single Mapping Entry
+      </h3>
+      <form onSubmit={handleAddMapping} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+        <div className="space-y-1">
+          <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Select Machine</label>
+          <select 
+            value={mappingMachineId} 
+            onChange={(e) => setMappingMachineId(e.target.value)}
+            className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all"
+          >
+            <option value="" className="text-black">Select Machine</option>
+            {attendanceMachines.map(m => (
+              <option key={m.id} value={m.id} className="text-black">{m.description} ({m.serial_number})</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Machine User ID</label>
+          <input 
+            type="text" 
+            placeholder="e.g. 101" 
+            value={mappingZKId}
+            onChange={(e) => setMappingZKId(e.target.value)}
+            className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all placeholder:text-white/40" 
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">System User Email</label>
+          <input 
+            type="email" 
+            placeholder="user@example.com" 
+            value={mappingEmail}
+            onChange={(e) => setMappingEmail(e.target.value)}
+            list="user-emails"
+            className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all placeholder:text-white/40" 
+          />
+          <datalist id="user-emails">
+            {users.map(u => (
+              <option key={u.id} value={u.email}>{u.full_name}</option>
+            ))}
+          </datalist>
+        </div>
+        <button disabled={isSubmitting} className="px-8 py-4 bg-white text-indigo-600 font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-slate-900 hover:text-white transition-all shadow-xl">
+           {isSubmitting ? "Processing..." : "Create Mapping"}
+        </button>
+      </form>
+    </div>
+
+    {/* Grouped Mapping View */}
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+      {attendanceMachines.map(m => {
+        const machineMappings = attendanceMappings.filter(amp => 
+          amp.machine_id === m.id && 
+          (amp.user_email.toLowerCase().includes(mappingSearch.toLowerCase()) || 
+           amp.zk_user_id.toString().includes(mappingSearch))
+        );
+        
+        if (mappingSearch && machineMappings.length === 0) return null;
+
+        return (
+          <div key={m.id} className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="p-6 sm:p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+               <div>
+                 <h4 className="text-lg font-black text-devo-950">{m.description}</h4>
+                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{m.serial_number}</div>
+               </div>
+               <div className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-400">
+                 {machineMappings.length} MAPPINGS
+               </div>
+            </div>
+            
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-50/50">
+                    <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">User ID</th>
+                    <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Account (Name / Email)</th>
+                    <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                   {machineMappings.map(amp => {
+                     const userData = users.find(u => u.email?.toLowerCase() === amp.user_email?.toLowerCase());
+                     return (
+                       <tr key={amp.id} className="hover:bg-slate-50/50 transition-colors">
+                         <td className="px-8 py-4 font-black text-indigo-600 text-sm">
+                           <div className="flex items-center gap-2">
+                              <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px]">#{amp.zk_user_id}</span>
+                           </div>
+                         </td>
+                         <td className="px-8 py-4">
+                           <div className="flex flex-col">
+                             <div className="font-bold text-slate-900 text-sm">{userData?.full_name || "—"}</div>
+                             <div className="font-bold text-slate-400 text-[10px] tracking-tight">{amp.user_email}</div>
+                           </div>
+                         </td>
+                         <td className="px-8 py-4 text-right">
+                           <button onClick={() => deleteMapping(amp.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                             <Trash2 className="w-4 h-4" />
+                           </button>
+                         </td>
+                       </tr>
+                     );
+                   })}
+                   {machineMappings.length === 0 && (
+                     <tr>
+                       <td colSpan={3} className="px-8 py-10 text-center text-slate-400 italic text-xs font-bold">No mappings found</td>
+                     </tr>
+                   )}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
+        );
+      })}
+    </div>
+  </div>
+)}
+</div>
+)}
       </div>
     </div>
   );
