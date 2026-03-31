@@ -10,8 +10,9 @@ const supabase = createClient(
  * CATCH-ALL DIAGNOSTIC ROUTE
  * Logs ANY request hitting /iclock/* to help identify the machine's preferred path and SN format.
  */
-export async function GET(req: NextRequest, { params }: { params: { slug: string[] } }) {
-  const path = params.slug.join("/");
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string[] }> }) {
+  const { slug } = await params;
+  const path = slug.join("/");
   const { searchParams } = new URL(req.url);
   const sn = searchParams.get("SN");
 
@@ -24,8 +25,9 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   return new Response("OK", { headers: { "Content-Type": "text/plain" } });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { slug: string[] } }) {
-  const path = params.slug.join("/");
+export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string[] }> }) {
+  const { slug } = await params;
+  const path = slug.join("/");
   const { searchParams } = new URL(req.url);
   const sn = searchParams.get("SN");
   const text = await req.text();
