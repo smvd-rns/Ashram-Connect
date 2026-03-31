@@ -6,17 +6,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-/**
- * CATCH-ALL DIAGNOSTIC ROUTE
- * Logs ANY request hitting /iclock/* to help identify the machine's preferred path and SN format.
- */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sn = searchParams.get("SN")?.toUpperCase();
 
   if (!sn) return new Response("SN_REQUIRED", { status: 400 });
 
-  // DYNAMIC CONFIG: Fetch authorized machines
   const { data: machine } = await supabase
     .from("attendance_machines")
     .select("is_active, start_time, end_time")
@@ -25,7 +20,7 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (!machine) {
-    console.warn(`[ZK-SECURITY] Unauthorized or inactive SN: ${sn}`);
+    console.warn(`[ATTENDANCE-DEBUG] GET Unauthorized or inactive SN: ${sn}`);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
@@ -40,18 +35,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   if (!sn) return new Response("SN_REQUIRED", { status: 400 });
 
-  // DYNAMIC CONFIG: Fetch machine specific settings
-  const { data: machine } = await supabase
+  // 1. Auth Check
+  const { data: machine, error: machineErr } = await supabase
     .from("attendance_machines")
     .select("is_active, start_time, end_time")
     .eq("serial_number", sn)
     .eq("is_active", true)
     .single();
 
-  if (!machine) {
+  if (machineErr || !machine) {
+    console.error(`[ATTENDANCE-DEBUG] POST FAILED AUTH for SN: ${sn}. Error: ${machineErr?.message || "Not found/Inactive"}`);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
+  // 2. Fetch Global Sync Filter
   const { data: settings } = await supabase
     .from("attendance_settings")
     .select("*")
@@ -62,7 +59,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const endTime = machine.end_time || "07:30:00";
   const syncFromDate = settings?.sync_from_date ? new Date(settings.sync_from_date) : new Date();
 
-  // Handle ATTLOG or OPLOG
+  console.log(`[ATTENDANCE-DEBUG] Processing SN: ${sn} | Path: ${req.url} | Window: ${startTime}-${endTime}`);
+
+  // 3. Process Payload
   if (text.includes("ATTLOG") || text.includes("OPLOG") || tableParam?.includes("ATTLOG") || tableParam?.includes("OPLOG")) {
       const lines = text.trim().split("\n");
       const logs: any[] = [];
@@ -91,27 +90,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
              verifyType = parseInt(parts[3]) || 0;
           }
 
-          // DYNAMIC FILTERS: Time Window + sync_from_date
           if (timestampStr) {
              const [dateStr, timeStr] = timestampStr.split(" ");
              const recordDate = new Date(dateStr);
              
-             // 1. Block old historical data
-             if (recordDate < syncFromDate) return;
+             // A. Sync Start Date Filter
+             if (recordDate < syncFromDate) {
+                 console.log(`[ATTENDANCE-DEBUG] Skip: Old Date (${dateStr}) for SN: ${sn}`);
+                 return;
+             }
 
-             // 2. Time Window Check
+             // B. Time Window Filter
              if (timeStr) {
                 const [h, m] = timeStr.split(":").map(Number);
-                const [startH, startM] = startTime.split(":").map(Number);
-                const [endH, endM] = endTime.split(":").map(Number);
+                const [sH, sM] = startTime.split(":").map(Number);
+                const [eH, eM] = endTime.split(":").map(Number);
                 
-                const recMinutes = h * 60 + m;
-                const startMinutes = startH * 60 + startM;
-                const endMinutes = endH * 60 + endM;
+                const recMin = h * 60 + m;
+                const startMin = sH * 60 + sM;
+                const endMin = eH * 60 + eM;
 
-                const isInWindow = recMinutes >= startMinutes && recMinutes <= endMinutes;
-                
-                if (isInWindow) {
+                if (recMin >= startMin && recMin <= endMin) {
                    logs.push({
                        device_sn: sn,
                        zk_user_id: userId,
@@ -120,13 +119,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
                        verify_type: verifyType,
                        raw_payload: line
                    });
+                } else {
+                   console.log(`[ATTENDANCE-DEBUG] Skip: Outside Window (${timeStr}) for SN: ${sn}`);
                 }
              }
           }
       });
 
       if (logs.length > 0) {
-        await supabase.from("physical_attendance").insert(logs);
+        const { error: insErr } = await supabase.from("physical_attendance").insert(logs);
+        if (insErr) {
+            console.error(`[ATTENDANCE-DEBUG] DB Error: ${insErr.message}`);
+        } else {
+            console.log(`[ATTENDANCE-DEBUG] Success: Pushed ${logs.length} records for SN: ${sn}`);
+        }
       }
   }
 

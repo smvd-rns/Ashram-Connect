@@ -28,10 +28,15 @@ export async function POST(req: NextRequest) {
     const { action, data } = body;
 
     if (action === "add_machine") {
-      const { serial_number, description } = data;
+      const { serial_number, description, start_time, end_time } = data;
       const { data: newMachine, error } = await supabase
         .from("attendance_machines")
-        .insert([{ serial_number: serial_number.toUpperCase(), description }])
+        .insert([{ 
+          serial_number: serial_number.toUpperCase(), 
+          description,
+          start_time: start_time || "02:00:00",
+          end_time: end_time || "07:30:00"
+        }])
         .select()
         .single();
       
@@ -53,10 +58,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "update_machine") {
-       const { id, start_time, end_time, description, is_active } = data;
+       const { id, ...updates } = data;
+       
+       // Filter out undefined values to support partial updates
+       const filteredUpdates: any = {};
+       const allowedFields = ["start_time", "end_time", "description", "is_active"];
+       allowedFields.forEach(field => {
+         if (updates[field] !== undefined) {
+           filteredUpdates[field] = updates[field];
+         }
+       });
+
        const { data: updatedMachine, error } = await supabase
          .from("attendance_machines")
-         .update({ start_time, end_time, description, is_active })
+         .update(filteredUpdates)
          .eq("id", id)
          .select()
          .single();

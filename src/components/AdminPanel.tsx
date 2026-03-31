@@ -112,6 +112,8 @@ export default function AdminPanel() {
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [newMachineSN, setNewMachineSN] = useState("");
   const [newMachineDesc, setNewMachineDesc] = useState("");
+  const [newMachineStart, setNewMachineStart] = useState("02:00:00");
+  const [newMachineEnd, setNewMachineEnd] = useState("07:30:00");
   const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
 
   const totalAnalyticsPages = Math.ceil((history || []).length / rowsPerPage);
@@ -218,12 +220,19 @@ export default function AdminPanel() {
         },
         body: JSON.stringify({ 
           action: "add_machine", 
-          data: { serial_number: newMachineSN, description: newMachineDesc } 
+          data: { 
+            serial_number: newMachineSN, 
+            description: newMachineDesc,
+            start_time: newMachineStart,
+            end_time: newMachineEnd
+          } 
         })
       });
       if (res.ok) {
         setNewMachineSN("");
         setNewMachineDesc("");
+        setNewMachineStart("02:00:00");
+        setNewMachineEnd("07:30:00");
         fetchAttendanceConfig();
       }
     } catch (err) {
@@ -1875,8 +1884,44 @@ export default function AdminPanel() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Settings and Add Machine */}
+              {/* Instructions and Global Settings */}
               <div className="lg:col-span-1 space-y-6">
+                {/* Quick Setup Guide */}
+                <div className="bg-gradient-to-br from-cyan-600 to-blue-700 p-6 sm:p-8 rounded-[2rem] shadow-xl text-white">
+                   <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+                     <Shield className="w-5 h-5" /> Quick Setup Guide
+                   </h3>
+                   <div className="space-y-4 text-xs font-bold opacity-90 leading-relaxed">
+                      <div className="flex gap-3">
+                        <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">1</span>
+                        <p>Add the device <strong>Serial Number</strong> below to authorize it.</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">2</span>
+                        <p>Set <strong>Server Address</strong> to (do NOT add https://): <br/> 
+                           <code className="bg-black/20 p-1 rounded mt-1 inline-block select-all">ashram-connect-nine.vercel.app</code>
+                        </p>
+                      </div>
+                      <div className="flex gap-3">
+                        <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">3</span>
+                        <p>Set <strong>Port</strong> to <code className="bg-black/20 px-1.5 py-0.5 rounded">80</code> and <strong>Protocol</strong> to <code className="bg-black/20 px-1.5 py-0.5 rounded">HTTP</code>.</p>
+                      </div>
+                      <div className="mt-4 p-3 bg-black/20 rounded-xl text-[10px] italic">
+                        <strong>Note:</strong> Multiple machines use this same URL. Our server automatically identifies each one by its unique <strong>Serial Number (SN)</strong>, so there is never any confusion.
+                      </div>
+                   </div>
+                   <button 
+                     onClick={() => {
+                        navigator.clipboard.writeText("ashram-connect-nine.vercel.app");
+                        setSubmitMessage({ type: "success", text: "Server URL copied to clipboard!" });
+                        setTimeout(() => setSubmitMessage(null), 3000);
+                     }}
+                     className="mt-6 w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/20"
+                   >
+                     Copy Server URL
+                   </button>
+                </div>
+
                 {/* Global Settings */}
                 <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
                    <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
@@ -1908,6 +1953,16 @@ export default function AdminPanel() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</label>
                         <input type="text" placeholder="e.g. Main Gate Machine" value={newMachineDesc} onChange={(e) => setNewMachineDesc(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Time</label>
+                          <input type="time" value={newMachineStart} onChange={(e) => setNewMachineStart(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
+                          <input type="time" value={newMachineEnd} onChange={(e) => setNewMachineEnd(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                        </div>
                       </div>
                       <button disabled={isSubmitting} className="w-full bg-cyan-600 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-black transition-colors shadow-lg">
                         {isSubmitting ? "Adding..." : "Add Machine"}
