@@ -20,16 +20,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sn = searchParams.get("SN")?.toUpperCase();
 
-  if (!sn || !AUTHORIZED_SNS.map(s => s.toUpperCase()).includes(sn)) {
-    // Log unauthorized attempt to help debug
-    await supabase.from("physical_attendance").insert([{
-      device_sn: sn || "UNKNOWN",
-      zk_user_id: "UNAUTHORIZED_GET",
-      raw_payload: `Handshake failed for SN: ${sn}`
-    }]);
-    console.warn(`[ZK-HANDSHAKE] Unauthorized SN: ${sn}`);
-    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
-  }
+  // NO SN CHECK FOR DEBUGGING - LOG EVERYTHING
+  await supabase.from("physical_attendance").insert([{
+    device_sn: sn || "CATCH_ALL-OPEN",
+    zk_user_id: "DIAGNOSTIC_GET",
+    raw_payload: `URL: ${req.url}`
+  }]);
 
   console.log(`[ZK-HANDSHAKE] SUCCESS for SN: ${sn}`);
 
@@ -47,15 +43,12 @@ export async function POST(req: NextRequest) {
   const sn = searchParams.get("SN")?.toUpperCase();
   const table = searchParams.get("table");
 
-  if (!sn || !AUTHORIZED_SNS.map(s => s.toUpperCase()).includes(sn)) {
-    // Log unauthorized attempt to help debug
-    await supabase.from("physical_attendance").insert([{
-      device_sn: sn || "UNKNOWN",
-      zk_user_id: "UNAUTHORIZED_POST",
-      raw_payload: `Data push failed for SN: ${sn} | Table: ${table}`
-    }]);
-    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
-  }
+  // NO SN CHECK FOR DEBUGGING - LOG EVERYTHING
+  await supabase.from("physical_attendance").insert([{
+    device_sn: sn || "CATCH_ALL-OPEN",
+    zk_user_id: "DIAGNOSTIC_POST",
+    raw_payload: `Table: ${table} | URL: ${req.url}`
+  }]);
 
   try {
     const text = await req.text();

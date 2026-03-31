@@ -14,9 +14,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sn = searchParams.get("SN");
 
-  // Log everything to help debug
+  // LOG ALL HITS - NO SN CHECK FOR DEBUGGING
   await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "NCD-UNKNOWN",
+    device_sn: sn || "NCD-OPEN",
     zk_user_id: "NCD_DEBUG_GET",
     raw_payload: `URL: ${req.url} | Params: ${searchParams.toString()}`
   }]);
@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
   const table = searchParams.get("table");
   const text = await req.text();
 
-  // Log the raw push
+  // LOG ALL HITS - NO SN CHECK FOR DEBUGGING
   await supabase.from("physical_attendance").insert([{
-    device_sn: sn || "NCD-UNKNOWN",
+    device_sn: sn || "NCD-OPEN",
     zk_user_id: "NCD_DEBUG_POST",
     raw_payload: `Table: ${table} | Body: ${text.slice(0, 500)}`
   }]);

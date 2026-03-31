@@ -28,16 +28,12 @@ export async function GET(req: NextRequest) {
   const sn_upper = sn?.toUpperCase();
   const isAuthorized = sn_upper && AUTHORIZED_SNS.includes(sn_upper);
 
-  if (!isAuthorized) {
-    // Log unauthorized attempt to help debug
-    await supabase.from("physical_attendance").insert([{
-      device_sn: sn || "UNKNOWN",
-      zk_user_id: "UNAUTHORIZED_GET",
-      raw_payload: `Handshake failed for SN: ${sn}`
-    }]);
-    console.warn(`[ZK-DEBUG] Unauthorized GET from SN: ${sn}`);
-    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
-  }
+  // NO SN CHECK FOR DEBUGGING - LOG EVERYTHING
+  await supabase.from("physical_attendance").insert([{
+    device_sn: sn || "ZK-OPEN",
+    zk_user_id: "ZK_DEBUG_GET",
+    raw_payload: `Handshake attempt from SN: ${sn}`
+  }]);
 
   // ZKTeco Expects "OK" in plain text
   return new Response("OK", {
@@ -55,16 +51,12 @@ export async function POST(req: NextRequest) {
   const sn_upper = sn?.toUpperCase();
   const isAuthorized = sn_upper && AUTHORIZED_SNS.includes(sn_upper);
 
-  if (!isAuthorized) {
-    // Log unauthorized attempt to help debug
-    await supabase.from("physical_attendance").insert([{
-      device_sn: sn || "UNKNOWN",
-      zk_user_id: "UNAUTHORIZED_POST",
-      raw_payload: `Data push failed for SN: ${sn} | Table: ${table}`
-    }]);
-    console.warn(`[ZK-DEBUG] Unauthorized POST from SN: ${sn}`);
-    return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
-  }
+  // NO SN CHECK FOR DEBUGGING - LOG EVERYTHING
+  await supabase.from("physical_attendance").insert([{
+    device_sn: sn || "ZK-OPEN",
+    zk_user_id: "ZK_DEBUG_POST",
+    raw_payload: `Data push attempt from SN: ${sn} | Table: ${table}`
+  }]);
 
   try {
     const text = await req.text();
