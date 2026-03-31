@@ -432,21 +432,22 @@ export default function AdminPanel() {
     }
   };
 
+  const isSuperAdmin = profile?.role === 1;
+  const canUploadVideos = isSuperAdmin || profile?.role === 2;
+
   // Fetch Data Hooks
   useEffect(() => {
     if (activeView === "users") fetchUsers();
     if (activeView === "bc-class") fetchLectures();
     if (activeView === "youtube-channels") fetchYtChannels();
     if (activeView === "usage-analytics") fetchAnalytics();
-    if (activeView === "attendance-machines") {
+    if (activeView === "attendance-machines" && isSuperAdmin) {
       fetchAttendanceConfig();
       fetchAttendanceMappings();
       fetchUsers(); // Required for email suggestions
     }
-  }, [activeView, session, profile?.role]);
+  }, [activeView, session, profile?.role, isSuperAdmin]);
 
-  const isSuperAdmin = profile?.role === 1;
-  const canUploadVideos = isSuperAdmin || profile?.role === 2;
 
   const roleNames: Record<number, string> = {
     1: "Super Admin",
@@ -1992,7 +1993,7 @@ export default function AdminPanel() {
         )}
 
         {/* VIEW: Attendance Machines */}
-        {activeView === "attendance-machines" && (
+        {(activeView === "attendance-machines" && isSuperAdmin) && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <button 

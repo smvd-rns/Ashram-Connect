@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     (profilesData || []).forEach(p => { profileMap[p.id] = p; });
 
     // 4. Process Aggregate Data
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     
     // Grouping by Date
     const dailyCounts: Record<string, number> = {};

@@ -48,7 +48,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       await supabase
         .from("user_visits")
         .upsert(
-          { user_id: userId, visit_date: new Date().toISOString().split('T')[0] }, 
+          { 
+            user_id: userId, 
+            visit_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()) 
+          }, 
           { onConflict: 'user_id,visit_date' }
         );
     } catch (err) {
