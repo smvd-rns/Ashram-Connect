@@ -53,6 +53,7 @@ export default function YouTubeChannelHub() {
   // Cache: { [channelId]: { [tabId]: { [playlistId]: { items: [], token: "" } } } }
   const [contentCache, setContentCache] = useState<Record<string, any>>({});
   const [logoCache, setLogoCache] = useState<Record<string, string>>({});
+  const [loadingChannels, setLoadingChannels] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadMoreLoading, setLoadMoreLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function YouTubeChannelHub() {
   // Fetch initial channels
   useEffect(() => {
     const fetchChannels = async () => {
+      setLoadingChannels(true);
       try {
         const res = await fetch("/api/youtube/channels");
         const data = await res.json();
@@ -78,6 +80,8 @@ export default function YouTubeChannelHub() {
         }
       } catch (err) {
         setError("Failed to load portal configuration.");
+      } finally {
+        setLoadingChannels(false);
       }
     };
     fetchChannels();
@@ -226,43 +230,57 @@ export default function YouTubeChannelHub() {
 
           {/* Grid - More Compact columns */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8 gap-x-4 sm:gap-x-6">
-            {channels.map((channel, i) => (
-              <button 
-                key={channel.id}
-                onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
-                className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                {/* Full-Bleed Image Card Box */}
-                <div 
-                  className="relative w-full h-[180px] sm:h-[240px] rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-white"
+            {loadingChannels ? (
+              // Shimmer Skeletons
+              Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="space-y-4 animate-pulse">
+                  <div className="w-full h-[180px] sm:h-[240px] rounded-[2rem] sm:rounded-[3rem] bg-slate-200 border border-slate-100" />
+                  <div className="space-y-2 px-4 flex flex-col items-center">
+                    <div className="h-3 bg-slate-200 rounded-full w-2/3" />
+                    <div className="h-2 bg-slate-100 rounded-full w-1/3" />
+                  </div>
+                </div>
+              ))
+            ) : (
+              channels.map((channel, i) => (
+                <button 
+                  key={channel.id}
+                  onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
+                  className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700"
+                  style={{ animationDelay: `${i * 50}ms` }}
                 >
-                  {/* Primary Full Image */}
-                  {channel.custom_logo || logoCache[channel.channel_id] ? (
-                    <Image 
-                      src={channel.custom_logo || logoCache[channel.channel_id]} 
-                      alt={channel.name} 
-                      fill 
-                      className="object-cover group-hover:scale-110 transition-transform duration-700" 
-                      unoptimized 
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-slate-50 flex items-center justify-center">
-                      <Video className="w-12 h-12 text-slate-200" />
-                    </div>
-                  )}
-                  
-                  {/* Subtle Gradient Overlay for depth */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                </div>
+                  {/* Full-Bleed Image Card Box */}
+                  <div 
+                    className="relative w-full aspect-[4/5] sm:aspect-[3/4] h-auto rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:shadow-2xl group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-slate-100"
+                  >
+                    {/* Primary Full Image */}
+                    {channel.custom_logo || logoCache[channel.channel_id] ? (
+                      <Image 
+                        src={channel.custom_logo || logoCache[channel.channel_id]} 
+                        alt={channel.name} 
+                        fill 
+                        className="object-cover group-hover:scale-110 transition-transform duration-700" 
+                        unoptimized 
+                        loading={i < 6 ? "eager" : "lazy"}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-slate-50 flex items-center justify-center">
+                        <Video className="w-12 h-12 text-slate-200" />
+                      </div>
+                    )}
+                    
+                    {/* Subtle Gradient Overlay for depth */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  </div>
 
-                {/* Info Below Card - No overlapping */}
-                <div className="text-center space-y-0.5 px-2">
-                  <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors">{channel.name}</h2>
-                  <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
-                </div>
-              </button>
-            ))}
+                  {/* Info Below Card - No overlapping */}
+                  <div className="text-center space-y-0.5 px-2">
+                    <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors">{channel.name}</h2>
+                    <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
       </div>

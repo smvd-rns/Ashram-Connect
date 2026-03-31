@@ -36,13 +36,21 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [pathname]); // Re-check on path change
 
   async function recordUserVisit(userId: string) {
-    // Simplified: Directly update last_visit_at every time the user enters
-    // This allows for "Live" status and "Who visited today" dashboard with 0 bloat.
     try {
+      // 1. Update Profile (Last Seen status)
       await supabase
         .from("profiles")
         .update({ last_visit_at: new Date().toISOString() })
         .eq("id", userId);
+        
+      // 2. Insert into Historical Daily Logs (Unique per User per Day)
+      // Ensure "migration_user_visits.sql" has been run first!
+      await supabase
+        .from("user_visits")
+        .upsert(
+          { user_id: userId, visit_date: new Date().toISOString().split('T')[0] }, 
+          { onConflict: 'user_id,visit_date' }
+        );
     } catch (err) {
       console.error("Visit log failed:", err);
     }

@@ -15,7 +15,10 @@ export async function GET() {
 
     if (error) throw error;
 
-    return NextResponse.json({ channels: data || [] });
+    return NextResponse.json(
+      { channels: data || [] },
+      { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=60" } }
+    );
   } catch (error) {
     console.error("API error:", error);
     return NextResponse.json({ error: "Failed to fetch channels" }, { status: 500 });
