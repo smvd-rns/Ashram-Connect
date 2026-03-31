@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 /**
- * ZK-ADMS COMPATIBILITY LAYER - Optimized for ZKTeco Firmware
+ * ZK-ADMS COMPATIBILITY LAYER - Optimized for Multiple ZKTeco Devices
  */
 
 const supabase = createClient(
@@ -10,14 +10,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const AUTHORIZED_SN = "TFEE255000216";
+// Whitelist of machine serial numbers allowed to push data
+const AUTHORIZED_SNS = [
+  "TFEE255000216", 
+  "NCD8253500015"
+];
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
 
-  // Case-insensitive SN check for better compatibility
-  if (sn?.toUpperCase() !== AUTHORIZED_SN.toUpperCase()) {
+  if (!sn || !AUTHORIZED_SNS.map(s => s.toUpperCase()).includes(sn)) {
     console.warn(`[ZK-HANDSHAKE] Unauthorized SN: ${sn}`);
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
@@ -28,17 +31,17 @@ export async function GET(req: NextRequest) {
   return new Response("OK", {
     headers: { 
       "Content-Type": "text/plain",
-      "Server": "ZK Web Server" // Some machines check for this header
+      "Server": "ZK Web Server" 
     }
   });
 }
 
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN");
+  const sn = searchParams.get("SN")?.toUpperCase();
   const table = searchParams.get("table");
 
-  if (sn?.toUpperCase() !== AUTHORIZED_SN.toUpperCase()) {
+  if (!sn || !AUTHORIZED_SNS.map(s => s.toUpperCase()).includes(sn)) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
