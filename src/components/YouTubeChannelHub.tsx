@@ -43,6 +43,8 @@ export default function YouTubeChannelHub() {
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [activePlaylistName, setActivePlaylistName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [playerReady, setPlayerReady] = useState(false);
+  const playerInstance = useRef<any>(null); // YT.Player
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
 
@@ -174,6 +176,90 @@ export default function YouTubeChannelHub() {
       setLoadMoreLoading(false);
     }
   }, [nextPageToken, activePlaylistId, contentCache]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load YouTube IFrame API Script
+  useEffect(() => {
+    if ((window as any).YT) {
+      setPlayerReady(true);
+      return;
+    }
+
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+    (window as any).onYouTubeIframeAPIReady = () => {
+      setPlayerReady(true);
+    };
+  }, []);
+
+  // Initialize/Update Player
+  useEffect(() => {
+    if (!playerReady || !activeVideoId) return;
+
+    if (!playerInstance.current) {
+      playerInstance.current = new (window as any).YT.Player('youtube-player', {
+        height: '100%',
+        width: '100%',
+        videoId: activeVideoId,
+        playerVars: {
+          autoplay: 1,
+          rel: 0,
+          modestbranding: 1,
+          iv_load_policy: 3,
+        },
+        events: {
+          'onStateChange': (event: any) => {
+             // Handle state changes (play, pause, etc)
+             if (event.data === (window as any).YT.PlayerState.PLAYING) {
+               updateMediaSession();
+             }
+          }
+        },
+      });
+    } else if (playerInstance.current.loadVideoById) {
+      playerInstance.current.loadVideoById(activeVideoId);
+      updateMediaSession();
+    }
+  }, [playerReady, activeVideoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Media Session API Sync
+  const updateMediaSession = () => {
+    if (!('mediaSession' in navigator) || !activeVideo) return;
+
+    const metadata = {
+      title: activeVideo.title,
+      artist: activeChannel?.name || "Devotional Library",
+      album: "Spiritual Echoes",
+      artwork: [
+        { src: activeVideo.thumbnail, sizes: '512x512', type: 'image/jpeg' },
+      ]
+    };
+
+    navigator.mediaSession.metadata = new (window as any).MediaMetadata(metadata);
+
+    // Add action handlers for lock screen controls
+    navigator.mediaSession.setActionHandler('play', () => playerInstance.current?.playVideo());
+    navigator.mediaSession.setActionHandler('pause', () => playerInstance.current?.pauseVideo());
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime !== undefined) {
+        playerInstance.current?.seekTo(details.seekTime);
+      }
+    });
+  };
+
+  // Visibility logic: Prevent pause on tab hidden
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden && playerInstance.current && playerInstance.current.getPlayerState() === (window as any).YT.PlayerState.PLAYING) {
+        // Try to stay alive
+        setTimeout(() => playerInstance.current?.playVideo(), 100);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   // Fetch on channel, tab, or playlist change
   useEffect(() => {
@@ -463,48 +549,46 @@ export default function YouTubeChannelHub() {
               </div>
             )}
 
-            {/* Player */}
+            {/* Player Container */}
             <div ref={playerRef} className="scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
-              {loading && !activeVideoId ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+              {/* Target for YouTube Player API */}
+              <div id="youtube-player" className="w-full h-full" />
+
+              {/* Enhanced Loader Overlay */}
+              {(!playerReady || (loading && !activeVideoId)) && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
                   <div className="text-center space-y-4">
                     <Loader2 className="w-12 h-12 text-devo-500 animate-spin mx-auto" />
-                    <p className="text-white font-bold text-sm uppercase tracking-widest">Loading {activeTab}…</p>
+                    <p className="text-white font-bold text-sm uppercase tracking-widest">
+                      {!playerReady ? "Initializing Player..." : `Loading ${activeTab}...`}
+                    </p>
                   </div>
                 </div>
-              ) : error ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center">
+              )}
+
+              {/* Error State */}
+              {error && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-20">
                   <AlertCircle className="w-12 h-12 text-red-400 mb-4" />
                   <p className="text-white font-bold text-sm mb-6">{error}</p>
                   <button
                     onClick={() => {
-                      const cacheKey = `${activeChannel.channel_id}-${activeTab}`;
+                      const cacheKey = `${activeChannel?.channel_id}-${activeTab}`;
                       fetchedRef.current.delete(cacheKey);
-                      fetchContent(activeChannel, activeTab);
+                      if (activeChannel) fetchContent(activeChannel, activeTab);
                     }}
                     className="px-6 py-3 bg-devo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-devo-700 transition-all"
                   >
                     Retry Connection
                   </button>
-                  <div className="mt-6 px-6 py-3 bg-red-950/50 border border-red-900/50 rounded-2xl flex items-center gap-3 max-w-md">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                    <p className="text-[10px] font-bold text-red-200 leading-tight">
-                      Seeing "Unusual Traffic"? This is a YouTube security block for your network. Try refreshing or clearing browser cache.
-                    </p>
-                  </div>
                 </div>
-              ) : activeVideoId ? (
-                <iframe
-                  key={activeVideoId}
-                  src={getEmbedUrl()}
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              ) : (
+              )}
+
+              {/* No Video Selected State */}
+              {!activeVideoId && !loading && !error && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
-                  <p className="text-white/50 font-bold text-sm uppercase tracking-widest">
-                    {activeTab === "live" ? "No live streams currently" : "Select a video to play"}
+                  <p className="text-white/50 font-bold text-sm uppercase tracking-widest text-center px-6">
+                    {activeTab === "live" ? "No live streams currently" : "Choose a video from the list to start watching"}
                   </p>
                 </div>
               )}
