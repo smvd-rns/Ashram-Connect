@@ -3,6 +3,7 @@
 import { useState } from "react";
 import VideoCard, { Lecture } from "./VideoCard";
 import { Search, X, Loader2 } from "lucide-react";
+import OptimizedVideoPlayer from "./OptimizedVideoPlayer";
 
 export default function LectureGrid({ 
   initialLectures,
@@ -133,14 +134,11 @@ export default function LectureGrid({
 
             {/* Video Container with Height Safety */}
             <div className="w-full max-w-[100vw] sm:max-w-5xl xl:max-w-6xl aspect-video bg-black sm:rounded-3xl overflow-hidden border-0 sm:border-4 sm:border-white/10 shadow-2xl flex-shrink-0 max-h-[60vh] sm:max-h-[75vh]">
-              <iframe
-                className="w-full h-full"
-                src={`https://www.youtube-nocookie.com/embed/${activeLecture.youtube_id}?autoplay=1&rel=0&controls=1&modestbranding=1`}
-                title="Lecture video player"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              ></iframe>
+              <OptimizedVideoPlayer 
+                videoId={activeLecture.youtube_id}
+                title={activeLecture.title}
+                artist={activeLecture.speaker_name}
+              />
             </div>
 
             {/* Bottom Content Bar - Slimmer & Responsive */}
