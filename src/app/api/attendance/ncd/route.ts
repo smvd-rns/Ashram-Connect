@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data: machine } = await supabase
     .from("attendance_machines")
-    .select("is_active, start_time, end_time")
+    .select("is_active, ingestion_start, ingestion_end")
     .eq("serial_number", sn)
     .eq("is_active", true)
     .single();
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data: machine } = await supabase
     .from("attendance_machines")
-    .select("is_active, start_time, end_time")
+    .select("is_active, ingestion_start, ingestion_end")
     .eq("serial_number", sn)
     .eq("is_active", true)
     .single();
@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
     .eq("id", "global")
     .single();
 
-  const startTime = machine.start_time || "02:00:00";
-  const endTime = machine.end_time || "07:30:00";
+  const startTime = machine.ingestion_start || "02:00:00";
+  const endTime = machine.ingestion_end || "11:00:00";
   const syncFromDate = settings?.sync_from_date ? new Date(settings.sync_from_date) : new Date();
 
   // Handle ATTLOG or OPLOG

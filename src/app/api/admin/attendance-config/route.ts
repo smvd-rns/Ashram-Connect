@@ -28,14 +28,18 @@ export async function POST(req: NextRequest) {
     const { action, data } = body;
 
     if (action === "add_machine") {
-      const { serial_number, description, start_time, end_time } = data;
+      const { serial_number, description, ingestion_start, ingestion_end, p_start, p_end, l_start, l_end } = data;
       const { data: newMachine, error } = await supabase
         .from("attendance_machines")
         .insert([{ 
           serial_number: serial_number.toUpperCase(), 
           description,
-          start_time: start_time || "02:00:00",
-          end_time: end_time || "07:30:00"
+          ingestion_start: ingestion_start || "02:00:00",
+          ingestion_end: ingestion_end || "11:00:00",
+          p_start: p_start || "04:00:00",
+          p_end: p_end || "04:15:00",
+          l_start: l_start || "04:15:00",
+          l_end: l_end || "05:30:00"
         }])
         .select()
         .single();
@@ -62,7 +66,12 @@ export async function POST(req: NextRequest) {
        
        // Filter out undefined values to support partial updates
        const filteredUpdates: any = {};
-       const allowedFields = ["start_time", "end_time", "description", "is_active"];
+       const allowedFields = [
+         "ingestion_start", "ingestion_end", 
+         "p_start", "p_end", 
+         "l_start", "l_end", 
+         "description", "is_active", "serial_number"
+       ];
        allowedFields.forEach(field => {
          if (updates[field] !== undefined) {
            filteredUpdates[field] = updates[field];

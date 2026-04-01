@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   const { data: machine } = await supabase
     .from("attendance_machines")
-    .select("is_active, start_time, end_time")
+    .select("is_active, ingestion_start, ingestion_end")
     .eq("serial_number", sn)
     .eq("is_active", true)
     .single();
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   // 1. Auth Check
   const { data: machine, error: machineErr } = await supabase
     .from("attendance_machines")
-    .select("is_active, start_time, end_time")
+    .select("is_active, ingestion_start, ingestion_end")
     .eq("serial_number", sn)
     .eq("is_active", true)
     .single();
@@ -55,11 +55,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     .eq("id", "global")
     .single();
 
-  const startTime = machine.start_time || "02:00:00";
-  const endTime = machine.end_time || "07:30:00";
+  const ingestionStart = machine.ingestion_start || "02:00:00";
+  const ingestionEnd = machine.ingestion_end || "11:00:00";
   const syncFromDate = settings?.sync_from_date ? new Date(settings.sync_from_date) : new Date();
 
-  console.log(`[ATTENDANCE-DEBUG] Processing SN: ${sn} | Path: ${req.url} | Window: ${startTime}-${endTime}`);
+  console.log(`[ATTENDANCE-DEBUG] Processing SN: ${sn} | Path: ${req.url} | Ingestion Window: ${ingestionStart}-${ingestionEnd}`);
 
   // 3. Process Payload
   if (text.includes("ATTLOG") || text.includes("OPLOG") || tableParam?.includes("ATTLOG") || tableParam?.includes("OPLOG")) {
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           let verifyType = 0;
 
           if (line.includes("OPLOG") || tableParam?.includes("OPLOG")) {
-             return; // Skip Operation Logs (Setting changes, menu access, etc.)
+             return; // Skip Operation Logs
           }
 
           if (parts[0].includes("ATTLOG")) {
@@ -85,7 +85,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
              status = parseInt(parts[2]) || 0;
              verifyType = parseInt(parts[3]) || 0;
           } else {
-             // Standard ATTLOG without the prefix
              userId = parts[0] || "0";
              timestampStr = parts[1] || "";
              status = parseInt(parts[2]) || 0;
@@ -102,11 +101,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
                  return;
              }
 
-             // B. Time Window Filter
+             // B. Machine (Ingestion) Window Filter
              if (timeStr) {
                 const [h, m] = timeStr.split(":").map(Number);
-                const [sH, sM] = startTime.split(":").map(Number);
-                const [eH, eM] = endTime.split(":").map(Number);
+                const [sH, sM] = ingestionStart.split(":").map(Number);
+                const [eH, eM] = ingestionEnd.split(":").map(Number);
                 
                 const recMin = h * 60 + m;
                 const startMin = sH * 60 + sM;
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
                        raw_payload: line
                    });
                 } else {
-                   console.log(`[ATTENDANCE-DEBUG] Skip: Outside Window (${timeStr}) for SN: ${sn}`);
+                   console.log(`[ATTENDANCE-DEBUG] Skip: Outside Ingestion Window (${timeStr}) for SN: ${sn}`);
                 }
              }
           }

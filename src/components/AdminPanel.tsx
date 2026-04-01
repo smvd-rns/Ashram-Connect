@@ -9,15 +9,16 @@ import {
   UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo, 
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
   Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck, 
-  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar
+  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
 import { normalizeDate } from "@/lib/dateHelper";
 import AuthUI from "./AuthUI";
 import { useProfile } from "@/hooks/useProfile";
+import AttendanceTracing from "./AttendanceTracing";
 
-type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines";
+type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing";
 
 export default function AdminPanel() {
   const searchParams = useSearchParams();
@@ -232,8 +233,8 @@ export default function AdminPanel() {
           data: { 
             serial_number: newMachineSN, 
             description: newMachineDesc,
-            start_time: newMachineStart,
-            end_time: newMachineEnd
+            ingestion_start: newMachineStart,
+            ingestion_end: newMachineEnd
           } 
         })
       });
@@ -241,7 +242,7 @@ export default function AdminPanel() {
         setNewMachineSN("");
         setNewMachineDesc("");
         setNewMachineStart("02:00:00");
-        setNewMachineEnd("07:30:00");
+        setNewMachineEnd("11:00:00");
         fetchAttendanceConfig();
       }
     } catch (err) {
@@ -922,6 +923,27 @@ export default function AdminPanel() {
                       <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Manage biometric devices, authorize new serial numbers, and tune ingestion windows.</p>
                     </div>
                     <div className="flex items-center gap-2 text-cyan-600 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
+                      Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+              )}
+              {/* Attendance Tracing Card */}
+              {isSuperAdmin && (
+                <button 
+                  onClick={() => navigateToView("attendance-tracing")}
+                  className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
+                  <div className="relative z-10 w-12 h-12 sm:w-16 sm:h-16 bg-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:-rotate-6 transition-transform shrink-0">
+                    <Monitor className="w-6 h-6 sm:w-8 sm:h-8" />
+                  </div>
+                  <div className="relative z-10 sm:mt-4 flex-1 min-w-0">
+                    <div>
+                      <h3 className="text-lg sm:text-2xl font-black text-devo-950 uppercase tracking-tight sm:normal-case">Attendance Tracing</h3>
+                      <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Monitor 3-session attendance, view matrix reports, and switch between users and machines.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-indigo-600 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
                       Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
                     </div>
                   </div>
@@ -2097,11 +2119,11 @@ export default function AdminPanel() {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Time</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ingestion Start</label>
                           <input type="time" value={newMachineStart} onChange={(e) => setNewMachineStart(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ingestion End</label>
                           <input type="time" value={newMachineEnd} onChange={(e) => setNewMachineEnd(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                         </div>
                       </div>
@@ -2161,24 +2183,24 @@ export default function AdminPanel() {
                                <div className="flex items-center justify-center gap-2">
                                   <input 
                                     type="time" 
-                                    value={m.start_time || "02:00:00"} 
+                                    value={m.ingestion_start || "02:00:00"} 
                                     className="px-2 py-1 text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-cyan-600"
                                     onChange={(e) => {
-                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, start_time: e.target.value } : item);
+                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, ingestion_start: e.target.value } : item);
                                       setAttendanceMachines(updated);
                                     }}
-                                    onBlur={(e) => updateMachineSettings(m.id, { start_time: e.target.value })}
+                                    onBlur={(e) => updateMachineSettings(m.id, { ingestion_start: e.target.value })}
                                   />
                                   <span className="text-slate-300 font-bold">-</span>
                                   <input 
                                     type="time" 
-                                    value={m.end_time || "07:30:00"} 
+                                    value={m.ingestion_end || "11:00:00"} 
                                     className="px-2 py-1 text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-cyan-600"
                                     onChange={(e) => {
-                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, end_time: e.target.value } : item);
+                                      const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, ingestion_end: e.target.value } : item);
                                       setAttendanceMachines(updated);
                                     }}
-                                    onBlur={(e) => updateMachineSettings(m.id, { end_time: e.target.value })}
+                                    onBlur={(e) => updateMachineSettings(m.id, { ingestion_end: e.target.value })}
                                   />
                                </div>
                             </td>
@@ -2388,7 +2410,20 @@ export default function AdminPanel() {
   </div>
 )}
 </div>
-)}
+        )}
+
+        {/* VIEW: Attendance Tracing */}
+        {activeView === "attendance-tracing" && (
+          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+            <button 
+              onClick={() => navigateToView("home")}
+              className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
+            </button>
+            <AttendanceTracing isAdmin={isSuperAdmin} session={session} profile={profile} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
-import { LogOut, Settings, Radio } from "lucide-react";
+import { LogOut, Settings, Radio, Monitor, UserCheck } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -57,6 +57,7 @@ export default function Navbar() {
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-devo-900">My Profile</span>
           </button>
+
 
           <NextLink 
             href="/portal" 
@@ -130,6 +131,7 @@ export default function Navbar() {
           </div>
           <span className="text-[9px] font-black uppercase tracking-widest text-devo-600">Live</span>
         </NextLink>
+
       </nav>
 
       {showProfileModal && (
