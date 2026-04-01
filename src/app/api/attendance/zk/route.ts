@@ -84,23 +84,30 @@ export async function POST(req: NextRequest) {
           let status = 0;
           let verifyType = 0;
 
-          if (parts[0].includes("ATTLOG")) {
-             userId = parts[0].split(" ").pop() || "0";
-             timestampStr = parts[1] || "";
-             status = parseInt(parts[2]) || 0;
-             verifyType = parseInt(parts[3]) || 0;
-          } else if (parts[0].includes("OPLOG")) {
-             userId = parts[3] || parts[1] || "0";
-             timestampStr = parts[2] || "";
-          } else {
-             userId = parts[0] || "0";
-             timestampStr = parts[1] || "";
-             status = parseInt(parts[2]) || 0;
-             verifyType = parseInt(parts[3]) || 0;
-          }
+           // 1. Explicit OPLOG filter
+           if (line.includes("OPLOG") || parts[0].includes("OPLOG")) {
+              return; 
+           }
 
-          // DYNAMIC FILTERS
-          if (timestampStr) {
+           if (parts[0].includes("ATTLOG")) {
+              userId = parts[0].split(" ").pop() || "0";
+              timestampStr = parts[1] || "";
+              status = parseInt(parts[2]) || 0;
+              verifyType = parseInt(parts[3]) || 0;
+           } else {
+              userId = parts[0] || "0";
+              timestampStr = parts[1] || "";
+              status = parseInt(parts[2]) || 0;
+              verifyType = parseInt(parts[3]) || 0;
+           }
+
+           // 2. Filter out invalid/non-user entries
+           if (userId === "0" || !userId || userId.toLowerCase() === "null") {
+              return;
+           }
+
+           // DYNAMIC FILTERS
+           if (timestampStr) {
              const [dateStr, timeStr] = timestampStr.split(" ");
              const recordDate = new Date(dateStr);
              

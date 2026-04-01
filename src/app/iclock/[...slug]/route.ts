@@ -75,31 +75,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           let status = 0;
           let verifyType = 0;
 
-          if (line.includes("OPLOG") || tableParam?.includes("OPLOG")) {
-             return; // Skip Operation Logs
-          }
+           // 1. Explicit OPLOG filter
+           if (line.includes("OPLOG") || tableParam?.includes("OPLOG") || parts[0].includes("OPLOG")) {
+              return; 
+           }
 
-          if (parts[0].includes("ATTLOG")) {
-             userId = parts[0].split(" ").pop() || "0";
-             timestampStr = parts[1] || "";
-             status = parseInt(parts[2]) || 0;
-             verifyType = parseInt(parts[3]) || 0;
-          } else {
-             userId = parts[0] || "0";
-             timestampStr = parts[1] || "";
-             status = parseInt(parts[2]) || 0;
-             verifyType = parseInt(parts[3]) || 0;
-          }
+           if (parts[0].includes("ATTLOG")) {
+              userId = parts[0].split(" ").pop() || "0";
+              timestampStr = parts[1] || "";
+              status = parseInt(parts[2]) || 0;
+              verifyType = parseInt(parts[3]) || 0;
+           } else {
+              userId = parts[0] || "0";
+              timestampStr = parts[1] || "";
+              status = parseInt(parts[2]) || 0;
+              verifyType = parseInt(parts[3]) || 0;
+           }
 
-          if (timestampStr) {
-             const [dateStr, timeStr] = timestampStr.split(" ");
-             const recordDate = new Date(dateStr);
-             
-             // A. Sync Start Date Filter
-             if (recordDate < syncFromDate) {
-                 console.log(`[ATTENDANCE-DEBUG] Skip: Old Date (${dateStr}) for SN: ${sn}`);
-                 return;
-             }
+           // 2. Filter out invalid/non-user entries
+           if (userId === "0" || !userId || userId.toLowerCase() === "null") {
+              return;
+           }
+
+           if (timestampStr) {
+              const [dateStr, timeStr] = timestampStr.split(" ");
+              const recordDate = new Date(dateStr);
+              
+              // A. Sync Start Date Filter
+              if (recordDate < syncFromDate) {
+                  return;
+              }
 
              // B. Machine (Ingestion) Window Filter
              if (timeStr) {
