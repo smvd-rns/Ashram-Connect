@@ -8,7 +8,7 @@ const supabase = createClient(
 
 /**
  * ATTENDANCE REPORT API
- * Generates matrix-style reports for all 3 machines.
+ * Generates matrix-style reports for all machines.
  */
 
 export async function GET(req: NextRequest) {
@@ -16,77 +16,113 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get("startDate") || new Date().toISOString().split('T')[0];
     const endDate = searchParams.get("endDate") || new Date().toISOString().split('T')[0];
-    const userEmail = searchParams.get("email"); // Optional: for admin to filter deep
 
     // 1. Fetch all machines to know the sessions
-    const { data: machines, error: machinesError } = await supabase.from("attendance_machines").select("*");
+    const { data: machines, error: machinesError } = await supabase
+      .from("attendance_machines")
+      .select("*");
     if (machinesError) throw machinesError;
     const machinesList = machines || [];
 
-    // 2. Fetch all mappings to link logs to emails
-    let mappingQuery = supabase.from("attendance_user_mapping").select("*, profile:profiles(full_name)");
-    const { data: mappings, error: mappingsError } = await mappingQuery;
+    // 2. Fetch all mappings (plain — no join to avoid schema cache issues)
+    const { data: mappings, error: mappingsError } = await supabase
+      .from("attendance_user_mapping")
+      .select("*");
     if (mappingsError) throw mappingsError;
     const mappingsList = mappings || [];
 
-    // 3. Fetch logs for the range
-    let logsQuery = supabase
+    // 3. Fetch all unique emails from mappings and their profile names
+    const emails = [...new Set(mappingsList.map(m => m.user_email))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .in("email", emails);
+    const profileMap: Record<string, string> = {};
+    (profiles || []).forEach(p => { profileMap[p.email] = p.full_name; });
+
+    // 4. Fetch logs for the date range
+    const { data: logs, error: logsError } = await supabase
       .from("physical_attendance")
       .select("*")
       .gte("check_time", `${startDate}T00:00:00Z`)
       .lte("check_time", `${endDate}T23:59:59Z`);
-    
-    const { data: logs, error: logsError } = await logsQuery;
     if (logsError) throw logsError;
     const logsList = logs || [];
 
-    // 4. Transform into Matrix structure
+    // 5. Build matrix: user → date → session → [logs]
     const matrix: any = {};
 
+    // Pre-populate all mapped users and their assigned machines
     mappingsList.forEach(m => {
       if (!matrix[m.user_email]) {
         matrix[m.user_email] = {
           email: m.user_email,
-          full_name: m.profile?.full_name || "Guest",
+          full_name: profileMap[m.user_email] || m.user_email.split("@")[0],
+          assigned_machines: [],
           dates: {}
         };
       }
+      if (!matrix[m.user_email].assigned_machines.includes(m.machine_id)) {
+        matrix[m.user_email].assigned_machines.push(m.machine_id);
+      }
     });
 
+    // Populate logs into matrix
     logsList.forEach(log => {
-      const machine = machinesList.find(mac => mac.serial_number === log.device_sn);
-      if (!machine) return;
+      // Find all machines that match this serial number 
+      const matchingMachines = machinesList.filter(mac => mac.serial_number === log.device_sn);
+      
+      matchingMachines.forEach(machine => {
+        const mapping = mappingsList.find(
+          m => m.machine_id === machine.id && String(m.zk_user_id) === String(log.zk_user_id)
+        );
+        
+        if (!mapping) return;
 
-      const mapping = mappingsList.find(m => m.machine_id === machine.id && m.zk_user_id === log.zk_user_id);
-      if (!mapping) return;
+        const email = mapping.user_email;
+        if (!matrix[email]) return;
 
-      const email = mapping.user_email;
-      const date = new Date(log.check_time).toISOString().split('T')[0];
-      const sessionName = machine.description || log.device_sn;
+        const date = new Date(log.check_time).toISOString().split('T')[0];
+        const sessionName = machine.description || log.device_sn;
 
-      if (matrix[email]) {
-        if (!matrix[email].dates[date]) {
-          matrix[email].dates[date] = {};
-        }
-        if (!matrix[email].dates[date][sessionName]) {
-          matrix[email].dates[date][sessionName] = [];
-        }
+        if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
+        if (!matrix[email].dates[date][sessionName]) matrix[email].dates[date][sessionName] = [];
 
-        // Status Logic: Dual Window (P, L, A)
-        const checkTimeStr = new Date(log.check_time).toLocaleTimeString('en-GB', { hour12: false });
-        let status = "absent";
+        matrix[email].dates[date][sessionName].push(log);
+      });
+    });
 
-        if (checkTimeStr >= machine.p_start && checkTimeStr <= machine.p_end) {
-          status = "present";
-        } else if (checkTimeStr >= machine.l_start && checkTimeStr <= machine.l_end) {
-          status = "late";
-        }
+    // 6. Compute status per session per day using the EARLIEST punch only
+    Object.values(matrix).forEach((user: any) => {
+      Object.values(user.dates).forEach((dateSessions: any) => {
+        Object.entries(dateSessions).forEach(([sessionName, sessionLogs]: [string, any]) => {
+          if (!sessionLogs || sessionLogs.length === 0) return;
 
-        matrix[email].dates[date][sessionName].push({
-          ...log,
-          computed_status: status
+          const machine = machinesList.find(m => (m.description || m.serial_number) === sessionName);
+          if (!machine) return;
+
+          // Find earliest punch
+          const earliest = sessionLogs.reduce((min: any, log: any) =>
+            new Date(log.check_time) < new Date(min.check_time) ? log : min
+          , sessionLogs[0]);
+
+          const checkTimeStr = new Date(earliest.check_time).toISOString().slice(11, 19); // UTC HH:mm:ss
+
+          let status = "absent";
+          if (machine.p_start && machine.p_end && checkTimeStr >= machine.p_start && checkTimeStr <= machine.p_end) {
+            status = "present";
+          } else if (machine.l_start && machine.l_end && checkTimeStr >= machine.l_start && checkTimeStr <= machine.l_end) {
+            status = "late";
+          }
+
+          // Tag each log with the computed status
+          dateSessions[sessionName] = sessionLogs.map((log: any) => ({
+            ...log,
+            computed_status: status,
+            is_earliest: log === earliest
+          }));
         });
-      }
+      });
     });
 
     return NextResponse.json({ 

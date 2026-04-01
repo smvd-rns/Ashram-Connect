@@ -44,6 +44,10 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     l_end: "05:30"
   });
 
+  // Custom Modal State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const sessionIcons: Record<string, any> = {
     "Mangal Aarti": { icon: Clock, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-100", gradient: "from-orange-500 to-amber-600" },
     "SB Class": { icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100", gradient: "from-indigo-500 to-purple-600" },
@@ -55,7 +59,21 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
 
   useEffect(() => {
     fetchReport();
+    fetchMachines();
   }, [startDate, endDate, session]);
+
+  const fetchMachines = async () => {
+    if (!session) return;
+    try {
+      const res = await fetch("/api/admin/attendance-config", {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      const data = await res.json();
+      if (data.machines) setMachines(data.machines);
+    } catch (err) {
+      console.error("Machine list fetch failed:", err);
+    }
+  };
 
   const fetchReport = async () => {
     if (!session) return;
@@ -68,8 +86,10 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
       if (data.report) setReport(data.report);
       if (data.machines) {
         setMachines(data.machines);
+        // Default selected machine for matrix view
         if (!selectedMachineId && data.machines.length > 0) {
-          setSelectedMachineId(data.machines[0].id);
+          const firstMachine = data.machines.find((m: any) => m.description) || data.machines[0];
+          setSelectedMachineId(firstMachine.id);
         }
       }
     } catch (err) {
@@ -82,27 +102,60 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const getStatus = (logs: any[], machine: any) => {
     if (!logs || logs.length === 0) return "absent";
     
-    // Convert check_time to time string HH:mm:ss
-    const checkTime = new Date(logs[0].check_time).toLocaleTimeString('en-GB', { hour12: false });
+    // Find the EARLIEST punch of the day — subsequent punches (check-outs, re-entries)
+    // should NOT affect the status. Only the first check-in determines P or L.
+    const earliestLog = logs.reduce((earliest, log) => {
+      return new Date(log.check_time) < new Date(earliest.check_time) ? log : earliest;
+    }, logs[0]);
+
+    // Extract UTC time string "HH:mm:ss" — machine p/l windows are stored as UTC-based times
+    // IMPORTANT: Do NOT use toLocaleTimeString() — it converts to browser local time (IST)
+    // which breaks the comparison against machine window settings.
+    const checkTime = new Date(earliestLog.check_time).toISOString().slice(11, 19);
     
-    // P (Present): p_start <= checkTime <= p_end
-    if (checkTime >= machine.p_start && checkTime <= machine.p_end) {
+    // P (Present): first punch is between p_start and p_end
+    if (machine.p_start && machine.p_end && checkTime >= machine.p_start && checkTime <= machine.p_end) {
       return "present";
     }
     
-    // L (Late): l_start <= checkTime <= l_end
-    if (checkTime >= machine.l_start && checkTime <= machine.l_end) {
+    // L (Late): first punch is between l_start and l_end
+    if (machine.l_start && machine.l_end && checkTime >= machine.l_start && checkTime <= machine.l_end) {
       return "late";
     }
     
+    // Punched outside both windows (too early or too late)
     return "absent";
   };
 
+  // Helper: Get raw HH:mm from "HH:mm:ss" or full timestamp without timezone shift
+  const formatRawTime = (timeInput: string | Date | null) => {
+    if (!timeInput) return "--:--";
+    try {
+      // If it's a full timestamp (e.g. 2026-04-01...), parse and extract UTC time part
+      if (typeof timeInput === "string" && timeInput.includes("-")) {
+        return new Date(timeInput).toISOString().slice(11, 16);
+      }
+      // If it's already a time string (e.g. 04:00:00), just slice first 5 chars
+      if (typeof timeInput === "string") return timeInput.slice(0, 5);
+      
+      return new Date(timeInput).toISOString().slice(11, 16);
+    } catch (e) {
+      return "--:--";
+    }
+  };
+
   // Filtered Data Logic
-  const filteredUsers = report.filter(u => 
-    u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = report.filter(u => {
+    const matchesSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          u.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // If a machine is selected in matrix mode, only show users assigned to that machine
+    if (isAdmin && viewMode === "matrix" && selectedMachineId) {
+      return matchesSearch && u.assigned_machines?.includes(selectedMachineId);
+    }
+    
+    return matchesSearch;
+  });
 
   const displayUser = report.find(u => u.email === selectedUserEmail) || report[0];
   const activeMachine = machines.find(m => m.id === selectedMachineId);
@@ -130,13 +183,20 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     }
     setLoading(true);
     try {
+      // Check if machine already exists (it usually does if added via Device Hub)
+      const existingMachine = machines.find(m => m.serial_number === newMachine.serial_number);
+      
+      const payload = existingMachine 
+        ? { action: 'update_machine', data: { id: existingMachine.id, ...newMachine } }
+        : { action: 'add_machine', data: newMachine };
+
       await fetch('/api/admin/attendance-config', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ action: 'add_machine', data: newMachine })
+        body: JSON.stringify(payload)
       });
       setIsAdding(false);
       setNewMachine({
@@ -150,6 +210,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
         l_end: "05:30"
       });
       fetchReport();
+      fetchMachines(); // Sync the session names
     } catch (err) {
       console.error("Add failed:", err);
     } finally {
@@ -158,7 +219,13 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   };
 
   const handleDeleteMachine = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this session configuration? This will NOT delete attendance logs but will remove the session mapping.")) return;
+    setDeletingId(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingId) return;
+    setLoading(true);
     try {
       await fetch('/api/admin/attendance-config', {
         method: 'POST',
@@ -166,16 +233,61 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ action: 'delete_machine', data: { id } })
+        body: JSON.stringify({ 
+          action: 'update_machine', 
+          data: { 
+            id: deletingId, 
+            p_start: null, 
+            p_end: null, 
+            l_start: null, 
+            l_end: null 
+          } 
+        })
       });
       fetchReport();
+      fetchMachines();
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
     } catch (err) {
-      console.error("Delete failed:", err);
+      console.error("Remove failed:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 max-w-lg w-full p-12 space-y-8 animate-in zoom-in-95 duration-300">
+            <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <Trash2 className="w-10 h-10 text-rose-500" />
+            </div>
+            <div className="text-center space-y-4">
+              <h3 className="text-3xl font-black text-slate-900 tracking-tight font-outfit">Remove Session?</h3>
+              <p className="text-slate-500 font-bold leading-relaxed">
+                Are you sure you want to remove this session? This will clear the timing rules (P/L windows) but will <span className="text-indigo-600">keep the hardware registered</span> in the Device Hub.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <button 
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-2xl transition-all uppercase tracking-widest text-[10px]"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 px-8 py-4 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-2xl transition-all shadow-lg shadow-rose-200 uppercase tracking-widest text-[10px] flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Remove Session"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header Controls */}
       <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[3rem] shadow-[0_24px_48px_-12px_rgba(30,41,59,0.08)] border border-slate-200 flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-5">
@@ -216,18 +328,15 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
           </div>
 
           <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200">
+             <Calendar className="w-4 h-4 text-slate-400 ml-3" />
              <input 
               type="date" 
               value={startDate} 
-              onChange={(e) => setStartDate(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 font-bold text-slate-600 px-3 py-2 cursor-pointer text-xs uppercase tracking-widest"
-             />
-             <div className="h-6 w-px bg-slate-200"></div>
-             <input 
-              type="date" 
-              value={endDate} 
-              onChange={(e) => setEndDate(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 font-bold text-slate-600 px-3 py-2 cursor-pointer text-xs uppercase tracking-widest"
+              onChange={(e) => {
+                 setStartDate(e.target.value);
+                 setEndDate(e.target.value);
+              }}
+              className="bg-transparent border-none focus:ring-0 font-bold text-slate-600 pr-3 py-2 cursor-pointer text-xs uppercase tracking-widest"
              />
           </div>
         </div>
@@ -236,7 +345,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
       {/* Session Slider */}
       {machines.length > 0 ? (
         <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-           {machines.map(m => {
+           {machines.filter(m => m.p_start && m.p_end).map(m => {
              const config = sessionIcons[m.description] || sessionIcons.default;
              const Icon = config.icon;
              const isSelected = selectedMachineId === m.id;
@@ -256,7 +365,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                  </div>
                  <h3 className={`font-black text-lg tracking-tight ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>{m.description}</h3>
                  <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${isSelected ? 'text-indigo-600' : 'text-slate-300'}`}>
-                   {m.p_start.slice(0, 5)} - {m.l_end.slice(0, 5)}
+                    {formatRawTime(m.p_start)} - {formatRawTime(m.p_end)}
                  </p>
                  {isSelected && <div className="absolute bottom-4 right-4 w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
                </button>
@@ -303,72 +412,85 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                 </div>
 
                 <div className="overflow-x-auto">
-                   <table className="w-full text-left">
-                      <thead className="bg-slate-50/50">
+                   <table className="w-full text-left table-auto border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200">
                          <tr>
-                            <th className="px-8 py-6 text-left text-xs font-black text-slate-400 uppercase tracking-widest">User Details</th>
-                            {activeMachine && (
-                               <th className="px-8 py-6 text-center text-xs font-black text-slate-400 uppercase tracking-widest">
-                                  {activeMachine.description} Window
-                                  <div className="text-[10px] text-indigo-400 font-bold mt-1 tracking-widest uppercase">{activeMachine.p_start.slice(0,5)} - {activeMachine.l_end.slice(0,5)}</div>
-                               </th>
-                            )}
+                            <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">User Details</th>
+                             <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">ID</th>
+                            <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Check-in Date</th>
+                            <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Time</th>
+                            <th className="px-6 py-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                         {filteredUsers.length > 0 ? filteredUsers.map(user => (
-                            <tr key={user.email} className="group hover:bg-slate-50/50 transition-all cursor-pointer" onClick={() => {
-                               setSelectedUserEmail(user.email);
-                                setViewMode("history");
-                            }}>
-                               <td className="px-8 py-8">
-                                  <div className="flex items-center gap-4">
-                                     <div className={`w-14 h-14 bg-gradient-to-br ${sessionIcons[activeMachine?.description]?.gradient || 'from-slate-100 to-slate-200'} rounded-2xl flex items-center justify-center font-black text-white text-lg shadow-md`}>
-                                        {user.full_name?.[0]?.toUpperCase() || "?"}
-                                     </div>
-                                     <div>
-                                        <h4 className="font-black text-slate-800 text-lg leading-tight">{user.full_name}</h4>
-                                        <p className="text-slate-400 font-bold text-sm tracking-tight">{user.email}</p>
-                                     </div>
-                                  </div>
-                               </td>
-                               {activeMachine && (() => {
-                                  const logs = user.dates[startDate]?.[activeMachine.description] || [];
-                                  const status = getStatus(logs, activeMachine);
-                                  return (
-                                     <td className="px-8 py-8">
-                                        <div className="flex flex-col items-center gap-3">
-                                           {status === 'present' ? (
-                                              <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center border-2 border-emerald-100 shadow-xl shadow-emerald-50 scale-100 group-hover:scale-110 transition-transform">
-                                                 <CheckCircle2 className="w-8 h-8" />
-                                              </div>
-                                           ) : status === 'late' ? (
-                                              <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-[2rem] flex items-center justify-center border-2 border-amber-100 shadow-xl shadow-amber-50 scale-100 group-hover:scale-110 transition-transform">
-                                                 <Clock className="w-8 h-8" />
-                                              </div>
-                                           ) : (
-                                              <div className="w-16 h-16 bg-rose-50 text-rose-400 rounded-[2rem] flex items-center justify-center border-2 border-rose-100 shadow-xl shadow-rose-50 scale-100 group-hover:scale-110 transition-transform">
-                                                 <XCircle className="w-8 h-8 opacity-40" />
-                                              </div>
-                                           )}
-                                           {logs.length > 0 && (
-                                              <span className="text-[11px] font-black text-indigo-900 bg-indigo-50 px-3 py-1 rounded-xl border border-indigo-100 uppercase tracking-widest">
-                                                  {new Date(logs[0].check_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                              </span>
-                                           )}
-                                        </div>
-                                     </td>
+                         {(() => {
+                            const rows: any[] = [];
+                            if (!activeMachine) return null;
+
+                            filteredUsers.forEach(user => {
+                               Object.entries(user.dates).forEach(([date, sessions]: [string, any]) => {
+                                  // CRITICAL: Sort logs by check_time to ensure [0] is ALWAYS the earliest punch
+                                  const logs = (sessions[activeMachine.description] || []).sort((a: any, b: any) => 
+                                     new Date(a.check_time).getTime() - new Date(b.check_time).getTime()
                                   );
-                               })()}
-                            </tr>
-                         )) : (
-                            <tr>
-                               <td colSpan={2} className="px-8 py-20 text-center">
-                                  <Users className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                  <p className="font-black text-slate-300 uppercase tracking-widest text-xs">No user logs found for this date</p>
-                               </td>
-                            </tr>
-                         )}
+
+                                  const status = getStatus(logs, activeMachine);
+                                  rows.push({ user, date, logs, status });
+                               });
+                            });
+
+                            const sortedRows = rows.sort((a, b) => b.date.localeCompare(a.date) || a.user.full_name.localeCompare(b.user.full_name));
+
+                            if (sortedRows.length === 0) {
+                               return (
+                                  <tr>
+                                     <td colSpan={4} className="px-8 py-20 text-center">
+                                        <Users className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                                        <p className="font-black text-slate-300 uppercase tracking-widest text-[10px]">No logs found in this period</p>
+                                     </td>
+                                  </tr>
+                               );
+                            }
+
+                            return sortedRows.map((row, idx) => (
+                               <tr key={`${row.user.email}-${row.date}`} className="hover:bg-slate-50/80 transition-colors cursor-pointer group" onClick={() => {
+                                  setSelectedUserEmail(row.user.email);
+                                  setViewMode("history");
+                               }}>
+                                  <td className="px-6 py-3">
+                                     <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-white text-[10px] shadow-sm bg-gradient-to-br ${sessionIcons[activeMachine?.description]?.gradient || 'from-slate-400 to-slate-500'}`}>
+                                           {row.user.full_name?.[0]?.toUpperCase()}
+                                        </div>
+                                        <div>
+                                           <div className="font-black text-slate-800 text-sm leading-none">{row.user.full_name}</div>
+                                           <div className="text-slate-400 font-bold text-[10px] mt-1">{row.user.email}</div>
+                                        </div>
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-3 text-xs font-black text-slate-400 tabular-nums">
+                                      {row.logs[0]?.zk_user_id || "--"}
+                                   </td>
+                                   <td className="px-6 py-3 text-sm font-bold text-slate-600 tabular-nums">
+                                     {new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                  </td>
+                                  <td className="px-6 py-3 text-sm font-black text-indigo-600 tabular-nums">
+                                     {row.logs.length > 0 ? formatRawTime(row.logs[0].check_time) : "--:--"}
+                                  </td>
+                                  <td className="px-6 py-3 text-center">
+                                     <div className="flex justify-center">
+                                        {row.status === 'present' ? (
+                                           <span className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center font-black text-xs shadow-lg shadow-emerald-100">P</span>
+                                        ) : row.status === 'late' ? (
+                                           <span className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-black text-xs shadow-lg shadow-amber-100">L</span>
+                                        ) : (
+                                           <span className="w-8 h-8 rounded-lg bg-slate-200 text-slate-500 flex items-center justify-center font-black text-xs">A</span>
+                                        )}
+                                     </div>
+                                  </td>
+                               </tr>
+                            ));
+                         })()}
                       </tbody>
                    </table>
                 </div>
@@ -424,10 +546,13 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                 className="w-full bg-slate-50 border-2 border-transparent px-6 py-4 rounded-2xl focus:bg-white focus:border-indigo-100 outline-none font-bold text-slate-800 appearance-none transition-all"
                               >
                                 <option value="" className="text-slate-400">Select Machine...</option>
-                                {machines.length > 0 ? Array.from(new Set(machines.map(m => m.serial_number))).map(sn => (
-                                  <option key={sn} value={sn}>{sn}</option>
-                                )) : (
-                                  <option value="" disabled>No machines registered in hub</option>
+                                {machines.map(m => (
+                                  <option key={m.id} value={m.serial_number}>
+                                    {m.serial_number} {m.description ? `(${m.description})` : ""}
+                                  </option>
+                                ))}
+                                {machines.length === 0 && (
+                                  <option value="" disabled>No devices authorized in Hub yet</option>
                                 )}
                               </select>
                            </div>
@@ -465,112 +590,16 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                      </div>
                    )}
 
-                   {machines.map((m, idx) => (
-                      <div key={m.id} className="bg-white rounded-[3rem] border-2 border-slate-100 shadow-xl p-10 space-y-8 group hover:border-indigo-200 transition-all">
-                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-5">
-                               <div className={`w-14 h-14 ${sessionIcons[m.description]?.bg || 'bg-slate-50'} rounded-2xl flex items-center justify-center`}>
-                                  <Monitor className={`w-7 h-7 ${sessionIcons[m.description]?.color || 'text-slate-400'}`} />
-                               </div>
-                               <div>
-                                  <h4 className="font-black text-slate-800 text-2xl tracking-tight">Session #{idx + 1}</h4>
-                                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-0.5">Instance Configuration</p>
-                               </div>
-                            </div>
-                            <button 
-                              onClick={() => handleDeleteMachine(m.id)}
-                              className="w-12 h-12 bg-rose-50 text-rose-400 rounded-2xl flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-colors"
-                              title="Delete Machine"
-                            >
-                               <Trash2 className="w-5 h-5" />
-                            </button>
-                         </div>
-
-                         <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                               <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Attendance Session Name</label>
-                                  <input 
-                                    type="text" 
-                                    defaultValue={m.description}
-                                    onBlur={(e) => handleUpdateMachine(m.id, { description: e.target.value })}
-                                    className="w-full bg-slate-50 border-2 border-transparent px-6 py-4 rounded-2xl focus:bg-white focus:border-indigo-100 outline-none font-bold text-slate-800 transition-all"
-                                  />
-                               </div>
-                               <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Mapping Machine ID</label>
-                                  <input 
-                                    type="text" 
-                                    disabled
-                                    defaultValue={m.serial_number}
-                                    className="w-full bg-slate-50/50 border-2 border-transparent px-6 py-4 rounded-2xl font-bold text-slate-400 uppercase opacity-60"
-                                  />
-                               </div>
-                            </div>
-
-                            <div className="space-y-4">
-                               <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2">
-                                  <Clock className="w-3 h-3" /> Attendance Status Windows
-                               </h5>
-                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50/50 p-4 rounded-2xl">
-                                  <div className="space-y-1 text-center">
-                                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Start P</label>
-                                     <input 
-                                       type="time" 
-                                       defaultValue={m.p_start}
-                                       onBlur={(e) => handleUpdateMachine(m.id, { p_start: e.target.value })}
-                                       className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-emerald-600"
-                                     />
-                                  </div>
-                                  <div className="space-y-1 text-center">
-                                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">End P</label>
-                                     <input 
-                                       type="time" 
-                                       defaultValue={m.p_end}
-                                       onBlur={(e) => handleUpdateMachine(m.id, { p_end: e.target.value })}
-                                       className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-emerald-600"
-                                     />
-                                  </div>
-                                  <div className="space-y-1 text-center">
-                                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Start L</label>
-                                     <input 
-                                       type="time" 
-                                       defaultValue={m.l_start}
-                                       onBlur={(e) => handleUpdateMachine(m.id, { l_start: e.target.value })}
-                                       className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-amber-600"
-                                     />
-                                  </div>
-                                  <div className="space-y-1 text-center">
-                                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">End L</label>
-                                     <input 
-                                       type="time" 
-                                       defaultValue={m.l_end}
-                                       onBlur={(e) => handleUpdateMachine(m.id, { l_end: e.target.value })}
-                                       className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-amber-600"
-                                     />
-                                  </div>
-                               </div>
-                            </div>
-
-                            <div className="bg-slate-50 p-6 rounded-3xl space-y-4">
-                               <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual Status Rules</span>
-                                  <span className="text-[9px] font-bold text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-md">Auto-Applied</span>
-                               </div>
-                               <div className="h-4 w-full bg-slate-200 rounded-full flex overflow-hidden shadow-inner">
-                                  <div className="h-full bg-emerald-500 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest border-r border-white/20">Present</div>
-                                  <div className="h-full bg-amber-500 w-[40%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest border-r border-white/20">Late</div>
-                                  <div className="h-full bg-rose-400 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest">Absent</div>
-                               </div>
-                               <div className="flex justify-between text-[8px] font-black text-slate-400 uppercase font-mono">
-                                  <span>{m.p_start.slice(0,5)}</span>
-                                  <span>{m.p_end.slice(0,5)}</span>
-                                  <span>{m.l_end.slice(0,5)}</span>
-                               </div>
-                            </div>
-                         </div>
-                      </div>
-                   ))}
+                    {machines.filter(m => m.p_start && m.p_end).map((m, idx) => (
+                       <SessionCard 
+                        key={m.id} 
+                        m={m} 
+                        idx={idx} 
+                        sessionIcons={sessionIcons} 
+                        handleDeleteMachine={handleDeleteMachine} 
+                        handleUpdateMachine={handleUpdateMachine} 
+                       />
+                    ))}
                 </div>
              </div>
            ) : (
@@ -611,7 +640,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                 </div>
                                <div>
                                   <h4 className="font-black text-slate-800 text-2xl tracking-tight">{m.description} Trace</h4>
-                                  <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mt-0.5">Present: {m.p_start.slice(0,5)} — {m.p_end.slice(0,5)} | Late: {m.l_start.slice(0,5)} — {m.l_end.slice(0,5)}</p>
+                                  <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mt-0.5">Present: {formatRawTime(m.p_start)} — {formatRawTime(m.p_end)} | Late: {formatRawTime(m.l_start)} — {formatRawTime(m.l_end)}</p>
                                </div>
                             </div>
                          </div>
@@ -637,7 +666,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                         </div>
                                         <div className="font-black text-2xl text-slate-800 font-outfit">
                                            {logs.length > 0 ? (
-                                             new Date(logs[0].check_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+                                             formatRawTime(logs[0].check_time)
                                            ) : (
                                              <span className="text-slate-300">--:--</span>
                                            )}
@@ -654,6 +683,143 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
            )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SessionCard({ m, idx, sessionIcons, handleDeleteMachine, handleUpdateMachine }: any) {
+  const [localData, setLocalData] = React.useState(m);
+  const [hasChanges, setHasChanges] = React.useState(false);
+
+  React.useEffect(() => {
+    setLocalData(m);
+    setHasChanges(false);
+  }, [m]);
+
+  const handleChange = (updates: any) => {
+    setLocalData({ ...localData, ...updates });
+    setHasChanges(true);
+  };
+
+  const handleSave = () => {
+    handleUpdateMachine(m.id, localData);
+    setHasChanges(false);
+  };
+
+  return (
+    <div className="bg-white rounded-[3rem] border-2 border-slate-100 shadow-xl p-10 space-y-8 group hover:border-indigo-200 transition-all">
+       <div className="flex items-center justify-between">
+          <div className="flex items-center gap-5">
+             <div className={`w-14 h-14 ${sessionIcons[localData.description]?.bg || 'bg-slate-50'} rounded-2xl flex items-center justify-center`}>
+                <Monitor className={`w-7 h-7 ${sessionIcons[localData.description]?.color || 'text-slate-400'}`} />
+             </div>
+             <div>
+                <h4 className="font-black text-slate-800 text-2xl tracking-tight">Session #{idx + 1}</h4>
+                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-0.5">Instance Configuration</p>
+             </div>
+          </div>
+          <div className="flex items-center gap-3">
+             {hasChanges && (
+               <button 
+                 onClick={handleSave}
+                 className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2"
+               >
+                 <CheckCircle2 className="w-4 h-4" /> Save Changes
+               </button>
+             )}
+             <button 
+               onClick={() => handleDeleteMachine(m.id)}
+               className="w-12 h-12 bg-rose-50 text-rose-400 rounded-2xl flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-colors"
+               title="Remove Session"
+             >
+                <Trash2 className="w-5 h-5" />
+             </button>
+          </div>
+       </div>
+
+       <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Attendance Session Name</label>
+                <input 
+                  type="text" 
+                  value={localData.description}
+                  onChange={(e) => handleChange({ description: e.target.value })}
+                  className="w-full bg-slate-50 border-2 border-transparent px-6 py-4 rounded-2xl focus:bg-white focus:border-indigo-100 outline-none font-bold text-slate-800 transition-all"
+                />
+             </div>
+             <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Mapping Machine ID</label>
+                <input 
+                  type="text" 
+                  disabled
+                  value={localData.serial_number}
+                  className="w-full bg-slate-50/50 border-2 border-transparent px-6 py-4 rounded-2xl font-bold text-slate-400 uppercase opacity-60"
+                />
+             </div>
+          </div>
+
+          <div className="space-y-4">
+             <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2">
+                <Clock className="w-3 h-3" /> Attendance Status Windows
+             </h5>
+             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50/50 p-4 rounded-2xl">
+                <div className="space-y-1 text-center">
+                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Start P</label>
+                   <input 
+                     type="time" 
+                     value={localData.p_start || ""}
+                     onChange={(e) => handleChange({ p_start: e.target.value })}
+                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-emerald-600"
+                   />
+                </div>
+                <div className="space-y-1 text-center">
+                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">End P</label>
+                   <input 
+                     type="time" 
+                     value={localData.p_end || ""}
+                     onChange={(e) => handleChange({ p_end: e.target.value })}
+                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-emerald-600"
+                   />
+                </div>
+                <div className="space-y-1 text-center">
+                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Start L</label>
+                   <input 
+                     type="time" 
+                     value={localData.l_start || ""}
+                     onChange={(e) => handleChange({ l_start: e.target.value })}
+                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-amber-600"
+                   />
+                </div>
+                <div className="space-y-1 text-center">
+                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">End L</label>
+                   <input 
+                     type="time" 
+                     value={localData.l_end || ""}
+                     onChange={(e) => handleChange({ l_end: e.target.value })}
+                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-amber-600"
+                   />
+                </div>
+             </div>
+          </div>
+
+          <div className="bg-slate-50 p-6 rounded-3xl space-y-4">
+             <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual Status Rules</span>
+                <span className="text-[9px] font-bold text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-md">Auto-Applied</span>
+             </div>
+             <div className="h-4 w-full bg-slate-200 rounded-full flex overflow-hidden shadow-inner">
+                <div className="h-full bg-emerald-500 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest border-r border-white/20">Present</div>
+                <div className="h-full bg-amber-500 w-[40%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest border-r border-white/20">Late</div>
+                <div className="h-full bg-rose-400 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest">Absent</div>
+             </div>
+             <div className="flex justify-between text-[8px] font-black text-slate-400 uppercase font-mono">
+                <span>{localData.p_start?.slice(0,5) || "--:--"}</span>
+                <span>{localData.p_end?.slice(0,5) || "--:--"}</span>
+                <span>{localData.l_end?.slice(0,5) || "--:--"}</span>
+             </div>
+          </div>
+       </div>
     </div>
   );
 }

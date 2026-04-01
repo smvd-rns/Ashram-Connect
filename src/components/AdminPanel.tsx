@@ -324,17 +324,24 @@ export default function AdminPanel() {
           data: { machine_id: mappingMachineId, zk_user_id: mappingZKId, user_email: mappingEmail } 
         })
       });
-      if (res.ok) {
-        setMappingZKId("");
-        setMappingEmail("");
-        fetchAttendanceMappings();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSubmitting(false);
+    const responseData = await res.json();
+    if (res.ok) {
+      setMappingZKId("");
+      setMappingEmail("");
+      setSubmitMessage({ type: "success", text: "User mapping created successfully!" });
+      fetchAttendanceMappings();
+    } else {
+      setSubmitMessage({ type: "error", text: responseData.error || "Failed to create mapping." });
     }
-  };
+    setTimeout(() => setSubmitMessage(null), 5000);
+  } catch (err) {
+    console.error(err);
+    setSubmitMessage({ type: "error", text: "A network error occurred. Please try again." });
+    setTimeout(() => setSubmitMessage(null), 5000);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const deleteMapping = async (id: string) => {
     if (!confirm("Remove this mapping?")) return;
@@ -2293,6 +2300,27 @@ export default function AdminPanel() {
       <h3 className="text-lg font-black mb-6 flex items-center gap-2">
         <UserPlus className="w-6 h-6" /> Single Mapping Entry
       </h3>
+
+      {submitMessage && (
+        <div className={`mb-8 p-5 rounded-2xl flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${
+          submitMessage.type === 'success' 
+          ? 'bg-emerald-100/10 border-2 border-emerald-500/30 text-emerald-50' 
+          : 'bg-rose-100/10 border-2 border-rose-500/30 text-rose-50'
+        }`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+            submitMessage.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+          }`}>
+            {submitMessage.type === 'success' ? <CheckCircle className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+          </div>
+          <div className="flex-1">
+             <p className="text-sm font-black tracking-tight">{submitMessage.type === 'success' ? 'Success!' : 'Mapping Error'}</p>
+             <p className="text-xs font-bold opacity-80">{submitMessage.text}</p>
+          </div>
+          <button onClick={() => setSubmitMessage(null)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <X className="w-4 h-4 opacity-50" />
+          </button>
+        </div>
+      )}
       <form onSubmit={handleAddMapping} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
         <div className="space-y-1">
           <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Select Machine</label>

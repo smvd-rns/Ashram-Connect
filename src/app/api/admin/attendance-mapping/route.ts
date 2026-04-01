@@ -18,10 +18,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("attendance_user_mapping")
-      .select(`
-        *,
-        machine:attendance_machines(serial_number, description)
-      `)
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (machineId) query = query.eq("machine_id", machineId);
@@ -43,6 +40,22 @@ export async function POST(req: NextRequest) {
     // SINGLE ADDITION
     if (action === "add_mapping") {
       const { machine_id, zk_user_id, user_email } = data;
+
+      // Check if this user email OR this machine user ID is already mapped for this specific machine
+      const { data: existing, error: checkError } = await supabase
+        .from("attendance_user_mapping")
+        .select("user_email, zk_user_id")
+        .eq("machine_id", machine_id)
+        .or(`user_email.eq.${user_email},zk_user_id.eq.${zk_user_id}`)
+        .maybeSingle();
+
+      if (existing) {
+        const conflictField = existing.user_email === user_email ? "Email" : "Machine User ID";
+        return NextResponse.json({ 
+          error: `Duplicate Entry: This ${conflictField} is already mapped to this machine.` 
+        }, { status: 400 });
+      }
+
       const { data: newMapping, error } = await supabase
         .from("attendance_user_mapping")
         .insert([{ machine_id, zk_user_id, user_email }])
@@ -55,10 +68,9 @@ export async function POST(req: NextRequest) {
 
     // BULK ADDITION (XLSX Upload)
     if (action === "bulk_add_mapping") {
-      // data should be an array of objects
       const { data: newMappings, error } = await supabase
         .from("attendance_user_mapping")
-        .upsert(data, { onConflict: "machine_id, zk_user_id" }); // Update if duplicate ID exists
+        .upsert(data, { onConflict: "machine_id, zk_user_id" });
       
       if (error) throw error;
       return NextResponse.json({ success: true });
