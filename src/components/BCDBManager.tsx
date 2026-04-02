@@ -28,6 +28,7 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [importing, setImporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   
   const topScrollRef = React.useRef<HTMLDivElement>(null);
   const tableContainerRef = React.useRef<HTMLDivElement>(null);
@@ -57,6 +58,38 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
       target.current.scrollLeft = source.current.scrollLeft;
     }
   };
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedData = React.useMemo(() => {
+    let sortableItems = [...data];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aVal = a[sortConfig.key];
+        let bVal = b[sortConfig.key];
+        
+        // Special handling for nested names in portfolio
+        if (sortConfig.key === 'initiated_name') {
+          aVal = (a.initiated_name || a.legal_name || "").toLowerCase();
+          bVal = (b.initiated_name || b.legal_name || "").toLowerCase();
+        } else if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = (bVal || "").toLowerCase();
+        }
+
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [data, sortConfig]);
 
   useEffect(() => {
     fetchData();
@@ -329,27 +362,64 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
             <table className="w-full text-left border-collapse min-w-[4000px]">
                <thead>
                   <tr className="bg-slate-900 text-white">
-                     <th className="sticky left-0 z-20 bg-slate-900 px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[350px]">Devotee Portfolio</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px]">Color</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Initiation</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px]">Center</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Counsellor</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">WhatsApp</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px]">Phone</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Email ID</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Blood</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">DOB (Adhar)</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">DOB (Actual)</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Pan Card No</th>
+                     <th onClick={() => requestSort('initiated_name')} className="sticky left-0 z-20 bg-slate-900 px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[350px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        <div className="flex items-center gap-2">
+                           Devotee Portfolio
+                           {sortConfig?.key === 'initiated_name' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
+                        </div>
+                     </th>
+                     <th onClick={() => requestSort('colour')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        <div className="flex items-center gap-2">
+                           Color
+                           {sortConfig?.key === 'colour' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
+                        </div>
+                     </th>
+                     <th onClick={() => requestSort('initiation')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        <div className="flex items-center gap-2">
+                           Initiation
+                           {sortConfig?.key === 'initiation' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
+                        </div>
+                     </th>
+                     <th onClick={() => requestSort('center')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        <div className="flex items-center gap-2">
+                           Center
+                           {sortConfig?.key === 'center' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
+                        </div>
+                     </th>
+                     <th onClick={() => requestSort('counsellor')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        <div className="flex items-center gap-2">
+                           Counsellor
+                           {sortConfig?.key === 'counsellor' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
+                        </div>
+                     </th>
+                     <th onClick={() => requestSort('whatsapp_no')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        WhatsApp
+                        {sortConfig?.key === 'whatsapp_no' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                     </th>
+                     <th onClick={() => requestSort('contact_no')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        Phone
+                        {sortConfig?.key === 'contact_no' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                     </th>
+                     <th onClick={() => requestSort('email_id')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        Email ID
+                        {sortConfig?.key === 'email_id' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                     </th>
+                     <th onClick={() => requestSort('blood_group')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
+                        Blood
+                        {sortConfig?.key === 'blood_group' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                     </th>
+                     <th onClick={() => requestSort('dob_adhar')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">DOB (Adhar)</th>
+                     <th onClick={() => requestSort('dob_actual')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">DOB (Actual)</th>
+                     <th onClick={() => requestSort('pan_card')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">Pan Card No</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Primary Services</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Secondary Services</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Spiritual Master</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px]">Year joined</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Aadhar No</th>
+                     <th onClick={() => requestSort('spiritual_master')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px] cursor-pointer hover:bg-slate-800 transition-colors">Spiritual Master</th>
+                     <th onClick={() => requestSort('year_joining')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors">Year joined</th>
+                     <th onClick={() => requestSort('aadhar_number')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">Aadhar No</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 1</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 2</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 3</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Prasadam</th>
+                     <th onClick={() => requestSort('prasadam')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">Prasadam</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Address (Adhar)</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Home Address</th>
                      <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Adhar Copy</th>
@@ -360,30 +430,30 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                </thead>
                <tbody className="divide-y divide-slate-100">
                   {loading && data.length === 0 ? (
-                    <tr><td colSpan={15} className="py-32 text-center"><Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto opacity-20" /></td></tr>
+                    <tr><td colSpan={25} className="py-32 text-center"><Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto opacity-20" /></td></tr>
                   ) : data.length === 0 ? (
-                    <tr><td colSpan={15} className="py-32 text-center text-slate-300 font-black uppercase tracking-widest italic opacity-40">No Records Found Matching Criteria</td></tr>
+                    <tr><td colSpan={25} className="py-32 text-center text-slate-300 font-black uppercase tracking-widest italic opacity-40">No Records Found Matching Criteria</td></tr>
                   ) : (
-                     data.map((r, i) => (
+                     sortedData.map((r, i) => (
                        <tr key={r.id || i} className={`group transition-colors ${getRowColor(r.colour)}`}>
                          <td className={`sticky left-0 z-10 backdrop-blur-sm shadow-[4px_0_15px_-4px_rgba(0,0,0,0.05)] px-8 py-5 transition-colors ${getRowColor(r.colour).split(' ')[0]}`}>
                             <div className="flex items-center gap-4">
-                               <div className={`w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center font-black text-2xl shadow-inner group-hover:rotate-3 transition-all relative ${
+                               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner group-hover:rotate-3 transition-all relative overflow-hidden ${
                                  r.colour?.toLowerCase() === 'blue' ? 'bg-blue-200 text-blue-900' : 
                                  r.colour?.toLowerCase() === 'yellow' ? 'bg-yellow-300 text-yellow-900 font-black' :
                                  r.colour?.toLowerCase() === 'saffron' ? 'bg-orange-300 text-orange-900 font-black' :
                                  'bg-slate-200 text-slate-800'
                                }`}>
-                                 {r.photo_url ? (
+                                 {r.photo_url && (
                                    <img 
                                      src={getGoogleThumbnail(r.photo_url) || ""} 
                                      alt="Devotee" 
-                                     className="w-full h-full object-cover"
+                                     className="absolute inset-0 w-full h-full object-cover z-20"
                                      onError={(e: any) => { e.target.style.display = 'none'; }}
                                    />
-                                 ) : null}
+                                 )}
                                  <span className="relative z-10">{r.initiated_name?.[0] || r.legal_name?.[0] || "?"}</span>
-                                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent z-10"></div>
                               </div>
                               <div>
                                  <div className="font-black text-slate-800 text-[15px] leading-tight tracking-tight whitespace-nowrap">{r.initiated_name || "Uninitiated"}</div>
