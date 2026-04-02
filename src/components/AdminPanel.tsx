@@ -17,8 +17,9 @@ import { normalizeDate } from "@/lib/dateHelper";
 import AuthUI from "./AuthUI";
 import { useProfile } from "@/hooks/useProfile";
 import AttendanceTracing from "./AttendanceTracing";
+import BCDBManager from "./BCDBManager";
 
-type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing";
+type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing" | "bcdb";
 
 export default function AdminPanel() {
   const searchParams = useSearchParams();
@@ -817,7 +818,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20 pt-10">
-      <div className="max-w-7xl mx-auto px-4">
+      <div className={`${activeView === 'attendance-tracing' ? 'max-w-none px-4 sm:px-10' : 'max-w-7xl mx-auto px-4'}`}>
         {/* VIEW: Dashboard Home (Grid Cards) */}
         {activeView === "home" && (
           <div className="space-y-10 animate-in fade-in zoom-in-95 duration-500">
@@ -951,6 +952,28 @@ export default function AdminPanel() {
                       <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Monitor 3-session attendance, view matrix reports, and switch between users and machines.</p>
                     </div>
                     <div className="flex items-center gap-2 text-indigo-600 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
+                      Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              {/* BCDB Card */}
+              {isSuperAdmin && (
+                <button 
+                  onClick={() => navigateToView("bcdb")}
+                  className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
+                  <div className="relative z-10 w-12 h-12 sm:w-16 sm:h-16 bg-indigo-900 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:-rotate-3 transition-transform shrink-0">
+                    <Grid className="w-6 h-6 sm:w-8 sm:h-8" />
+                  </div>
+                  <div className="relative z-10 sm:mt-4 flex-1 min-w-0">
+                    <div>
+                      <h3 className="text-lg sm:text-2xl font-black text-devo-950 uppercase tracking-tight sm:normal-case">BCDB Portal</h3>
+                      <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Access the Ashram Connect directory, manage personnel records, and handle master imports.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-indigo-900 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
                       Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
                     </div>
                   </div>
@@ -2090,9 +2113,9 @@ export default function AdminPanel() {
                    >
                      Copy Server URL
                    </button>
-                </div>
+                  </div>
 
-                {/* Global Settings */}
+      {/* FOOTER: Global Role Pill */}
                 <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
                    <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
                      <Calendar className="w-5 h-5 text-slate-400" /> Sync Start Date
@@ -2442,7 +2465,7 @@ export default function AdminPanel() {
 
         {/* VIEW: Attendance Tracing */}
         {activeView === "attendance-tracing" && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
             <button 
               onClick={() => navigateToView("home")}
               className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
@@ -2450,6 +2473,16 @@ export default function AdminPanel() {
               <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
             </button>
             <AttendanceTracing isAdmin={isSuperAdmin} session={session} profile={profile} />
+          </div>
+        )}
+
+        {/* VIEW: BCDB Portal */}
+        {activeView === "bcdb" && (
+          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
+             <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all">
+                <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
+             </button>
+             <BCDBManager session={session} isAdmin={isSuperAdmin} />
           </div>
         )}
       </div>

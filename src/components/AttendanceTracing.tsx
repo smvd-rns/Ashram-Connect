@@ -5,7 +5,7 @@ import {
   Loader2, Filter, Calendar, Users, HardDrive, 
   ChevronLeft, ChevronRight, Download, CheckCircle2, XCircle, 
   Clock, AlertCircle, Search, Monitor, Settings, ArrowRightLeft,
-  UserCheck, Plus, Trash2
+  UserCheck, Plus, Trash2, Activity, Star
 } from "lucide-react";
 
 interface AttendanceTracingProps {
@@ -20,8 +20,10 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const [machines, setMachines] = useState<any[]>([]);
   
   // Filtering State
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [timeRange, setTimeRange] = useState<"day" | "week" | "month" | "custom">("day");
+  const [currentPivotDate, setCurrentPivotDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customRangeStart, setCustomRangeStart] = useState("");
+  const [customRangeEnd, setCustomRangeEnd] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   
   // Session Slider State
@@ -49,18 +51,51 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const sessionIcons: Record<string, any> = {
-    "Mangal Aarti": { icon: Clock, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-100", gradient: "from-orange-500 to-amber-600" },
-    "SB Class": { icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100", gradient: "from-indigo-500 to-purple-600" },
-    "BC Class": { icon: Monitor, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-100", gradient: "from-purple-500 to-indigo-600" },
-    "Hari Nam": { icon: Users, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", gradient: "from-rose-500 to-pink-600" },
-    "Afternoon Session": { icon: Settings, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100", gradient: "from-amber-500 to-orange-600" },
-    "default": { icon: HardDrive, color: "text-slate-600", bg: "bg-slate-50", border: "border-slate-100", gradient: "from-slate-500 to-slate-700" }
+    "Mangal Aarti": { icon: Clock, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-100", gradient: "from-orange-500 to-amber-600", shadow: "shadow-orange-200/50", accent: "bg-orange-500" },
+    "SB Class": { icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100", gradient: "from-indigo-500 to-purple-600", shadow: "shadow-indigo-200/50", accent: "bg-indigo-500" },
+    "BC Class": { icon: Monitor, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-100", gradient: "from-purple-500 to-indigo-600", shadow: "shadow-purple-200/50", accent: "bg-purple-500" },
+    "Hari Nam": { icon: Users, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", gradient: "from-rose-500 to-pink-600", shadow: "shadow-rose-200/50", accent: "bg-rose-500" },
+    "Afternoon Session": { icon: Settings, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100", gradient: "from-amber-500 to-orange-600", shadow: "shadow-amber-200/50", accent: "bg-amber-500" },
+    "default": { icon: HardDrive, color: "text-slate-600", bg: "bg-slate-50", border: "border-slate-100", gradient: "from-slate-500 to-slate-700", shadow: "shadow-slate-200/50", accent: "bg-slate-500" }
+  };
+
+  // Helper to get range based on pivot and type
+  const getRange = (pivot: string, type: "day" | "week" | "month" | "custom") => {
+    if (type === "custom") {
+      return { 
+        start: customRangeStart || pivot, 
+        end: customRangeEnd || pivot 
+      };
+    }
+    const date = new Date(pivot);
+    if (type === "day") {
+      return { start: pivot, end: pivot };
+    }
+    if (type === "week") {
+      const day = date.getDay();
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+      const start = new Date(date.setDate(diff));
+      const end = new Date(new Date(start).setDate(start.getDate() + 6));
+      return { 
+        start: start.toISOString().split('T')[0], 
+        end: end.toISOString().split('T')[0] 
+      };
+    }
+    if (type === "month") {
+      const start = new Date(date.getFullYear(), date.getMonth(), 1);
+      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      return { 
+        start: start.toISOString().split('T')[0], 
+        end: end.toISOString().split('T')[0] 
+      };
+    }
+    return { start: pivot, end: pivot };
   };
 
   useEffect(() => {
     fetchReport();
     fetchMachines();
-  }, [startDate, endDate, session]);
+  }, [currentPivotDate, timeRange, customRangeStart, customRangeEnd, session]);
 
   const fetchMachines = async () => {
     if (!session) return;
@@ -79,14 +114,14 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     if (!session) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/attendance/report?startDate=${startDate}&endDate=${endDate}`, {
+      const { start, end } = getRange(currentPivotDate, timeRange);
+      const res = await fetch(`/api/attendance/report?startDate=${start}&endDate=${end}`, {
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
       const data = await res.json();
       if (data.report) setReport(data.report);
       if (data.machines) {
         setMachines(data.machines);
-        // Default selected machine for matrix view
         if (!selectedMachineId && data.machines.length > 0) {
           const firstMachine = data.machines.find((m: any) => m.description) || data.machines[0];
           setSelectedMachineId(firstMachine.id);
@@ -101,59 +136,60 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
 
   const getStatus = (logs: any[], machine: any) => {
     if (!logs || logs.length === 0) return "absent";
-    
-    // Find the EARLIEST punch of the day — subsequent punches (check-outs, re-entries)
-    // should NOT affect the status. Only the first check-in determines P or L.
     const earliestLog = logs.reduce((earliest, log) => {
       return new Date(log.check_time) < new Date(earliest.check_time) ? log : earliest;
     }, logs[0]);
-
-    // Extract UTC time string "HH:mm:ss" — machine p/l windows are stored as UTC-based times
-    // IMPORTANT: Do NOT use toLocaleTimeString() — it converts to browser local time (IST)
-    // which breaks the comparison against machine window settings.
     const checkTime = new Date(earliestLog.check_time).toISOString().slice(11, 19);
-    
-    // P (Present): first punch is between p_start and p_end
     if (machine.p_start && machine.p_end && checkTime >= machine.p_start && checkTime <= machine.p_end) {
       return "present";
     }
-    
-    // L (Late): first punch is between l_start and l_end
     if (machine.l_start && machine.l_end && checkTime >= machine.l_start && checkTime <= machine.l_end) {
       return "late";
     }
-    
-    // Punched outside both windows (too early or too late)
     return "absent";
   };
 
-  // Helper: Get raw HH:mm from "HH:mm:ss" or full timestamp without timezone shift
   const formatRawTime = (timeInput: string | Date | null) => {
     if (!timeInput) return "--:--";
     try {
-      // If it's a full timestamp (e.g. 2026-04-01...), parse and extract UTC time part
       if (typeof timeInput === "string" && timeInput.includes("-")) {
         return new Date(timeInput).toISOString().slice(11, 16);
       }
-      // If it's already a time string (e.g. 04:00:00), just slice first 5 chars
       if (typeof timeInput === "string") return timeInput.slice(0, 5);
-      
       return new Date(timeInput).toISOString().slice(11, 16);
     } catch (e) {
       return "--:--";
     }
   };
 
-  // Filtered Data Logic
+  const getPeriodLabel = () => {
+    const { start, end } = getRange(currentPivotDate, timeRange);
+    if (timeRange === "day") {
+      return new Date(start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+    const startStr = new Date(start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    const endStr = new Date(end).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return `${startStr} - ${endStr}`;
+  };
+
+  const handleNavigate = (direction: number) => {
+    const date = new Date(currentPivotDate);
+    if (timeRange === "day") {
+      date.setDate(date.getDate() + direction);
+    } else if (timeRange === "week") {
+      date.setDate(date.getDate() + direction * 7);
+    } else if (timeRange === "month") {
+      date.setMonth(date.getMonth() + direction);
+    }
+    setCurrentPivotDate(date.toISOString().split('T')[0]);
+  };
+
   const filteredUsers = report.filter(u => {
     const matchesSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           u.email?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // If a machine is selected in matrix mode, only show users assigned to that machine
     if (isAdmin && viewMode === "matrix" && selectedMachineId) {
       return matchesSearch && u.assigned_machines?.includes(selectedMachineId);
     }
-    
     return matchesSearch;
   });
 
@@ -170,7 +206,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
         },
         body: JSON.stringify({ action: 'update_machine', data: { id, ...updates } })
       });
-      fetchReport(); // Refresh
+      fetchReport();
     } catch (err) {
       console.error("Update failed:", err);
     }
@@ -183,13 +219,10 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     }
     setLoading(true);
     try {
-      // Check if machine already exists (it usually does if added via Device Hub)
       const existingMachine = machines.find(m => m.serial_number === newMachine.serial_number);
-      
       const payload = existingMachine 
         ? { action: 'update_machine', data: { id: existingMachine.id, ...newMachine } }
         : { action: 'add_machine', data: newMachine };
-
       await fetch('/api/admin/attendance-config', {
         method: 'POST',
         headers: { 
@@ -200,17 +233,11 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
       });
       setIsAdding(false);
       setNewMachine({
-        serial_number: "",
-        description: "",
-        ingestion_start: "02:00", 
-        ingestion_end: "11:00",
-        p_start: "04:00",
-        p_end: "04:15",
-        l_start: "04:15",
-        l_end: "05:30"
+        serial_number: "", description: "", ingestion_start: "02:00", ingestion_end: "11:00",
+        p_start: "04:00", p_end: "04:15", l_start: "04:15", l_end: "05:30"
       });
       fetchReport();
-      fetchMachines(); // Sync the session names
+      fetchMachines();
     } catch (err) {
       console.error("Add failed:", err);
     } finally {
@@ -221,6 +248,43 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const handleDeleteMachine = async (id: string) => {
     setDeletingId(id);
     setShowDeleteConfirm(true);
+  };
+
+  const handleExportCSV = () => {
+    if (!activeMachine || filteredUsers.length === 0) return;
+    
+    const dates = getDateColumns();
+    const rows = [
+       ["Name", "Email", "Biometric ID", ...dates.map(d => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })), "P", "L", "A", "%"]
+    ];
+
+    filteredUsers.forEach(user => {
+       let p = 0, l = 0, a = 0;
+       const userRow: any[] = [user.full_name, user.email, user.dates[Object.keys(user.dates)[0]]?.[activeMachine?.description]?.[0]?.zk_user_id || "--"];
+       
+       dates.forEach(date => {
+          const logs = (user.dates[date]?.[activeMachine?.description] || []);
+          const status = getStatus(logs, activeMachine);
+          if (status === 'present') p++;
+          else if (status === 'late') l++;
+          else a++;
+          userRow.push(status.charAt(0).toUpperCase());
+       });
+
+       userRow.push(p, l, a, `${Math.round(((p + l) / dates.length) * 100)}%`);
+       rows.push(userRow);
+    });
+
+    const csvContent = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `attendance_${activeMachine.description.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const confirmDelete = async () => {
@@ -235,13 +299,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
         },
         body: JSON.stringify({ 
           action: 'update_machine', 
-          data: { 
-            id: deletingId, 
-            p_start: null, 
-            p_end: null, 
-            l_start: null, 
-            l_end: null 
-          } 
+          data: { id: deletingId, p_start: null, p_end: null, l_start: null, l_end: null } 
         })
       });
       fetchReport();
@@ -255,421 +313,462 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     }
   };
 
+  // Register View Helper
+  const getDateColumns = () => {
+    const { start, end } = getRange(currentPivotDate, timeRange);
+    const dates = [];
+    let curr = new Date(start);
+    const last = new Date(end);
+    while (curr <= last) {
+      dates.push(curr.toISOString().split('T')[0]);
+      curr.setDate(curr.getDate() + 1);
+    }
+    return dates;
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative min-h-screen overflow-hidden">
+      {/* Dynamic Background Blobs for Visual Depth */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-200/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-100/30 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
+      <div className="absolute top-[20%] right-[15%] w-[20%] h-[20%] bg-purple-100/40 rounded-full blur-[100px] pointer-events-none" />
+
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 max-w-lg w-full p-12 space-y-8 animate-in zoom-in-95 duration-300">
-            <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white rounded-[3rem] shadow-2xl border border-white/20 max-w-lg w-full p-12 space-y-8 animate-in zoom-in-95 duration-300">
+            <div className="w-24 h-24 bg-rose-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner">
               <Trash2 className="w-10 h-10 text-rose-500" />
             </div>
             <div className="text-center space-y-4">
               <h3 className="text-3xl font-black text-slate-900 tracking-tight font-outfit">Remove Session?</h3>
               <p className="text-slate-500 font-bold leading-relaxed">
-                Are you sure you want to remove this session? This will clear the timing rules (P/L windows) but will <span className="text-indigo-600">keep the hardware registered</span> in the Device Hub.
+                Are you sure you want to remove this session? Hardware remains registered but <span className="text-indigo-600">timing rules will be cleared</span>.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <button 
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-2xl transition-all uppercase tracking-widest text-[10px]"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmDelete}
-                className="flex-1 px-8 py-4 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-2xl transition-all shadow-lg shadow-rose-200 uppercase tracking-widest text-[10px] flex items-center justify-center gap-2"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Remove Session"}
+              <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 px-8 py-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-3xl transition-all uppercase tracking-widest text-[10px]">Cancel</button>
+              <button onClick={confirmDelete} className="flex-1 px-8 py-5 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-3xl transition-all shadow-xl shadow-rose-200 uppercase tracking-widest text-[10px] flex items-center justify-center gap-2">
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Remove Session"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header Controls */}
-      <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[3rem] shadow-[0_24px_48px_-12px_rgba(30,41,59,0.08)] border border-slate-200 flex flex-wrap items-center justify-between gap-6">
-        <div className="flex items-center gap-5">
-           <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-3xl flex items-center justify-center shadow-lg shadow-indigo-100">
-             <Monitor className="w-9 h-9 text-white" />
+      {/* Header Controls - Premium Style */}
+      <div className="bg-white/95 backdrop-blur-3xl p-6 sm:p-8 rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] border border-white flex flex-col items-center justify-center gap-8 px-4 sm:px-8">
+        
+        {/* Row 1: Branding */}
+        <div className="flex flex-col items-center text-center gap-4">
+           <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-blue-400 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-indigo-100 group transition-transform hover:rotate-6">
+             <Activity className="w-8 h-8 text-white" />
            </div>
            <div>
-             <h2 className="text-3xl font-black text-slate-900 tracking-tight font-outfit uppercase sm:normal-case">Attendance Hub</h2>
-             <p className="text-slate-400 font-bold flex items-center gap-2 text-xs uppercase tracking-widest">
-               <Calendar className="w-4 h-4" /> 
-               Session Performance Analytics
-             </p>
+             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter font-outfit uppercase">Attendance Hub</h2>
+             <div className="flex items-center justify-center gap-2 mt-1">
+               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]" />
+               <p className="text-slate-400 font-black text-[9px] uppercase tracking-[0.2em]">Real-time Analytics Engine</p>
+             </div>
            </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center bg-slate-50 p-2 rounded-2xl border border-slate-200">
-             <button 
-              onClick={() => setViewMode("matrix")}
-              className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all ${viewMode === 'matrix' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-             >
-                <Users className="w-5 h-5" /> All Users
-             </button>
-             <button 
-              onClick={() => setViewMode("history")}
-              className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all ${viewMode === 'history' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-             >
-                <UserCheck className="w-5 h-5" /> User History
-             </button>
-             {isAdmin && (
-               <button 
-                onClick={() => setViewMode("config")}
-                className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all ${viewMode === 'config' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-               >
-                   <Settings className="w-5 h-5" /> Configure
-               </button>
-             )}
-          </div>
+        {/* Row 2: Logic Switchers */}
+        <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
+           <div className="flex items-center bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50 backdrop-blur-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
+              <button onClick={() => setViewMode("matrix")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'matrix' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
+                 <Users className="w-3.5 h-3.5" /> All Users
+              </button>
+              <button onClick={() => setViewMode("history")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'history' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
+                 <UserCheck className="w-3.5 h-3.5" /> User History
+              </button>
+              {isAdmin && (
+                <button onClick={() => setViewMode("config")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'config' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
+                    <Settings className="w-3.5 h-3.5" /> Config
+                </button>
+              )}
+           </div>
 
-          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200">
-             <Calendar className="w-4 h-4 text-slate-400 ml-3" />
-             <input 
-              type="date" 
-              value={startDate} 
-              onChange={(e) => {
-                 setStartDate(e.target.value);
-                 setEndDate(e.target.value);
-              }}
-              className="bg-transparent border-none focus:ring-0 font-bold text-slate-600 pr-3 py-2 cursor-pointer text-xs uppercase tracking-widest"
-             />
-          </div>
+           <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
+              <div className="flex items-center bg-indigo-50/50 p-1 rounded-2xl border border-indigo-100/50 w-full sm:w-auto">
+                {(["day", "week", "month", "custom"] as const).map((r) => (
+                  <button key={r} onClick={() => setTimeRange(r)} className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${timeRange === r ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'text-indigo-400 hover:text-indigo-700'}`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+
+              {/* Navigation Center */}
+              <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-inner w-full sm:w-auto justify-between sm:justify-center">
+                 {timeRange !== 'custom' ? (
+                   <>
+                     <button onClick={() => handleNavigate(-1)} className="p-2 hover:bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"><ChevronLeft className="w-5 h-5" /></button>
+                     <div className="relative flex flex-col items-center justify-center px-4 min-w-[140px] sm:min-w-[180px]">
+                        <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{timeRange} Frame</span>
+                        <div className="flex items-center gap-2">
+                           <Calendar className="w-3 h-3 text-indigo-400" />
+                           <span className="text-[11px] sm:text-[13px] font-black uppercase tracking-tight tabular-nums text-slate-800">
+                             {getPeriodLabel()}
+                           </span>
+                        </div>
+                        <input type="date" value={currentPivotDate} onChange={(e) => setCurrentPivotDate(e.target.value)} className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10" />
+                     </div>
+                     <button onClick={() => handleNavigate(1)} className="p-2 hover:bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"><ChevronRight className="w-5 h-5" /></button>
+                   </>
+                 ) : (
+                   <div className="flex items-center gap-2 px-2 py-0.5">
+                     <div className="flex flex-col items-start px-2 py-1 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition-all focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-50 shadow-sm">
+                       <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 ml-0.5">Start</p>
+                       <input type="date" value={customRangeStart || currentPivotDate} onChange={(e) => setCustomRangeStart(e.target.value)} className="bg-transparent border-none p-0 text-[10px] font-black text-slate-700 outline-none w-24" />
+                     </div>
+                     <ArrowRightLeft className="w-3 h-3 text-slate-300 shrink-0" />
+                     <div className="flex flex-col items-start px-2 py-1 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition-all focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-50 shadow-sm">
+                       <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 ml-0.5">End</p>
+                       <input type="date" value={customRangeEnd || currentPivotDate} onChange={(e) => setCustomRangeEnd(e.target.value)} className="bg-transparent border-none p-0 text-[10px] font-black text-slate-700 outline-none w-24" />
+                     </div>
+                   </div>
+                 )}
+              </div>
+           </div>
         </div>
       </div>
 
-      {/* Session Slider */}
       {machines.length > 0 ? (
-        <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex overflow-x-auto pb-6 pt-4 gap-4 sm:gap-6 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory">
            {machines.filter(m => m.p_start && m.p_end).map(m => {
              const config = sessionIcons[m.description] || sessionIcons.default;
-             const Icon = config.icon;
              const isSelected = selectedMachineId === m.id;
              return (
-               <button 
-                 key={m.id}
-                 onClick={() => setSelectedMachineId(m.id)}
-                 className={`flex-shrink-0 w-64 p-6 rounded-[2rem] border-2 transition-all duration-300 text-left relative overflow-hidden group ${
-                   isSelected 
-                   ? `bg-white shadow-2xl ${config.border} border-indigo-600` 
-                   : 'bg-white/50 border-transparent hover:border-slate-200 shadow-sm'
-                 }`}
-               >
-                 {isSelected && <div className={`absolute top-0 right-0 w-24 h-24 ${config.bg} rounded-full -mr-12 -mt-12 opacity-50`} />}
-                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-transform group-hover:-rotate-6 ${isSelected ? config.bg : 'bg-slate-100'}`}>
-                   <Icon className={`w-6 h-6 ${isSelected ? config.color : 'text-slate-400'}`} />
+               <button key={m.id} onClick={() => setSelectedMachineId(m.id)} className={`flex-shrink-0 w-52 sm:w-72 p-5 sm:p-8 rounded-[2.5rem] sm:rounded-[3rem] border-2 transition-all duration-500 text-left relative overflow-hidden group snap-center ${isSelected ? `bg-white shadow-2xl ${config.border} border-indigo-500 scale-105 z-10 ${config.shadow}` : 'bg-white/60 border-transparent hover:border-slate-200 shadow-sm'}`}>
+                 {isSelected && <div className={`absolute top-0 right-0 w-32 sm:w-40 h-32 sm:h-40 bg-gradient-to-br ${config.gradient} rounded-full -mr-16 sm:-mr-20 -mt-16 sm:-mt-20 opacity-10 blur-3xl`} />}
+                 <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center mb-4 sm:mb-5 shadow-lg group-hover:-rotate-12 transition-transform ${isSelected ? `bg-gradient-to-tr ${config.gradient}` : 'bg-slate-100'}`}><config.icon className={`w-5 h-5 sm:w-7 sm:h-7 ${isSelected ? 'text-white' : 'text-slate-400'}`} /></div>
+                 <h3 className={`font-black text-lg sm:text-xl tracking-tighter leading-none ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>{m.description}</h3>
+                 <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
+                   <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isSelected ? config.color : 'text-slate-300'}`} />
+                   <p className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-indigo-600' : 'text-slate-300'}`}>{formatRawTime(m.p_start)} - {formatRawTime(m.p_end)}</p>
                  </div>
-                 <h3 className={`font-black text-lg tracking-tight ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>{m.description}</h3>
-                 <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${isSelected ? 'text-indigo-600' : 'text-slate-300'}`}>
-                    {formatRawTime(m.p_start)} - {formatRawTime(m.p_end)}
-                 </p>
-                 {isSelected && <div className="absolute bottom-4 right-4 w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
+                 {isSelected && <div className={`absolute top-6 sm:top-10 right-6 sm:right-10 w-2 h-2 ${config.accent} rounded-full animate-ping opacity-75`} />}
                </button>
              );
            })}
         </div>
-      ) : (
-        <div className="p-12 bg-white rounded-[3rem] border-2 border-dashed border-slate-200 text-center space-y-4">
-           <AlertCircle className="w-12 h-12 text-slate-300 mx-auto" />
-           <div>
-             <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest leading-none">No Sessions Found</h3>
-             <p className="text-slate-400 font-bold text-sm mt-2">Please ensure the attendance machines are seeded in the database.</p>
-           </div>
-        </div>
-      )}
+      ) : null}
 
       {loading ? (
-        <div className="h-96 flex flex-col items-center justify-center gap-4 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200">
-           <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
-           <p className="font-black text-indigo-900/50 uppercase tracking-widest text-xs">Syncing Biometric Logs...</p>
+        <div className="h-[500px] flex flex-col items-center justify-center gap-4 bg-white/30 backdrop-blur-sm rounded-[4rem] border-2 border-dashed border-slate-200">
+           <div className="relative">
+             <Loader2 className="w-20 h-20 text-indigo-600 animate-spin opacity-20" />
+             <Activity className="w-10 h-10 text-indigo-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+           </div>
+           <p className="font-outfit font-black text-indigo-900 uppercase tracking-[0.4em] text-sm animate-pulse">Syncing Biometrics</p>
         </div>
       ) : (
-        <div className="grid gap-8">
+        <div className="grid gap-12 w-full">
            {viewMode === "matrix" ? (
-             /* Matrix Table View */
-             <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden">
-                <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                   <div className="relative flex-1 max-w-md">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input 
-                        type="text" 
-                        placeholder="Search active session..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-50 outline-none font-bold"
-                      />
+             <div className="bg-white/80 backdrop-blur-xl rounded-[3rem] sm:rounded-[4rem] border border-white shadow-[0_40px_80px_-24px_rgba(0,0,0,0.08)] overflow-hidden w-full">
+                <div className="p-6 sm:p-10 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between bg-slate-50/30 gap-6">
+                   <div className="relative flex-1 max-w-3xl group/search w-full">
+                      <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 sm:w-6 sm:h-6 text-slate-300 transition-colors group-focus-within/search:text-indigo-600" />
+                      <input type="text" placeholder="Search team member..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-14 sm:pl-16 pr-8 py-4 sm:py-5 bg-white/50 border-2 border-slate-100 rounded-2xl sm:rounded-3xl focus:ring-[12px] focus:ring-indigo-100/50 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all shadow-inner placeholder:text-slate-300 text-sm sm:text-base" />
+                      <div className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none border-2 border-transparent group-focus-within/search:border-indigo-500/20 transition-all" />
                    </div>
-                   {activeMachine && (
-                     <div className="flex items-center gap-3 bg-indigo-50 px-6 py-3 rounded-2xl border border-indigo-100">
-                        <Monitor className="w-5 h-5 text-indigo-600" />
-                        <span className="text-xs font-black text-indigo-900 uppercase tracking-widest">Active: {activeMachine.description}</span>
-                     </div>
-                   )}
+                    {activeMachine && (
+                      <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
+                        <div className="flex items-center gap-4 bg-white px-6 sm:px-8 py-3 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] border border-indigo-100 shadow-sm group hover:border-indigo-400 transition-all flex-1 sm:flex-none">
+                           <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-indigo-50 ${sessionIcons[activeMachine.description]?.glow}`}>
+                              <Monitor className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
+                           </div>
+                           <div className="flex-1">
+                              <p className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Current Session</p>
+                              <span className="text-xs sm:text-sm font-black text-indigo-900 uppercase tracking-tight truncate block max-w-[150px] sm:max-w-none">{activeMachine.description}</span>
+                           </div>
+                        </div>
+
+                        <button onClick={handleExportCSV} className="flex items-center gap-3 bg-slate-900 hover:bg-slate-800 text-white px-6 sm:px-8 py-4 sm:py-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-xl shadow-slate-200 transition-all active:scale-95 group/export">
+                          <Download className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover/export:text-white transition-colors" />
+                          <span className="text-[10px] sm:text-[12px] font-black uppercase tracking-widest">Export Ledger</span>
+                        </button>
+                      </div>
+                    )}
                 </div>
 
-                <div className="overflow-x-auto">
-                   <table className="w-full text-left table-auto border-collapse">
-                      <thead className="bg-slate-50 border-b border-slate-200">
-                         <tr>
-                            <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">User Details</th>
-                             <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">ID</th>
-                            <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Check-in Date</th>
-                            <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Time</th>
-                            <th className="px-6 py-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                         {(() => {
-                            const rows: any[] = [];
-                            if (!activeMachine) return null;
+                <div className="p-2 sm:p-6">
+                   {timeRange === 'day' ? (
+                     <div className="overflow-x-auto custom-attendance-scrollbar pb-4">
+                        <table className="w-full text-left border-separate border-spacing-y-3 sm:border-spacing-y-4 min-w-[800px]">
+                         <thead>
+                            <tr>
+                               <th className="px-4 sm:px-8 py-4 text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Member Portfolio</th>
+                               <th className="px-4 sm:px-8 py-4 text-center text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Biometric ID</th>
+                               <th className="px-4 sm:px-8 py-4 text-center text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch Date</th>
+                               <th className="px-4 sm:px-8 py-4 text-center text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Log Time</th>
+                               <th className="px-4 sm:px-8 py-4 text-center text-[9px] sm:text-[11px] font-black text-indigo-400 uppercase tracking-[0.2em]">Verdict</th>
+                            </tr>
+                         </thead>
+                        <tbody>
+                           {(() => {
+                              const rows: any[] = [];
+                              if (!activeMachine) return null;
+                              filteredUsers.forEach(user => {
+                                 Object.entries(user.dates).forEach(([date, sessions]: [string, any]) => {
+                                    const logs = (sessions[activeMachine.description] || []).sort((a: any, b: any) => new Date(a.check_time).getTime() - new Date(b.check_time).getTime());
+                                    const status = getStatus(logs, activeMachine);
+                                    rows.push({ user, date, logs, status });
+                                 });
+                              });
+                              const sortedRows = rows.sort((a, b) => b.date.localeCompare(a.date) || a.user.full_name.localeCompare(b.user.full_name));
+                              if (sortedRows.length === 0) return <tr><td colSpan={5} className="py-32 text-center text-slate-300 font-outfit font-black uppercase text-sm italic opacity-40">No Log Activity Found</td></tr>;
+                              return sortedRows.map((row) => (
+                                 <tr key={`${row.user.email}-${row.date}`} className="bg-white rounded-2xl shadow-sm hover:shadow-lg hover:scale-[1.005] transition-all cursor-pointer group" onClick={() => { setSelectedUserEmail(row.user.email); setViewMode("history"); }}>
+                                    <td className="px-6 py-2 first:rounded-l-2xl">
+                                       <div className="flex items-center gap-3">
+                                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white text-[10px] shadow-lg bg-gradient-to-br ${sessionIcons[activeMachine?.description]?.gradient || 'from-slate-400 to-slate-500'} group-hover:rotate-6 transition-transform`}>{row.user.full_name?.[0]?.toUpperCase()}</div>
+                                          <div>
+                                             <div className="font-black text-slate-800 text-[15px] leading-tight tracking-tight">{row.user.full_name}</div>
+                                             <div className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">{row.user.email}</div>
+                                          </div>
+                                       </div>
+                                    </td>
+                                    <td className="px-6 py-2 text-center text-[10px] font-black text-slate-400 tabular-nums">
+                                      <span className="bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">#{row.logs[0]?.zk_user_id || "--"}</span>
+                                    </td>
+                                    <td className="px-6 py-2 text-center text-xs font-bold text-slate-600 tabular-nums">{new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                    <td className="px-6 py-2 text-center text-xs font-black text-indigo-600 tabular-nums">{row.logs.length > 0 ? formatRawTime(row.logs[0].check_time) : "--:--"}</td>
+                                    <td className="px-6 py-2 last:rounded-r-2xl">
+                                       <div className="flex justify-center">
+                                          {row.status === 'present' ? (
+                                            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase border border-emerald-100 shadow-sm"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]" /> P</div>
+                                          ) : row.status === 'late' ? (
+                                            <div className="flex items-center gap-1.5 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase border border-amber-100 shadow-sm"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#f59e0b]" /> L</div>
+                                          ) : (
+                                            <div className="flex items-center gap-1.5 bg-rose-50 text-rose-500 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase border border-rose-100"><span className="w-1.5 h-1.5 bg-rose-400 rounded-full opacity-50" /> A</div>
+                                          )}
+                                       </div>
+                                    </td>
+                                 </tr>
+                              ));
+                           })()}
+                        </tbody>
+                       </table>
+                     </div>
+                   ) : (
+                      <div className="rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto custom-attendance-scrollbar">
+                      <table className="text-left border-collapse" style={{ minWidth: `${140 + (getDateColumns().length * 45)}px` }}>
+                         <thead>
+                            <tr className="bg-slate-900 text-white">
+                               <th className="px-4 sm:px-6 py-4 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] sticky left-0 bg-slate-900 z-20 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[120px] sm:min-w-[180px]">Portfolio</th>
+                               {getDateColumns().map(date => (
+                                 <th key={date} className="px-1 sm:px-4 py-4 text-center min-w-[40px] sm:min-w-[50px] border-r border-white/5">
+                                   <div className="text-[9px] sm:text-[11px] font-black leading-none mb-1">{new Date(date).toLocaleDateString('en-IN', { day: '2-digit' })}</div>
+                                   <div className="text-[7px] sm:text-[8px] font-bold text-white/40 uppercase tracking-[0.1em]">{new Date(date).toLocaleDateString('en-IN', { weekday: 'short' }).charAt(0)}</div>
+                                 </th>
+                               ))}
+                               <th className="px-2 sm:px-4 py-4 text-center text-[8px] sm:text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#10b981]">P</th>
+                               <th className="px-2 sm:px-4 py-4 text-center text-[8px] sm:text-[9px] font-black text-amber-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#fbbf24]">L</th>
+                               <th className="px-2 sm:px-4 py-4 text-center text-[8px] sm:text-[9px] font-black text-rose-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#f43f5e]">A</th>
+                               <th className="px-2 sm:px-4 py-4 text-center text-[8px] sm:text-[9px] font-black text-indigo-400 uppercase tracking-widest bg-slate-950 shadow-[inset_0_2px_0_#6366f1]">%</th>
+                            </tr>
+                         </thead>
+                        <tbody className="divide-y divide-slate-200">
+                           {filteredUsers.map((user, uIdx) => {
+                              const datesInRange = getDateColumns();
+                              let pCount = 0, lCount = 0, aCount = 0;
+                              return (
+                                <tr key={user.email} className={`transition-colors group ${uIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-indigo-50/30`}>
+                                  <td className={`px-6 py-2 sticky left-0 z-10 border-r border-slate-100 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.05)] ${uIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} group-hover:bg-indigo-50`}>
+                                    <div className="font-black text-slate-800 text-[13px] tracking-tighter leading-none mb-1 truncate max-w-[150px]">{user.full_name}</div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[9px] font-black text-slate-400 tabular-nums">#{user.dates[Object.keys(user.dates)[0]]?.[activeMachine?.description]?.[0]?.zk_user_id || '--'}</span>
+                                      <span className="w-0.5 h-0.5 rounded-full bg-slate-200" />
+                                      <span className="text-[8px] font-bold text-slate-400 truncate max-w-[80px]">{user.email}</span>
+                                    </div>
+                                  </td>
+                                  {datesInRange.map(date => {
+                                    const logs = (user.dates[date]?.[activeMachine?.description] || []).sort((a: any, b: any) => new Date(a.check_time).getTime() - new Date(b.check_time).getTime());
+                                    const status = activeMachine ? getStatus(logs, activeMachine) : 'absent';
+                                    if (status === 'present') pCount++;
+                                    else if (status === 'late') lCount++;
+                                    else aCount++;
 
-                            filteredUsers.forEach(user => {
-                               Object.entries(user.dates).forEach(([date, sessions]: [string, any]) => {
-                                  // CRITICAL: Sort logs by check_time to ensure [0] is ALWAYS the earliest punch
-                                  const logs = (sessions[activeMachine.description] || []).sort((a: any, b: any) => 
-                                     new Date(a.check_time).getTime() - new Date(b.check_time).getTime()
-                                  );
-
-                                  const status = getStatus(logs, activeMachine);
-                                  rows.push({ user, date, logs, status });
-                               });
-                            });
-
-                            const sortedRows = rows.sort((a, b) => b.date.localeCompare(a.date) || a.user.full_name.localeCompare(b.user.full_name));
-
-                            if (sortedRows.length === 0) {
-                               return (
-                                  <tr>
-                                     <td colSpan={4} className="px-8 py-20 text-center">
-                                        <Users className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                        <p className="font-black text-slate-300 uppercase tracking-widest text-[10px]">No logs found in this period</p>
-                                     </td>
-                                  </tr>
-                               );
-                            }
-
-                            return sortedRows.map((row, idx) => (
-                               <tr key={`${row.user.email}-${row.date}`} className="hover:bg-slate-50/80 transition-colors cursor-pointer group" onClick={() => {
-                                  setSelectedUserEmail(row.user.email);
-                                  setViewMode("history");
-                               }}>
-                                  <td className="px-6 py-3">
-                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-white text-[10px] shadow-sm bg-gradient-to-br ${sessionIcons[activeMachine?.description]?.gradient || 'from-slate-400 to-slate-500'}`}>
-                                           {row.user.full_name?.[0]?.toUpperCase()}
-                                        </div>
-                                        <div>
-                                           <div className="font-black text-slate-800 text-sm leading-none">{row.user.full_name}</div>
-                                           <div className="text-slate-400 font-bold text-[10px] mt-1">{row.user.email}</div>
-                                        </div>
+                                    return (
+                                      <td key={date} className="px-1 py-1.5 border-r border-slate-100/50 text-center">
+                                         {logs.length > 0 ? (
+                                           <div className={`w-7 h-7 mx-auto rounded-xl flex items-center justify-center font-black text-[9px] transition-all transform hover:scale-125 hover:z-20 shadow-sm ${
+                                              status === 'present' ? 'bg-emerald-500 text-white shadow-emerald-200' : 
+                                              status === 'late' ? 'bg-amber-400 text-white shadow-amber-200' : 
+                                              'bg-rose-400 text-white'
+                                           }`}>
+                                             {status === 'present' ? 'P' : status === 'late' ? 'L' : 'A'}
+                                           </div>
+                                         ) : <div className="w-1 h-1 mx-auto bg-slate-200 rounded-full opacity-20" />}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="px-4 py-2 text-center bg-emerald-500/5 font-black text-emerald-600 text-[11px] border-r border-slate-100 shadow-[inset_0_-2px_0_#10b98122]">{pCount}</td>
+                                  <td className="px-4 py-2 text-center bg-amber-500/5 font-black text-amber-600 text-[11px] border-r border-slate-100 shadow-[inset_0_-2px_0_#fbbf2422]">{lCount}</td>
+                                  <td className="px-4 py-2 text-center bg-rose-500/5 font-black text-rose-500 text-[11px] border-r border-slate-100 shadow-[inset_0_-2px_0_#f43f5e22]">{aCount}</td>
+                                  <td className="px-4 py-2 text-center bg-indigo-500/5 shadow-[inset_0_-2px_0_#6366f122]">
+                                     <div className="inline-flex flex-col items-center">
+                                       <span className="text-[11px] font-black text-indigo-600 leading-none">{Math.round(((pCount + lCount)/datesInRange.length)*100)}%</span>
                                      </div>
                                   </td>
-                                  <td className="px-6 py-3 text-xs font-black text-slate-400 tabular-nums">
-                                      {row.logs[0]?.zk_user_id || "--"}
-                                   </td>
-                                   <td className="px-6 py-3 text-sm font-bold text-slate-600 tabular-nums">
-                                     {new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                  </td>
-                                  <td className="px-6 py-3 text-sm font-black text-indigo-600 tabular-nums">
-                                     {row.logs.length > 0 ? formatRawTime(row.logs[0].check_time) : "--:--"}
-                                  </td>
-                                  <td className="px-6 py-3 text-center">
-                                     <div className="flex justify-center">
-                                        {row.status === 'present' ? (
-                                           <span className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center font-black text-xs shadow-lg shadow-emerald-100">P</span>
-                                        ) : row.status === 'late' ? (
-                                           <span className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-black text-xs shadow-lg shadow-amber-100">L</span>
-                                        ) : (
-                                           <span className="w-8 h-8 rounded-lg bg-slate-200 text-slate-500 flex items-center justify-center font-black text-xs">A</span>
-                                        )}
-                                     </div>
-                                  </td>
-                               </tr>
-                            ));
-                         })()}
-                      </tbody>
-                   </table>
+                                </tr>
+                              );
+                           })}
+                        </tbody>
+                      </table>
+                     </div>
+                   )}
                 </div>
              </div>
            ) : viewMode === "config" ? (
-             /* Admin Configuration Hub */
-             <div className="space-y-8 animate-in zoom-in-95 duration-300">
-                <div className="p-10 bg-indigo-900 rounded-[3rem] text-white shadow-2xl relative overflow-hidden">
-                   <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                   <div className="relative z-10">
-                      <h3 className="text-4xl font-black tracking-tight font-outfit">Session Configuration Hub</h3>
-                      <p className="text-indigo-200 font-bold mt-2 text-lg">Define session names, machine IDs, and status timing rules.</p>
+             <div className="space-y-8 animate-in zoom-in-95 duration-500">
+                <div className="p-6 sm:p-10 bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 rounded-[2.5rem] sm:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full -mr-[250px] -mt-[250px] blur-[120px] group-hover:scale-110 transition-transform duration-1000"></div>
+                   <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 sm:gap-10">
+                      <div>
+                        <h3 className="text-3xl sm:text-5xl font-black tracking-tighter font-outfit mb-2 sm:mb-4">Command Center</h3>
+                        <p className="text-indigo-200 font-bold text-sm sm:text-lg opacity-80 leading-tight max-w-xl">Define session windows, telemetry rules, and biometric status windows.</p>
+                      </div>
+                      <div className="flex gap-4 w-full md:w-auto">
+                        <div className="flex-1 md:flex-none bg-white/10 px-5 py-3 rounded-2xl backdrop-blur-md border border-white/10 text-center">
+                          <div className="text-xl sm:text-2xl font-black leading-none mb-1">{machines.length}</div>
+                          <div className="text-[8px] font-black uppercase tracking-widest opacity-40">Devices</div>
+                        </div>
+                        <div className="flex-1 md:flex-none bg-indigo-600 px-5 py-3 rounded-2xl backdrop-blur-md border border-indigo-400 text-center shadow-2xl shadow-indigo-500/20">
+                          <div className="text-xl sm:text-2xl font-black leading-none mb-1">{machines.filter(m => m.p_start).length}</div>
+                          <div className="text-[8px] font-black uppercase tracking-widest opacity-60">Configs</div>
+                        </div>
+                      </div>
                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                   {/* Add New Session Card */}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
                    {!isAdding ? (
-                     <button 
-                       onClick={() => setIsAdding(true)}
-                       className="bg-white rounded-[3rem] border-4 border-dashed border-slate-100 p-10 flex flex-col items-center justify-center gap-6 hover:border-indigo-300 hover:bg-indigo-50/10 transition-all group min-h-[500px]"
-                     >
-                        <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                           <Plus className="w-10 h-10 text-indigo-600" />
-                        </div>
+                     <button onClick={() => setIsAdding(true)} className="bg-white/50 backdrop-blur-sm rounded-[2.5rem] sm:rounded-[3rem] border-4 border-dashed border-slate-200 p-6 sm:p-10 flex flex-col items-center justify-center gap-4 hover:border-indigo-400 hover:bg-white hover:shadow-2xl transition-all group min-h-[250px] sm:min-h-[400px]">
+                        <div className="w-14 h-14 sm:w-20 bg-indigo-50 rounded-2xl flex items-center justify-center group-hover:rotate-12 transition-transform shadow-xl shadow-indigo-100/50"><Plus className="w-8 h-8 text-indigo-600" /></div>
                         <div className="text-center">
-                           <h4 className="font-black text-slate-800 text-2xl tracking-tight">Add New Session</h4>
-                           <p className="text-sm font-bold text-slate-400 mt-2">Connect a new machine or create a new session entry.</p>
+                           <h4 className="font-black text-slate-800 text-xl sm:text-2xl tracking-tighter">Deploy New Session</h4>
+                           <p className="text-xs sm:text-sm font-bold text-slate-400 mt-1 max-w-[240px]">New hardware mapping or virtual session container.</p>
                         </div>
                      </button>
                    ) : (
-                     <div className="bg-white rounded-[3rem] border-4 border-indigo-100 shadow-2xl p-10 space-y-8 animate-in zoom-in-95 duration-300">
-                        <div className="flex items-center justify-between pb-4 border-b border-slate-50">
-                           <h4 className="font-black text-indigo-900 text-2xl tracking-tight">New Configuration</h4>
-                           <button onClick={() => setIsAdding(false)} className="text-slate-400 hover:text-rose-500 font-black uppercase text-[10px] tracking-widest">Cancel</button>
+                     <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] border border-slate-200 shadow-[0_40px_80px_-20px_rgba(79,70,229,0.15)] p-6 sm:p-10 space-y-6 animate-in zoom-in-95 duration-300">
+                        <div className="flex items-center justify-between">
+                           <h4 className="font-black text-indigo-900 text-2xl tracking-tighter">New Engine Config</h4>
+                           <button onClick={() => setIsAdding(false)} className="p-2.5 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl transition-all"><XCircle className="w-5 h-5" /></button>
                         </div>
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                            <div className="space-y-2">
-                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Attendance Type (e.g. Nagar Sankirtan)</label>
-                              <input 
-                                type="text" 
-                                value={newMachine.description}
-                                onChange={(e) => setNewMachine({...newMachine, description: e.target.value})}
-                                className="w-full bg-slate-50 border-2 border-transparent px-6 py-4 rounded-2xl focus:bg-white focus:border-indigo-100 outline-none font-bold text-slate-800"
-                                placeholder="Enter session name..."
-                              />
-                           </div>
-                           <div className="space-y-2">
-                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Authorized Machine (SN)</label>
-                              <select 
-                                value={newMachine.serial_number}
-                                onChange={(e) => setNewMachine({...newMachine, serial_number: e.target.value})}
-                                className="w-full bg-slate-50 border-2 border-transparent px-6 py-4 rounded-2xl focus:bg-white focus:border-indigo-100 outline-none font-bold text-slate-800 appearance-none transition-all"
-                              >
-                                <option value="" className="text-slate-400">Select Machine...</option>
-                                {machines.map(m => (
-                                  <option key={m.id} value={m.serial_number}>
-                                    {m.serial_number} {m.description ? `(${m.description})` : ""}
-                                  </option>
-                                ))}
-                                {machines.length === 0 && (
-                                  <option value="" disabled>No devices authorized in Hub yet</option>
-                                )}
-                              </select>
-                           </div>
-
-                           <div className="space-y-4 pt-4 border-t border-slate-50">
-                              <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2">
-                                <Clock className="w-3 h-3" /> Attendance Status Timing Rules
-                              </h5>
-                              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                                 <div className="space-y-2">
-                                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center block">Present Start (P)</label>
-                                   <input type="time" value={newMachine.p_start} onChange={(e) => setNewMachine({...newMachine, p_start: e.target.value})} className="w-full bg-slate-50 border-2 border-transparent px-4 py-3 rounded-xl font-bold" />
-                                 </div>
-                                 <div className="space-y-2">
-                                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center block">Present End (P)</label>
-                                   <input type="time" value={newMachine.p_end} onChange={(e) => setNewMachine({...newMachine, p_end: e.target.value})} className="w-full bg-slate-50 border-2 border-transparent px-4 py-3 rounded-xl font-bold" />
-                                 </div>
-                                 <div className="space-y-2">
-                                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center block">Late Start (L)</label>
-                                   <input type="time" value={newMachine.l_start} onChange={(e) => setNewMachine({...newMachine, l_start: e.target.value})} className="w-full bg-slate-50 border-2 border-transparent px-4 py-3 rounded-xl font-bold" />
-                                 </div>
-                                 <div className="space-y-2">
-                                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center block">Late End (L)</label>
-                                   <input type="time" value={newMachine.l_end} onChange={(e) => setNewMachine({...newMachine, l_end: e.target.value})} className="w-full bg-slate-50 border-2 border-transparent px-4 py-3 rounded-xl font-bold" />
-                                 </div>
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Attendance Target Name</label>
+                              <div className="relative">
+                                <Star className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
+                                <input type="text" value={newMachine.description} onChange={(e) => setNewMachine({...newMachine, description: e.target.value})} className="w-full bg-slate-50/50 border border-slate-200 pl-16 pr-8 py-5 rounded-3xl outline-none font-bold text-slate-800 focus:bg-white focus:ring-8 focus:ring-indigo-50 transition-all shadow-inner" placeholder="e.g. Mangal Aarti Main Gate" />
                               </div>
                            </div>
-                           <button 
-                             onClick={handleAddMachine}
-                             className="w-full bg-indigo-600 hover:bg-slate-900 text-white font-black py-5 rounded-[2rem] shadow-xl shadow-indigo-100 transition-all uppercase tracking-widest text-xs mt-4"
-                           >
-                             Save Configuration
-                           </button>
+                           <div className="space-y-3">
+                              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-6">Biometric Node (S/N)</label>
+                              <div className="relative">
+                                <HardDrive className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <select value={newMachine.serial_number} onChange={(e) => setNewMachine({...newMachine, serial_number: e.target.value})} className="w-full bg-slate-50/50 border border-slate-200 pl-16 pr-10 py-5 rounded-3xl outline-none font-bold text-slate-800 appearance-none focus:bg-white transition-all shadow-inner">
+                                  <option value="">Select Target Device...</option>
+                                  {machines.map(m => <option key={m.id} value={m.serial_number}>{m.serial_number} {m.description ? `(${m.description})` : ""}</option>)}
+                                </select>
+                                <ChevronRight className="absolute right-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 rotate-90" />
+                              </div>
+                           </div>
+                           <div className="space-y-6 pt-6 border-t border-slate-50">
+                              <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2"><Clock className="w-4 h-4" /> Telemetry Window Constraints</h5>
+                              <div className="grid grid-cols-2 gap-6">
+                                 <div className="space-y-2"><label className="text-[9px] font-black text-emerald-600/50 uppercase tracking-widest ml-4">Present Range</label><div className="flex gap-2"><input type="time" value={newMachine.p_start} onChange={(e) => setNewMachine({...newMachine, p_start: e.target.value})} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /><input type="time" value={newMachine.p_end} onChange={(e) => setNewMachine({...newMachine, p_end: e.target.value})} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /></div></div>
+                                 <div className="space-y-2"><label className="text-[9px] font-black text-amber-600/50 uppercase tracking-widest ml-4">Late Range</label><div className="flex gap-2"><input type="time" value={newMachine.l_start} onChange={(e) => setNewMachine({...newMachine, l_start: e.target.value})} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /><input type="time" value={newMachine.l_end} onChange={(e) => setNewMachine({...newMachine, l_end: e.target.value})} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /></div></div>
+                              </div>
+                           </div>
+                           <button onClick={handleAddMachine} className="w-full bg-indigo-600 hover:bg-slate-900 text-white font-black py-6 rounded-[2.5rem] shadow-[0_20px_40px_-10px_rgba(79,70,229,0.3)] transition-all uppercase tracking-widest text-xs mt-4">Save Engine Config</button>
                         </div>
                      </div>
                    )}
-
-                    {machines.filter(m => m.p_start && m.p_end).map((m, idx) => (
-                       <SessionCard 
-                        key={m.id} 
-                        m={m} 
-                        idx={idx} 
-                        sessionIcons={sessionIcons} 
-                        handleDeleteMachine={handleDeleteMachine} 
-                        handleUpdateMachine={handleUpdateMachine} 
-                       />
-                    ))}
+                   {machines.filter(m => m.p_start && m.p_end).map((m, idx) => <SessionCard key={m.id} m={m} idx={idx} sessionIcons={sessionIcons} handleDeleteMachine={handleDeleteMachine} handleUpdateMachine={handleUpdateMachine} />)}
                 </div>
              </div>
            ) : (
-             /* History View */
-             <div className="space-y-8">
-                <div className="bg-gradient-to-br from-indigo-900 to-slate-950 p-10 rounded-[3rem] text-white shadow-2xl flex flex-col md:flex-row md:items-center justify-between overflow-hidden relative border-4 border-white/5">
-                   <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48 blur-3xl"></div>
-                   <div className="relative z-10 space-y-4">
-                      <button onClick={() => setViewMode("matrix")} className="flex items-center gap-2 text-indigo-300 font-black uppercase tracking-[0.2em] text-[10px] bg-white/5 px-4 py-2 rounded-full hover:bg-white/10 transition-colors">
-                         <ChevronLeft className="w-4 h-4" /> Back to Matrix
-                      </button>
-                      <div>
-                        <h3 className="text-4xl sm:text-5xl font-black tracking-tight font-outfit truncate max-w-lg">{displayUser?.full_name}</h3>
-                        <p className="text-indigo-300 font-bold text-lg mt-1 tracking-tight">{displayUser?.email}</p>
-                      </div>
-                   </div>
-                   <div className="relative z-10 flex gap-8 sm:gap-12 mt-8 md:mt-0">
-                      <div className="text-center">
-                         <div className="text-4xl sm:text-5xl font-black mb-1 font-outfit">94%</div>
-                         <div className="text-[9px] uppercase font-black text-indigo-300 tracking-[0.2em]">Overall Present</div>
-                      </div>
-                      <div className="text-center border-l border-white/10 pl-8 sm:pl-12">
-                         <div className="text-4xl sm:text-5xl font-black mb-1 font-outfit">
-                           {Object.keys(displayUser?.dates || {}).length}
-                         </div>
-                         <div className="text-[9px] uppercase font-black text-indigo-300 tracking-[0.2em]">Days Filtered</div>
-                      </div>
-                   </div>
-                </div>
+             <div className="space-y-12 animate-in slide-in-from-right-10 duration-700">
+                 <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-8 sm:p-16 rounded-[3rem] sm:rounded-[4.5rem] text-white shadow-2xl flex flex-col xl:flex-row xl:items-center justify-between overflow-hidden relative border-4 sm:border-8 border-white/5 group gap-10">
+                    <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-white/5 rounded-full -mr-72 -mt-72 blur-[120px] transition-transform duration-1000 group-hover:scale-125"></div>
+                    <div className="relative z-10 space-y-4 sm:space-y-6">
+                       <button onClick={() => setViewMode("matrix")} className="flex items-center gap-3 text-indigo-300 font-black uppercase tracking-[0.3em] text-[9px] sm:text-[10px] bg-white/5 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all transform hover:-translate-x-2">
+                          <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" /> Back to Matrix
+                       </button>
+                       <div>
+                         <h3 className="text-4xl sm:text-7xl font-black tracking-tighter font-outfit truncate max-w-2xl leading-none">{displayUser?.full_name}</h3>
+                         <p className="text-indigo-300 font-bold text-lg sm:text-xl mt-2 sm:mt-3 opacity-60 tracking-tight truncate">{displayUser?.email}</p>
+                       </div>
+                    </div>
+                    <div className="relative z-10 flex gap-10 sm:gap-20">
+                       <div className="text-center group/stat">
+                          <div className="text-4xl sm:text-7xl font-black mb-1 sm:mb-2 font-outfit text-emerald-400 drop-shadow-[0_0_15px_#10b98155] transition-transform group-hover/stat:scale-110">94%</div>
+                          <div className="text-[8px] sm:text-[10px] uppercase font-black text-indigo-300 tracking-[0.3em]">Health Score</div>
+                       </div>
+                       <div className="text-center border-l border-white/10 pl-10 sm:pl-20 group/stat">
+                          <div className="text-4xl sm:text-7xl font-black mb-1 sm:mb-2 font-outfit transition-transform group-hover/stat:scale-110">
+                            {Object.keys(displayUser?.dates || {}).length}
+                          </div>
+                          <div className="text-[8px] sm:text-[10px] uppercase font-black text-indigo-300 tracking-[0.3em]">Logs Scanned</div>
+                       </div>
+                    </div>
+                 </div>
 
-                <div className="grid grid-cols-1 gap-8">
-                   {machines.filter(m => !selectedMachineId || m.id === selectedMachineId).map(m => (
-                      <div key={m.id} className="bg-white rounded-[3rem] border-2 border-slate-100 shadow-xl p-10 space-y-8">
-                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 border-b border-slate-100 pb-8">
-                            <div className="flex items-center gap-5">
-                               <div className={`w-14 h-14 ${sessionIcons[m.description]?.bg || 'bg-slate-50'} rounded-2xl flex items-center justify-center`}>
-                                  <Monitor className={`w-7 h-7 ${sessionIcons[m.description]?.color || 'text-slate-400'}`} />
+                <div className="grid grid-cols-1 gap-12">
+                    {machines.filter(m => !selectedMachineId || m.id === selectedMachineId).map(m => (
+                       <div key={m.id} className="bg-white rounded-[2.5rem] sm:rounded-[4rem] border border-slate-100 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] p-6 sm:p-12 space-y-8 sm:space-y-10 group">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 sm:gap-8 border-b border-slate-50 pb-8 sm:pb-10">
+                             <div className="flex items-center gap-4 sm:gap-8">
+                                <div className={`w-14 h-14 sm:w-20 sm:h-20 ${sessionIcons[m.description]?.bg || 'bg-slate-50'} rounded-[1.2rem] sm:rounded-[2.5rem] flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform shrink-0`}>
+                                   <Monitor className={`w-7 h-7 sm:w-10 sm:h-10 ${sessionIcons[m.description]?.color || 'text-slate-400'}`} />
                                 </div>
-                               <div>
-                                  <h4 className="font-black text-slate-800 text-2xl tracking-tight">{m.description} Trace</h4>
-                                  <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mt-0.5">Present: {formatRawTime(m.p_start)} — {formatRawTime(m.p_end)} | Late: {formatRawTime(m.l_start)} — {formatRawTime(m.l_end)}</p>
+                                <div>
+                                   <h4 className="font-black text-slate-800 text-xl sm:text-3xl tracking-tighter leading-none mb-2">{m.description} Telemetry</h4>
+                                  <div className="flex gap-4">
+                                     <span className="text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border border-emerald-100">Present {formatRawTime(m.p_start)}</span>
+                                     <span className="text-amber-600 bg-amber-50 px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border border-amber-100">Late {formatRawTime(m.l_start)}</span>
+                                  </div>
                                </div>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                               <ArrowRightLeft className="w-6 h-6 text-slate-300" />
                             </div>
                          </div>
 
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {Object.entries(displayUser?.dates || {}).sort().reverse().map(([date, sessions]: any) => {
-                               const logs = sessions[m.description] || [];
-                               const status = getStatus(logs, m);
-                               return (
-                                  <div key={date} className="group p-6 rounded-[2rem] border-2 border-slate-50 bg-slate-50/30 hover:bg-white hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
-                                     <div className={`absolute top-0 left-0 w-1.5 h-full ${status === 'present' ? 'bg-emerald-500' : status === 'late' ? 'bg-amber-500' : 'bg-rose-400 opacity-20'}`}></div>
-                                     <div className="space-y-4">
-                                        <div className="flex justify-between items-start">
-                                           <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                              {new Date(date).toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'short' })}
-                                           </div>
-                                           <div className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                                              status === 'present' ? 'bg-emerald-50 text-emerald-600' :
-                                              status === 'late' ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-400'
-                                           }`}>
-                                              {status}
-                                           </div>
-                                        </div>
-                                        <div className="font-black text-2xl text-slate-800 font-outfit">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6">
+                             {Object.entries(displayUser?.dates || {}).sort().reverse().map(([date, sessions]: any) => {
+                                const logs = sessions[m.description] || [];
+                                const status = getStatus(logs, m);
+                                const config = sessionIcons[m.description] || sessionIcons.default;
+                                return (
+                                   <div key={date} className="group/day p-6 sm:p-8 rounded-[2rem] sm:rounded-[3rem] border border-slate-50 bg-slate-50/50 hover:bg-white hover:shadow-2xl transition-all duration-500 relative overflow-hidden">
+                                      <div className={`absolute top-0 left-0 w-1.5 sm:w-2 h-full ${status === 'present' ? 'bg-emerald-500' : status === 'late' ? 'bg-amber-400' : 'bg-rose-400 opacity-20'}`}></div>
+                                      <div className="space-y-4 sm:space-y-6">
+                                         <div className="flex justify-between items-start">
+                                            <div className="text-[10px] sm:text-[12px] font-black text-slate-400 uppercase tracking-widest">
+                                               {new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}<br/>
+                                               <span className="text-[8px] sm:text-[10px] opacity-60">{new Date(date).toLocaleDateString('en-US', { weekday: 'long' })}</span>
+                                            </div>
+                                            <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl border ${
+                                               status === 'present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                               status === 'late' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-400 border-rose-100'
+                                            }`}>
+                                               <config.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                            </div>
+                                         </div>
+                                         <div className="font-black text-3xl sm:text-4xl text-slate-800 font-outfit tracking-tighter leading-none mt-2 sm:mt-4">
                                            {logs.length > 0 ? (
                                              formatRawTime(logs[0].check_time)
                                            ) : (
-                                             <span className="text-slate-300">--:--</span>
+                                             <span className="text-slate-200">--:--</span>
                                            )}
+                                        </div>
+                                        <div className={`text-[10px] font-black uppercase tracking-widest ${status === 'present' ? 'text-emerald-600' : status === 'late' ? 'text-amber-500' : 'text-slate-300'}`}>
+                                          Session {status}
                                         </div>
                                      </div>
                                   </div>
@@ -690,134 +789,75 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
 function SessionCard({ m, idx, sessionIcons, handleDeleteMachine, handleUpdateMachine }: any) {
   const [localData, setLocalData] = React.useState(m);
   const [hasChanges, setHasChanges] = React.useState(false);
+  const config = sessionIcons[m.description] || sessionIcons.default;
 
-  React.useEffect(() => {
-    setLocalData(m);
-    setHasChanges(false);
-  }, [m]);
-
-  const handleChange = (updates: any) => {
-    setLocalData({ ...localData, ...updates });
-    setHasChanges(true);
-  };
-
-  const handleSave = () => {
-    handleUpdateMachine(m.id, localData);
-    setHasChanges(false);
-  };
-
-  return (
-    <div className="bg-white rounded-[3rem] border-2 border-slate-100 shadow-xl p-10 space-y-8 group hover:border-indigo-200 transition-all">
-       <div className="flex items-center justify-between">
-          <div className="flex items-center gap-5">
-             <div className={`w-14 h-14 ${sessionIcons[localData.description]?.bg || 'bg-slate-50'} rounded-2xl flex items-center justify-center`}>
-                <Monitor className={`w-7 h-7 ${sessionIcons[localData.description]?.color || 'text-slate-400'}`} />
+  React.useEffect(() => { setLocalData(m); setHasChanges(false); }, [m]);
+  const handleChange = (updates: any) => { setLocalData({ ...localData, ...updates }); setHasChanges(true); };
+  const handleSave = () => { handleUpdateMachine(m.id, localData); setHasChanges(false); };
+  
+   return (
+    <div className="bg-white rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.05)] p-6 sm:p-8 space-y-6 sm:space-y-8 group hover:border-indigo-300 transition-all">
+       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-8">
+          <div className="flex items-center gap-4 sm:gap-6">
+             <div className={`w-12 h-12 sm:w-16 sm:h-16 ${config.bg} rounded-[1rem] sm:rounded-[1.5rem] flex items-center justify-center shadow-md group-hover:scale-110 transition-transform shrink-0`}>
+                <Monitor className={`w-6 h-6 sm:w-8 sm:h-8 ${config.color}`} />
              </div>
              <div>
-                <h4 className="font-black text-slate-800 text-2xl tracking-tight">Session #{idx + 1}</h4>
-                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-0.5">Instance Configuration</p>
+                <h4 className="font-black text-slate-800 text-lg sm:text-2xl tracking-tighter">Session Node {idx + 1}</h4>
+                <p className="text-[9px] sm:text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mt-0.5 sm:mt-1 leading-none">Telemetry Logic Config</p>
              </div>
           </div>
-          <div className="flex items-center gap-3">
-             {hasChanges && (
-               <button 
-                 onClick={handleSave}
-                 className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2"
-               >
-                 <CheckCircle2 className="w-4 h-4" /> Save Changes
-               </button>
-             )}
-             <button 
-               onClick={() => handleDeleteMachine(m.id)}
-               className="w-12 h-12 bg-rose-50 text-rose-400 rounded-2xl flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-colors"
-               title="Remove Session"
-             >
-                <Trash2 className="w-5 h-5" />
-             </button>
+          <div className="flex items-center gap-2 sm:gap-3">
+             {hasChanges && <button onClick={handleSave} className="px-4 sm:px-6 py-2.5 sm:py-3 bg-indigo-600 text-white rounded-lg sm:rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 shadow-lg shadow-indigo-100 flex items-center gap-2 transition-all"><CheckCircle2 className="w-4 h-4" /> Sync</button>}
+             <button onClick={() => handleDeleteMachine(m.id)} className="w-10 h-10 sm:w-14 sm:h-14 bg-rose-50 text-rose-300 hover:bg-rose-500 hover:text-white rounded-lg sm:rounded-2xl flex items-center justify-center transition-all shadow-sm" title="Remove Session"><Trash2 className="w-4 h-4 sm:w-6 sm:h-6" /></button>
           </div>
        </div>
 
-       <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Attendance Session Name</label>
-                <input 
-                  type="text" 
-                  value={localData.description}
-                  onChange={(e) => handleChange({ description: e.target.value })}
-                  className="w-full bg-slate-50 border-2 border-transparent px-6 py-4 rounded-2xl focus:bg-white focus:border-indigo-100 outline-none font-bold text-slate-800 transition-all"
-                />
-             </div>
-             <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Mapping Machine ID</label>
-                <input 
-                  type="text" 
-                  disabled
-                  value={localData.serial_number}
-                  className="w-full bg-slate-50/50 border-2 border-transparent px-6 py-4 rounded-2xl font-bold text-slate-400 uppercase opacity-60"
-                />
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <div className="space-y-2">
+             <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Display Label</label>
+             <input type="text" value={localData.description} onChange={(e) => handleChange({ description: e.target.value })} className="w-full bg-slate-50 border border-slate-100 px-6 py-3.5 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none font-bold text-slate-800 transition-all shadow-inner text-sm" />
+          </div>
+          <div className="space-y-2">
+             <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Hardware Identifier</label>
+             <div className="w-full bg-slate-100/50 border border-slate-200 px-6 py-3.5 rounded-2xl font-black text-slate-400 uppercase tabular-nums opacity-50 relative overflow-hidden text-sm">
+               {localData.serial_number}
+               <div className="absolute top-0 right-0 h-full w-1 bg-indigo-500/20" />
              </div>
           </div>
+       </div>
 
-          <div className="space-y-4">
-             <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2">
-                <Clock className="w-3 h-3" /> Attendance Status Windows
-             </h5>
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50/50 p-4 rounded-2xl">
-                <div className="space-y-1 text-center">
-                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Start P</label>
-                   <input 
-                     type="time" 
-                     value={localData.p_start || ""}
-                     onChange={(e) => handleChange({ p_start: e.target.value })}
-                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-emerald-600"
-                   />
+       <div className="space-y-4 pt-4 border-t border-slate-100">
+          <h5 className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 mb-2"><Star className="w-3.5 h-3.5 text-amber-400" /> Qualification Windows</h5>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-inner">
+             {[
+               { label: 'Start P', key: 'p_start', color: 'text-emerald-600' },
+               { label: 'End P', key: 'p_end', color: 'text-emerald-600' },
+               { label: 'Start L', key: 'l_start', color: 'text-amber-600' },
+               { label: 'End L', key: 'l_end', color: 'text-amber-600' }
+             ].map((win) => (
+                <div key={win.key} className="space-y-1 text-center">
+                   <label className="text-[7px] sm:text-[8px] font-black text-slate-400 uppercase tracking-widest">{win.label}</label>
+                   <input type="time" value={localData[win.key] || ""} onChange={(e) => handleChange({ [win.key]: e.target.value })} className={`w-full bg-white border border-slate-100 px-2 sm:px-3 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl text-[9px] sm:text-xs font-black transition-all focus:ring-4 focus:ring-indigo-100 outline-none shadow-sm ${win.color}`} />
                 </div>
-                <div className="space-y-1 text-center">
-                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">End P</label>
-                   <input 
-                     type="time" 
-                     value={localData.p_end || ""}
-                     onChange={(e) => handleChange({ p_end: e.target.value })}
-                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-emerald-600"
-                   />
-                </div>
-                <div className="space-y-1 text-center">
-                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Start L</label>
-                   <input 
-                     type="time" 
-                     value={localData.l_start || ""}
-                     onChange={(e) => handleChange({ l_start: e.target.value })}
-                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-amber-600"
-                   />
-                </div>
-                <div className="space-y-1 text-center">
-                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">End L</label>
-                   <input 
-                     type="time" 
-                     value={localData.l_end || ""}
-                     onChange={(e) => handleChange({ l_end: e.target.value })}
-                     className="w-full bg-white border border-slate-100 px-3 py-2 rounded-xl text-xs font-black text-amber-600"
-                   />
-                </div>
-             </div>
+             ))}
           </div>
+       </div>
 
-          <div className="bg-slate-50 p-6 rounded-3xl space-y-4">
-             <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual Status Rules</span>
-                <span className="text-[9px] font-bold text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-md">Auto-Applied</span>
-             </div>
-             <div className="h-4 w-full bg-slate-200 rounded-full flex overflow-hidden shadow-inner">
-                <div className="h-full bg-emerald-500 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest border-r border-white/20">Present</div>
-                <div className="h-full bg-amber-500 w-[40%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest border-r border-white/20">Late</div>
-                <div className="h-full bg-rose-400 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest">Absent</div>
-             </div>
-             <div className="flex justify-between text-[8px] font-black text-slate-400 uppercase font-mono">
-                <span>{localData.p_start?.slice(0,5) || "--:--"}</span>
-                <span>{localData.p_end?.slice(0,5) || "--:--"}</span>
-                <span>{localData.l_end?.slice(0,5) || "--:--"}</span>
-             </div>
+       <div className="bg-gradient-to-r from-slate-50 to-white p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+             <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">Telemetry Rules</span>
+             <div className="flex items-center gap-2 bg-indigo-50 px-2 py-0.5 rounded-full"><Activity className="w-2.5 h-2.5 text-indigo-500" /><span className="text-[8px] font-bold text-indigo-600">Active</span></div>
+          </div>
+          <div className="h-4 w-full bg-slate-100 rounded-full flex overflow-hidden shadow-inner p-0.5">
+             <div className="h-full bg-emerald-500 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest rounded-full shadow-lg">P</div>
+             <div className="h-full bg-amber-500 w-[40%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest mx-0.5 rounded-full shadow-lg">L</div>
+             <div className="h-full bg-rose-400 w-[30%] flex items-center justify-center text-[7px] text-white font-black uppercase tracking-widest rounded-full shadow-lg">A</div>
+          </div>
+          <div className="flex justify-between mt-3 text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tabular-nums">
+             <span className="bg-emerald-50 px-1.5 py-0.5 rounded text-emerald-600">{localData.p_start?.slice(0,5) || "--:--"}</span>
+             <span className="bg-indigo-50 flex items-center px-1.5 py-0.5 rounded text-indigo-400">Rules Engine</span>
+             <span className="bg-rose-50 px-1.5 py-0.5 rounded text-rose-500">{localData.l_end?.slice(0,5) || "--:--"}</span>
           </div>
        </div>
     </div>

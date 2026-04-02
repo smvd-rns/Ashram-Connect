@@ -1,0 +1,705 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { 
+  Loader2, Search, Download, Upload, Plus, Edit2, Trash2, 
+  X, CheckCircle2, AlertCircle, Filter, 
+  Users, Activity, Star, Calendar, Phone, Mail, MapPin, 
+  Trash,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
+  CheckCircle,
+  FileSpreadsheet,
+  UserCheck
+} from "lucide-react";
+import * as XLSX from "xlsx";
+
+interface BCDBManagerProps {
+  session: any;
+  isAdmin: boolean;
+}
+
+export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [importing, setImporting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  
+  const topScrollRef = React.useRef<HTMLDivElement>(null);
+  const tableContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const getGoogleThumbnail = (url: string) => {
+    if (!url || typeof url !== 'string') return null;
+    const match = url.match(/(?:id=|\/d\/|uc\?id=)([\w-]+)/);
+    if (match && match[1]) {
+       // Using the more universal direct thumbnail path
+       return `https://lh3.googleusercontent.com/d/${match[1]}=s300`;
+    }
+    return url;
+  };
+
+  const getRowColor = (color: string) => {
+    switch (color?.toLowerCase()) {
+       case 'yellow': return 'bg-yellow-100/40 hover:bg-yellow-200/60';
+       case 'saffron': return 'bg-orange-100/50 hover:bg-orange-200/70';
+       case 'blue': return 'bg-blue-100/40 hover:bg-blue-200/60';
+       case 'white': return 'bg-white hover:bg-slate-50/50';
+       default: return 'bg-white hover:bg-slate-50/50';
+    }
+  };
+
+  const syncScroll = (source: React.RefObject<HTMLDivElement | null>, target: React.RefObject<HTMLDivElement | null>) => {
+    if (source.current && target.current) {
+      target.current.scrollLeft = source.current.scrollLeft;
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [session]);
+
+  const fetchData = async () => {
+    if (!session) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/bcdb?query=${searchQuery}`, {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+           const errJson = JSON.parse(text);
+           console.error("BCDB Fetch Error:", errJson.error);
+        } catch {
+           console.error("BCDB Fetch HTTP Error:", res.status);
+        }
+        setData([]);
+        return;
+      }
+
+      const result = await res.json();
+      if (result.data) setData(result.data);
+    } catch (err) {
+      console.error("Fetch BCDB error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchData();
+  };
+
+  const handleUpsert = async (record: any) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/bcdb", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({ action: "upsert", data: record })
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        let errMsg = "Update failed (Server Error)";
+        try {
+           const errJson = JSON.parse(text);
+           errMsg = errJson.error || errMsg;
+        } catch {}
+        setStatusMsg({ type: 'error', text: errMsg });
+        return;
+      }
+
+      const result = await res.json();
+      if (result.data) {
+        setStatusMsg({ type: 'success', text: "Record updated successfully!" });
+        setIsEditing(false);
+        fetchData();
+      }
+    } catch (err) {
+      console.error("Upsert error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this record?")) return;
+    setLoading(true);
+    try {
+       const res = await fetch(`/api/admin/bcdb?id=${id}`, {
+         method: "DELETE",
+         headers: { "Authorization": `Bearer ${session.access_token}` }
+       });
+
+       if (!res.ok) {
+         const text = await res.text();
+         let errMsg = "Delete failed";
+         try {
+            const errJson = JSON.parse(text);
+            errMsg = errJson.error || errMsg;
+         } catch {}
+         setStatusMsg({ type: 'error', text: errMsg });
+         return;
+       }
+
+       if (res.ok) {
+         setStatusMsg({ type: 'success', text: "Record deleted." });
+         fetchData();
+       }
+    } catch (err) {
+      console.error("Delete error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (evt: any) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rawData = XLSX.utils.sheet_to_json(ws);
+
+        // Map Excel headers to DB columns
+        const mappedData = rawData.map((row: any) => ({
+          initiated_name: row["Initiated Name (if initiated)"],
+          legal_name: row["Legal Name (as in Adhar Card)"],
+          initiation: row["Initiation"],
+          colour: row["Colour"],
+          spiritual_master: row["Spiritual Master (aspiring, if uninitiated)"],
+          dob_adhar: row["Date of birth (as on Adhar Card)"],
+          dob_actual: row["Date of birth (Actual)"],
+          contact_no: String(row["Contact no"] || ""),
+          email_id: row["Email id"] || row["Email Address"],
+          counsellor: row["Counsellor"],
+          center: row["Center (Based at)"],
+          year_joining: parseInt(row["Year of joining"]),
+          prasadam: row["Prasadam"],
+          primary_services: row["Primary Services"],
+          secondary_services: row["Secondary services"],
+          blood_group: row["Blood group"],
+          aadhar_number: String(row["Aadhar Number(with space after every 4 digits)"] || ""),
+          address_adhar: row["Address (as on Adhar Card)"],
+          pan_card: row["Pan Card"],
+          photo_url: row["Photo"],
+          relative_contact_1: row["Relative contact-1 (Relation-Name-Contact)\r\nEx: Father-Arun Sharma-993875834"],
+          relative_contact_2: row["Relative contact-2  (Relation-Name-Contact)\r\nEx: Mother-Arati Sharma-973875834"],
+          relative_contact_3: row["Relative contact-3  (Relation-Name-Contact)\r\nEx: Brother-Abhay Sharma-973875834"],
+          email_address: row["Email Address"],
+          adhar_card_copy_url: row["Adhar Card Copy-Upload file with your name Legal OR Initiated\r\n(go to https://myaadhaar.uidai.gov.in/genricDownloadAadhaar/en to download pdf by generating otp)"],
+          pan_card_copy_url: row["PAN Card Copy"],
+          parents_address: row["Parents/Home town Address"],
+          whatsapp_no: String(row["WhatsApp No"] || ""),
+          custom_counsellor: row["If your counsellor name is not mentioned in the above list, write here"]
+        }));
+
+        const res = await fetch("/api/admin/bcdb/import", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}` 
+          },
+          body: JSON.stringify({ data: mappedData })
+        });
+        
+        if (!res.ok) {
+           const text = await res.text();
+           let errMsg = "Check SQL and try again. Database might be updating.";
+           try {
+              const errJson = JSON.parse(text);
+              errMsg = errJson.error || errMsg;
+           } catch {}
+           setStatusMsg({ type: 'error', text: errMsg });
+           return;
+        }
+
+        const result = await res.json();
+        if (result.success) {
+           setStatusMsg({ type: 'success', text: `Successfully imported ${result.count} records!` });
+           fetchData();
+        } else {
+           setStatusMsg({ type: 'error', text: result.error || "Import failed." });
+        }
+      } catch (err: any) {
+        console.error("Import error:", err);
+        setStatusMsg({ type: 'error', text: "Network Error: Verify server is running on port 3100" });
+      } finally {
+        setImporting(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = "";
+  };
+
+  const handleExport = () => {
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "AshramConnect");
+    XLSX.writeFile(wb, `BCDB_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-none">
+      
+      {/* Header Bar */}
+      <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-6 sm:p-10 rounded-[2.5rem] sm:rounded-[4rem] text-white shadow-2xl relative overflow-hidden group">
+         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full -mr-[250px] -mt-[250px] blur-[120px] group-hover:scale-110 transition-transform duration-1000"></div>
+         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-10">
+            <div>
+               <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20"><Activity className="w-6 h-6 text-indigo-400" /></div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-400 opacity-60">Master Database</span>
+               </div>
+               <h2 className="text-4xl sm:text-6xl font-black tracking-tighter font-outfit">BCDB Portal</h2>
+               <p className="text-indigo-200 font-bold text-lg opacity-80 mt-2">Manage the NVCC Ashram Connect directory with high-precision synchronization.</p>
+            </div>
+            <div className="flex gap-4 w-full md:w-auto">
+               <div className="flex-1 md:flex-none bg-white/10 px-8 py-5 rounded-3xl backdrop-blur-md border border-white/10 text-center">
+                  <div className="text-3xl font-black leading-none mb-1">{data.length}</div>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-40">Records</div>
+               </div>
+               <div className="flex-1 md:flex-none bg-indigo-600 px-8 py-5 rounded-3xl backdrop-blur-md border border-indigo-400 text-center shadow-2xl shadow-indigo-500/20">
+                  <div className="text-3xl font-black leading-none mb-1">{[...new Set(data.map(d => d.center))].length}</div>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60">Centers</div>
+               </div>
+            </div>
+         </div>
+      </div>
+
+      {/* Control Strip */}
+      <div className="flex flex-col lg:flex-row gap-6 items-center justify-between">
+         <form onSubmit={handleSearch} className="relative flex-1 group w-full">
+            <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-300 transition-colors group-focus-within:text-indigo-600" />
+            <input type="text" placeholder="Search by name, email, center or contact..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-16 pr-8 py-5 bg-white/50 backdrop-blur-xl border-2 border-white rounded-[2rem] focus:ring-[12px] focus:ring-indigo-100/50 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] placeholder:text-slate-300" />
+         </form>
+
+         <div className="flex items-center gap-4 w-full lg:w-auto">
+            <label className="flex-1 lg:flex-none">
+              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImport} disabled={importing} />
+              <div className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest text-slate-600 hover:border-indigo-500 hover:text-indigo-600 transition-all cursor-pointer shadow-sm">
+                {importing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                Import Excel
+              </div>
+            </label>
+            <button onClick={handleExport} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-slate-900 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
+               <Download className="w-5 h-5 text-indigo-400" />
+               Export Master
+            </button>
+            <button onClick={() => { setSelectedRecord({}); setIsEditing(true); }} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-indigo-600 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-200">
+               <Plus className="w-5 h-5" />
+               Add New
+            </button>
+         </div>
+      </div>
+
+
+      {/* Top Synchronized Scrollbar */}
+      <div 
+        ref={topScrollRef}
+        onScroll={() => syncScroll(topScrollRef, tableContainerRef)}
+        className="overflow-x-auto scrollbar-thin scrollbar-thumb-indigo-200 scrollbar-track-transparent bg-white/30 backdrop-blur-sm rounded-full mx-4"
+      >
+         <div className="h-1 min-w-[4000px]"></div>
+      </div>
+
+      {/* Main Table View */}
+      <div className="bg-white/90 backdrop-blur-2xl rounded-[3rem] border border-white shadow-[0_40px_80px_-24px_rgba(0,0,0,0.08)] overflow-hidden">
+         <div 
+            ref={tableContainerRef}
+            onScroll={() => syncScroll(tableContainerRef, topScrollRef)}
+            className="overflow-x-auto scrollbar-thin scrollbar-thumb-indigo-100 scrollbar-track-transparent"
+         >
+            <table className="w-full text-left border-collapse min-w-[4000px]">
+               <thead>
+                  <tr className="bg-slate-900 text-white">
+                     <th className="sticky left-0 z-20 bg-slate-900 px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[350px]">Devotee Portfolio</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px]">Color</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Initiation</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px]">Center</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Counsellor</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">WhatsApp</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px]">Phone</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Email ID</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Blood</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">DOB (Adhar)</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">DOB (Actual)</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Pan Card No</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Primary Services</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Secondary Services</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Spiritual Master</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px]">Year joined</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Aadhar No</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 1</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 2</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 3</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Prasadam</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Address (Adhar)</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Home Address</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Adhar Copy</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Pan Copy</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Custom Counsellor</th>
+                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Manage</th>
+                  </tr>
+               </thead>
+               <tbody className="divide-y divide-slate-100">
+                  {loading && data.length === 0 ? (
+                    <tr><td colSpan={15} className="py-32 text-center"><Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto opacity-20" /></td></tr>
+                  ) : data.length === 0 ? (
+                    <tr><td colSpan={15} className="py-32 text-center text-slate-300 font-black uppercase tracking-widest italic opacity-40">No Records Found Matching Criteria</td></tr>
+                  ) : (
+                     data.map((r, i) => (
+                       <tr key={r.id || i} className={`group transition-colors ${getRowColor(r.colour)}`}>
+                         <td className={`sticky left-0 z-10 backdrop-blur-sm shadow-[4px_0_15px_-4px_rgba(0,0,0,0.05)] px-8 py-5 transition-colors ${getRowColor(r.colour).split(' ')[0]}`}>
+                            <div className="flex items-center gap-4">
+                               <div className={`w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center font-black text-2xl shadow-inner group-hover:rotate-3 transition-all relative ${
+                                 r.colour?.toLowerCase() === 'blue' ? 'bg-blue-200 text-blue-900' : 
+                                 r.colour?.toLowerCase() === 'yellow' ? 'bg-yellow-300 text-yellow-900 font-black' :
+                                 r.colour?.toLowerCase() === 'saffron' ? 'bg-orange-300 text-orange-900 font-black' :
+                                 'bg-slate-200 text-slate-800'
+                               }`}>
+                                 {r.photo_url ? (
+                                   <img 
+                                     src={getGoogleThumbnail(r.photo_url) || ""} 
+                                     alt="Devotee" 
+                                     className="w-full h-full object-cover"
+                                     onError={(e: any) => { e.target.style.display = 'none'; }}
+                                   />
+                                 ) : null}
+                                 <span className="relative z-10">{r.initiated_name?.[0] || r.legal_name?.[0] || "?"}</span>
+                                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                              </div>
+                              <div>
+                                 <div className="font-black text-slate-800 text-[15px] leading-tight tracking-tight whitespace-nowrap">{r.initiated_name || "Uninitiated"}</div>
+                                 <div className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.15em] mt-0.5 whitespace-nowrap">{r.legal_name}</div>
+                              </div>
+                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="flex items-center gap-2">
+                              <div className={`w-3 h-3 rounded-full ${r.colour === 'Blue' ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">{r.colour || "—"}</span>
+                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className={`inline-flex px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${r.initiation === 'Initiated' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                              {r.initiation || "—"}
+                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="flex items-center gap-2 text-slate-600 font-bold text-xs uppercase tracking-tight">
+                              <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                              {r.center || "—"}
+                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="flex items-center gap-2 text-slate-600 font-bold text-xs">
+                              <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                              {r.counsellor || "—"}
+                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-emerald-600 font-black text-xs tabular-nums">{r.whatsapp_no || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-bold text-xs tabular-nums whitespace-nowrap">{r.contact_no || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-indigo-400 font-bold text-[10px] lowercase tabular-nums whitespace-nowrap">{r.email_id || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center font-black text-rose-600 text-[10px] uppercase">{r.blood_group || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-bold text-[11px] tabular-nums">{r.dob_adhar || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-400 font-bold text-[11px] tabular-nums">{r.dob_actual || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-600 font-black text-xs uppercase tracking-wider">{r.pan_card || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-bold text-[11px] leading-relaxed max-w-[200px] line-clamp-2">{r.primary_services || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-400 font-medium text-[11px] leading-relaxed max-w-[200px] line-clamp-2">{r.secondary_services || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-indigo-600 font-black text-[11px] italic underline decoration-indigo-200">{r.spiritual_master || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-600 font-black text-xs">{r.year_joining || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-400 font-medium text-[11px] tabular-nums tracking-wide">{r.aadhar_number || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_1 || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_2 || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_3 || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-500 font-black text-[10px] uppercase tracking-widest">{r.prasadam || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.address_adhar || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.parents_address || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           {r.adhar_card_copy_url ? (
+                             <a href={r.adhar_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[9px] uppercase tracking-tighter flex items-center gap-1">
+                                <Download className="w-3 h-3" /> View Adhar
+                             </a>
+                           ) : "—"}
+                        </td>
+                        <td className="px-8 py-5">
+                           {r.pan_card_copy_url ? (
+                             <a href={r.pan_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[9px] uppercase tracking-tighter flex items-center gap-1">
+                                <Download className="w-3 h-3" /> View Pan
+                             </a>
+                           ) : "—"}
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="text-slate-400 font-medium text-[10px] italic">{r.custom_counsellor || "—"}</div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => { setSelectedRecord(r); setIsEditing(true); }} className="w-10 h-10 bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all flex items-center justify-center shadow-sm">
+                                 <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => handleDelete(r.id)} className="w-10 h-10 bg-rose-50 text-rose-300 hover:bg-rose-500 hover:text-white rounded-xl transition-all flex items-center justify-center shadow-sm">
+                                 <Trash2 className="w-4 h-4" />
+                              </button>
+                           </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+               </tbody>
+            </table>
+         </div>
+      </div>
+
+      {/* Edit Slide-over or Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-t-[2rem] sm:rounded-[4rem] shadow-2xl border-t sm:border border-white/20 p-8 sm:p-16 space-y-12 animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 relative">
+              
+              <button onClick={() => setIsEditing(false)} className="absolute top-8 right-8 w-12 h-12 bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-sm">
+                <X className="w-6 h-6" />
+              </button>
+
+              <div>
+                 <h3 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tighter font-outfit uppercase">{selectedRecord?.id ? "Edit Record" : "New Devotee"}</h3>
+                 <p className="text-slate-400 font-bold mt-2">Adjust personnel data for the master Ashram directory.</p>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); handleUpsert(selectedRecord); }} className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12">
+                 
+                 {/* Block 1: Identity */}
+                 <div className="space-y-6">
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Initiated Name</span>
+                       <input type="text" value={selectedRecord?.initiated_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiated_name: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. Rama Das" />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Legal Name (Adhar)</span>
+                       <input type="text" value={selectedRecord?.legal_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, legal_name: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. Rajesh Kumar" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Initiation Status</span>
+                          <select value={selectedRecord?.initiation || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiation: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none">
+                             <option value="">Select...</option>
+                             <option value="Initiated">Initiated</option>
+                             <option value="Aspirant">Aspirant</option>
+                             <option value="Seeker">Seeker</option>
+                          </select>
+                       </div>
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Colour Code</span>
+                          <input type="text" value={selectedRecord?.colour || ""} onChange={(e) => setSelectedRecord({...selectedRecord, colour: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Block 2: Contacts */}
+                 <div className="space-y-6">
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">WhatsApp Number</span>
+                       <input type="text" value={selectedRecord?.whatsapp_no || ""} onChange={(e) => setSelectedRecord({...selectedRecord, whatsapp_no: e.target.value})} className="w-full px-8 py-5 bg-emerald-50/30 border border-emerald-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. 9876543210" />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Contact Number</span>
+                       <input type="text" value={selectedRecord?.contact_no || ""} onChange={(e) => setSelectedRecord({...selectedRecord, contact_no: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. +91..." />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Email Address</span>
+                       <input type="email" value={selectedRecord?.email_id || ""} onChange={(e) => setSelectedRecord({...selectedRecord, email_id: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 underline decoration-indigo-200" placeholder="devotee@iskcon" />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Center / Base</span>
+                       <input type="text" value={selectedRecord?.center || ""} onChange={(e) => setSelectedRecord({...selectedRecord, center: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
+                    </div>
+                 </div>
+
+                 {/* Block 3: Spiritual & Service */}
+                 <div className="space-y-6">
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Spiritual Master</span>
+                       <input type="text" value={selectedRecord?.spiritual_master || ""} onChange={(e) => setSelectedRecord({...selectedRecord, spiritual_master: e.target.value})} className="w-full px-8 py-5 bg-indigo-50/30 border border-indigo-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-indigo-700" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Counsellor</span>
+                          <input type="text" value={selectedRecord?.counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, counsellor: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
+                       </div>
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Year Joining</span>
+                          <input type="number" value={selectedRecord?.year_joining || ""} onChange={(e) => setSelectedRecord({...selectedRecord, year_joining: parseInt(e.target.value)})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none tabular-nums" />
+                       </div>
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Custom Counsellor/Notes</span>
+                       <input type="text" value={selectedRecord?.custom_counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, custom_counsellor: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Primary Services</span>
+                       <textarea value={selectedRecord?.primary_services || ""} onChange={(e) => setSelectedRecord({...selectedRecord, primary_services: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-600 min-h-[100px]" />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Secondary Services</span>
+                       <textarea value={selectedRecord?.secondary_services || ""} onChange={(e) => setSelectedRecord({...selectedRecord, secondary_services: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-500 min-h-[80px]" />
+                    </div>
+                 </div>
+
+                 {/* Block 4: Medical & Personal */}
+                 <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">DOB (Adhar)</span>
+                          <input type="text" value={selectedRecord?.dob_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_adhar: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
+                       </div>
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">DOB (Actual)</span>
+                          <input type="text" value={selectedRecord?.dob_actual || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_actual: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
+                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Blood Group</span>
+                          <input type="text" value={selectedRecord?.blood_group || ""} onChange={(e) => setSelectedRecord({...selectedRecord, blood_group: e.target.value})} className="w-full px-4 py-4 bg-rose-50 border border-rose-100 rounded-2xl font-bold outline-none text-rose-600" />
+                       </div>
+                       <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Prasadam</span>
+                          <input type="text" value={selectedRecord?.prasadam || ""} onChange={(e) => setSelectedRecord({...selectedRecord, prasadam: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
+                       </div>
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Aadhar Number</span>
+                       <input type="text" value={selectedRecord?.aadhar_number || ""} onChange={(e) => setSelectedRecord({...selectedRecord, aadhar_number: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
+                    </div>
+                    <div className="relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Pan Card No</span>
+                       <input type="text" value={selectedRecord?.pan_card || ""} onChange={(e) => setSelectedRecord({...selectedRecord, pan_card: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
+                    </div>
+                 </div>
+
+                 {/* Block 5: Logistics & Family */}
+                 <div className="md:col-span-2 space-y-8 mt-10">
+                   <div className="h-px bg-slate-100 w-full"></div>
+                   <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-slate-400">Logistics & Support Networks</h4>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Relative 1 Contact</span>
+                          <textarea value={selectedRecord?.relative_contact_1 || ""} onChange={(e) => setSelectedRecord({...selectedRecord, relative_contact_1: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 min-h-[80px]" placeholder="Relation - Name - Contact" />
+                       </div>
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Relative 2 Contact</span>
+                          <textarea value={selectedRecord?.relative_contact_2 || ""} onChange={(e) => setSelectedRecord({...selectedRecord, relative_contact_2: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 min-h-[80px]" />
+                       </div>
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Relative 3 Contact</span>
+                          <textarea value={selectedRecord?.relative_contact_3 || ""} onChange={(e) => setSelectedRecord({...selectedRecord, relative_contact_3: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 min-h-[80px]" />
+                       </div>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Permanent Address (Adhar)</span>
+                          <textarea value={selectedRecord?.address_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, address_adhar: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-600" />
+                       </div>
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Home Town Address</span>
+                          <textarea value={selectedRecord?.parents_address || ""} onChange={(e) => setSelectedRecord({...selectedRecord, parents_address: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-600" />
+                       </div>
+                   </div>
+                 </div>
+
+                 {/* Block 6: Media & Attachments */}
+                 <div className="md:col-span-2 space-y-6 mt-10">
+                   <div className="h-px bg-slate-100 w-full"></div>
+                   <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-indigo-400">Digital Assets & Metadata URLS</h4>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Photo URL (Drive/Web)</span>
+                          <input type="text" value={selectedRecord?.photo_url || ""} onChange={(e) => setSelectedRecord({...selectedRecord, photo_url: e.target.value})} className="w-full px-6 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-bold text-indigo-600 truncate" />
+                       </div>
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Adhar Copy URL</span>
+                          <input type="text" value={selectedRecord?.adhar_card_copy_url || ""} onChange={(e) => setSelectedRecord({...selectedRecord, adhar_card_copy_url: e.target.value})} className="w-full px-6 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-bold text-indigo-600 truncate" />
+                       </div>
+                       <div className="relative group">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Pan Card Copy URL</span>
+                          <input type="text" value={selectedRecord?.pan_card_copy_url || ""} onChange={(e) => setSelectedRecord({...selectedRecord, pan_card_copy_url: e.target.value})} className="w-full px-6 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-bold text-indigo-600 truncate" />
+                       </div>
+                   </div>
+                 </div>
+
+                 <div className="md:col-span-2 pt-8 flex gap-4">
+                    <button type="submit" className="flex-1 py-5 bg-indigo-600 hover:bg-slate-900 text-white font-black rounded-3xl text-[12px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3 active:scale-95">
+                       {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> Commit Changes</>}
+                    </button>
+                    <button type="button" onClick={() => setIsEditing(false)} className="px-12 py-5 bg-slate-100 hover:bg-slate-200 text-slate-500 font-black rounded-3xl text-[12px] uppercase tracking-widest transition-all">
+                       Cancel
+                    </button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* Global Status Message */}
+      {statusMsg && (
+        <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] px-8 py-5 rounded-[2rem] shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom duration-500 ${statusMsg.type === 'success' ? 'bg-emerald-900 text-white' : 'bg-rose-900 text-white'}`}>
+           {statusMsg.type === 'success' ? <CheckCircle2 className="w-6 h-6 text-emerald-400" /> : <AlertCircle className="w-6 h-6 text-rose-400" />}
+           <div className="font-outfit font-black uppercase text-xs tracking-widest">{statusMsg.text}</div>
+           <button onClick={() => setStatusMsg(null)} className="ml-4 opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+    </div>
+  );
+}

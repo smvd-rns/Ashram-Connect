@@ -21,9 +21,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${outfit.variable} font-sans antialiased`}
       >
-        <div className="min-h-screen flex flex-col items-center">
+        <div className="min-h-screen flex flex-col">
           {/* Main Content Area */}
-          <main className="w-full max-w-[95%] mx-auto pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
+          <main className="w-full pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
             <AuthGuard>
               {children}
             </AuthGuard>
