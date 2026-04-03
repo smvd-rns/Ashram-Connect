@@ -11,7 +11,11 @@ import {
   MoreVertical,
   CheckCircle,
   FileSpreadsheet,
-  UserCheck
+  UserCheck,
+  RefreshCcw,
+  Eye,
+  EyeOff,
+  ArrowRightLeft
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -29,6 +33,7 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
   const [importing, setImporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   
   const topScrollRef = React.useRef<HTMLDivElement>(null);
   const tableContainerRef = React.useRef<HTMLDivElement>(null);
@@ -92,14 +97,17 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
   }, [data, sortConfig]);
 
   useEffect(() => {
-    fetchData();
-  }, [session]);
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [session, showDeleted, searchQuery]);
 
   const fetchData = async () => {
     if (!session) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/bcdb?query=${searchQuery}`, {
+      const res = await fetch(`/api/admin/bcdb?query=${searchQuery}&showDeleted=${showDeleted}`, {
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
       
@@ -165,8 +173,31 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
     }
   };
 
+  const handleRestore = async (id: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/bcdb", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({ action: "upsert", data: { id, is_deleted: false } })
+      });
+
+      if (res.ok) {
+        setStatusMsg({ type: 'success', text: "Record restored successfully." });
+        fetchData();
+      }
+    } catch (err) {
+      console.error("Restore error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this record?")) return;
+    if (!confirm("Move this record to archives? It can be restored later.")) return;
     setLoading(true);
     try {
        const res = await fetch(`/api/admin/bcdb?id=${id}`, {
@@ -300,17 +331,17 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                   <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20"><Activity className="w-6 h-6 text-indigo-400" /></div>
                   <span className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-400 opacity-60">Master Database</span>
                </div>
-               <h2 className="text-4xl sm:text-6xl font-black tracking-tighter font-outfit">BCDB Portal</h2>
-               <p className="text-indigo-200 font-bold text-lg opacity-80 mt-2">Manage the NVCC Ashram Connect directory with high-precision synchronization.</p>
+               <h2 className="text-3xl sm:text-6xl font-black tracking-tighter font-outfit">BCDB Portal</h2>
+               <p className="text-indigo-200 font-bold text-base sm:text-lg opacity-80 mt-2">Manage the NVCC Ashram Connect directory with high-precision synchronization.</p>
             </div>
-            <div className="flex gap-4 w-full md:w-auto">
-               <div className="flex-1 md:flex-none bg-white/10 px-8 py-5 rounded-3xl backdrop-blur-md border border-white/10 text-center">
-                  <div className="text-3xl font-black leading-none mb-1">{data.length}</div>
-                  <div className="text-[10px] font-black uppercase tracking-widest opacity-40">Records</div>
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+               <div className="flex-1 md:flex-none bg-white/10 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl backdrop-blur-md border border-white/10 text-center">
+                  <div className="text-2xl sm:text-3xl font-black leading-none mb-1">{data.length}</div>
+                  <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest opacity-40">Records</div>
                </div>
-               <div className="flex-1 md:flex-none bg-indigo-600 px-8 py-5 rounded-3xl backdrop-blur-md border border-indigo-400 text-center shadow-2xl shadow-indigo-500/20">
-                  <div className="text-3xl font-black leading-none mb-1">{[...new Set(data.map(d => d.center))].length}</div>
-                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60">Centers</div>
+               <div className="flex-1 md:flex-none bg-indigo-600 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl backdrop-blur-md border border-indigo-400 text-center shadow-2xl shadow-indigo-500/20">
+                  <div className="text-2xl sm:text-3xl font-black leading-none mb-1">{[...new Set(data.map(d => d.center))].length}</div>
+                  <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest opacity-60">Centers</div>
                </div>
             </div>
          </div>
@@ -323,21 +354,30 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
             <input type="text" placeholder="Search by name, email, center or contact..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-16 pr-8 py-5 bg-white/50 backdrop-blur-xl border-2 border-white rounded-[2rem] focus:ring-[12px] focus:ring-indigo-100/50 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] placeholder:text-slate-300" />
          </form>
 
-         <div className="flex items-center gap-4 w-full lg:w-auto">
+         <div className="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-row gap-3 sm:gap-4 w-full lg:w-auto">
             <label className="flex-1 lg:flex-none">
               <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImport} disabled={importing} />
               <div className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest text-slate-600 hover:border-indigo-500 hover:text-indigo-600 transition-all cursor-pointer shadow-sm">
                 {importing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                Import Excel
+                <span className="hidden sm:inline">Import Excel</span><span className="sm:hidden">Import</span>
               </div>
             </label>
             <button onClick={handleExport} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-slate-900 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
                <Download className="w-5 h-5 text-indigo-400" />
-               Export Master
+               <span className="hidden sm:inline">Export Master</span><span className="sm:hidden">Export</span>
             </button>
             <button onClick={() => { setSelectedRecord({}); setIsEditing(true); }} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-indigo-600 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-200">
                <Plus className="w-5 h-5" />
                Add New
+            </button>
+            <button 
+              onClick={() => setShowDeleted(!showDeleted)} 
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest transition-all ${
+                showDeleted ? 'bg-rose-100 text-rose-600 border-2 border-rose-200' : 'bg-slate-100 text-slate-500 border-2 border-transparent'
+              }`}
+            >
+               {showDeleted ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+               <span className="hidden sm:inline">{showDeleted ? "Hide Deleted" : "Show Deleted"}</span><span className="sm:hidden">{showDeleted ? "Hide" : "Archived"}</span>
             </button>
          </div>
       </div>
@@ -352,80 +392,86 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
          <div className="h-1 min-w-[4000px]"></div>
       </div>
 
+      {/* Swipe Overlay Hint for Mobile */}
+      <div className="lg:hidden flex items-center justify-center gap-3 text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] animate-pulse">
+         <ArrowRightLeft className="w-4 h-4" />
+         Swipe to explore database
+      </div>
+
       {/* Main Table View */}
       <div className="bg-white/90 backdrop-blur-2xl rounded-[3rem] border border-white shadow-[0_40px_80px_-24px_rgba(0,0,0,0.08)] overflow-hidden">
          <div 
             ref={tableContainerRef}
             onScroll={() => syncScroll(tableContainerRef, topScrollRef)}
-            className="overflow-x-auto scrollbar-thin scrollbar-thumb-indigo-100 scrollbar-track-transparent"
+            className="overflow-x-auto scrollbar-thin scrollbar-thumb-indigo-100 scrollbar-track-transparent [webkit-overflow-scrolling:touch]"
          >
-            <table className="w-full text-left border-collapse min-w-[4000px]">
+            <table className="w-full text-left border-collapse min-w-[1500px] lg:min-w-[4000px]">
                <thead>
                   <tr className="bg-slate-900 text-white">
-                     <th onClick={() => requestSort('initiated_name')} className="sticky left-0 z-20 bg-slate-900 px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[350px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('initiated_name')} className="md:sticky left-0 z-20 bg-slate-900 px-4 md:px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[160px] md:min-w-[350px] cursor-pointer hover:bg-slate-800 transition-colors">
                         <div className="flex items-center gap-2">
                            Devotee Portfolio
                            {sortConfig?.key === 'initiated_name' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
                         </div>
                      </th>
-                     <th onClick={() => requestSort('colour')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('colour')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors">
                         <div className="flex items-center gap-2">
                            Color
                            {sortConfig?.key === 'colour' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
                         </div>
                      </th>
-                     <th onClick={() => requestSort('initiation')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('initiation')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
                         <div className="flex items-center gap-2">
                            Initiation
                            {sortConfig?.key === 'initiation' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
                         </div>
                      </th>
-                     <th onClick={() => requestSort('center')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('center')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[180px] cursor-pointer hover:bg-slate-800 transition-colors">
                         <div className="flex items-center gap-2">
                            Center
                            {sortConfig?.key === 'center' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
                         </div>
                      </th>
-                     <th onClick={() => requestSort('counsellor')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('counsellor')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">
                         <div className="flex items-center gap-2">
                            Counsellor
                            {sortConfig?.key === 'counsellor' && (sortConfig.direction === 'asc' ? <ChevronRight className="w-3 h-3 rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />)}
                         </div>
                      </th>
-                     <th onClick={() => requestSort('whatsapp_no')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('whatsapp_no')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
                         WhatsApp
-                        {sortConfig?.key === 'whatsapp_no' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                        {sortConfig?.key === 'whatsapp_no' && (sortConfig.direction === 'asc' ? " Ã¢â€ â€˜" : " Ã¢â€ â€œ")}
                      </th>
-                     <th onClick={() => requestSort('contact_no')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[180px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('contact_no')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[180px] cursor-pointer hover:bg-slate-800 transition-colors">
                         Phone
-                        {sortConfig?.key === 'contact_no' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                        {sortConfig?.key === 'contact_no' && (sortConfig.direction === 'asc' ? " Ã¢â€ â€˜" : " Ã¢â€ â€œ")}
                      </th>
-                     <th onClick={() => requestSort('email_id')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('email_id')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">
                         Email ID
-                        {sortConfig?.key === 'email_id' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                        {sortConfig?.key === 'email_id' && (sortConfig.direction === 'asc' ? " Ã¢â€ â€˜" : " Ã¢â€ â€œ")}
                      </th>
-                     <th onClick={() => requestSort('blood_group')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
+                     <th onClick={() => requestSort('blood_group')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">
                         Blood
-                        {sortConfig?.key === 'blood_group' && (sortConfig.direction === 'asc' ? " ↑" : " ↓")}
+                        {sortConfig?.key === 'blood_group' && (sortConfig.direction === 'asc' ? " Ã¢â€ â€˜" : " Ã¢â€ â€œ")}
                      </th>
-                     <th onClick={() => requestSort('dob_adhar')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">DOB (Adhar)</th>
-                     <th onClick={() => requestSort('dob_actual')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">DOB (Actual)</th>
-                     <th onClick={() => requestSort('pan_card')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">Pan Card No</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Primary Services</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Secondary Services</th>
-                     <th onClick={() => requestSort('spiritual_master')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px] cursor-pointer hover:bg-slate-800 transition-colors">Spiritual Master</th>
-                     <th onClick={() => requestSort('year_joining')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors">Year joined</th>
-                     <th onClick={() => requestSort('aadhar_number')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">Aadhar No</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 1</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 2</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 3</th>
-                     <th onClick={() => requestSort('prasadam')} className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">Prasadam</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Address (Adhar)</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Home Address</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Adhar Copy</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[200px]">Pan Copy</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[250px]">Custom Counsellor</th>
-                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] min-w-[150px]">Manage</th>
+                     <th onClick={() => requestSort('dob_adhar')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">DOB (Adhar)</th>
+                     <th onClick={() => requestSort('dob_actual')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">DOB (Actual)</th>
+                     <th onClick={() => requestSort('pan_card')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">Pan Card No</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Primary Services</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Secondary Services</th>
+                     <th onClick={() => requestSort('spiritual_master')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px] cursor-pointer hover:bg-slate-800 transition-colors">Spiritual Master</th>
+                     <th onClick={() => requestSort('year_joining')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors">Year joined</th>
+                     <th onClick={() => requestSort('aadhar_number')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[200px] cursor-pointer hover:bg-slate-800 transition-colors">Aadhar No</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 1</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 2</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Relative 3</th>
+                     <th onClick={() => requestSort('prasadam')} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px] cursor-pointer hover:bg-slate-800 transition-colors">Prasadam</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Address (Adhar)</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Home Address</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[200px]">Adhar Copy</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[200px]">Pan Copy</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[250px]">Custom Counsellor</th>
+                     <th className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] min-w-[150px]">Manage</th>
                   </tr>
                </thead>
                <tbody className="divide-y divide-slate-100">
@@ -435,10 +481,20 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                     <tr><td colSpan={25} className="py-32 text-center text-slate-300 font-black uppercase tracking-widest italic opacity-40">No Records Found Matching Criteria</td></tr>
                   ) : (
                      sortedData.map((r, i) => (
-                       <tr key={r.id || i} className={`group transition-colors ${getRowColor(r.colour)}`}>
-                         <td className={`sticky left-0 z-10 backdrop-blur-sm shadow-[4px_0_15px_-4px_rgba(0,0,0,0.05)] px-8 py-5 transition-colors ${getRowColor(r.colour).split(' ')[0]}`}>
-                            <div className="flex items-center gap-4">
-                               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner group-hover:rotate-3 transition-all relative overflow-hidden ${
+                                               <tr 
+                          key={r.id || i} 
+                          className={`group transition-colors relative ${getRowColor(r.colour)} ${r.is_deleted ? 'opacity-50 grayscale-[0.5]' : ''}`}
+                        >
+                          {r.is_deleted && (
+                             <div className="absolute inset-0 bg-rose-50/10 pointer-events-none z-0"></div>
+                          )}
+
+                         <td 
+                            onClick={() => { setSelectedRecord(r); setIsEditing(true); }}
+                            className={`md:sticky left-0 z-10 backdrop-blur-sm shadow-[4px_0_15px_-4px_rgba(0,0,0,0.05)] px-4 md:px-8 py-5 transition-colors cursor-pointer hover:bg-slate-50/50 ${getRowColor(r.colour).split(' ')[0]}`}
+                         >
+                            <div className="flex items-center gap-3 md:gap-4">
+                               <div className={`w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-lg md:text-2xl shadow-inner group-hover:rotate-3 transition-all relative overflow-hidden flex-shrink-0 ${
                                  r.colour?.toLowerCase() === 'blue' ? 'bg-blue-200 text-blue-900' : 
                                  r.colour?.toLowerCase() === 'yellow' ? 'bg-yellow-300 text-yellow-900 font-black' :
                                  r.colour?.toLowerCase() === 'saffron' ? 'bg-orange-300 text-orange-900 font-black' :
@@ -455,114 +511,128 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                                  <span className="relative z-10">{r.initiated_name?.[0] || r.legal_name?.[0] || "?"}</span>
                                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent z-10"></div>
                               </div>
-                              <div>
-                                 <div className="font-black text-slate-800 text-[15px] leading-tight tracking-tight whitespace-nowrap">{r.initiated_name || "Uninitiated"}</div>
-                                 <div className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.15em] mt-0.5 whitespace-nowrap">{r.legal_name}</div>
+                              <div className="min-w-0 flex-1">
+                                 <div className="font-black text-slate-800 text-sm md:text-[17px] leading-tight tracking-tight whitespace-nowrap overflow-hidden text-overflow-ellipsis">
+                                   {r.initiated_name || "Uninitiated"}
+                                 </div>
+                                 <div className="hidden md:block text-slate-400 font-bold text-xs uppercase tracking-[0.15em] mt-0.5 whitespace-nowrap overflow-hidden text-overflow-ellipsis">
+                                   {r.legal_name}
+                                 </div>
                               </div>
                            </div>
                         </td>
                         <td className="px-8 py-5">
                            <div className="flex items-center gap-2">
                               <div className={`w-3 h-3 rounded-full ${r.colour === 'Blue' ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">{r.colour || "—"}</span>
+                              <span className="text-xs font-bold text-slate-500 uppercase">{r.colour || "-"}</span>
                            </div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className={`inline-flex px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${r.initiation === 'Initiated' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                              {r.initiation || "—"}
+                           <div className={`inline-flex px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-widest border ${
+                             r.initiation === '1st' || r.initiation === '2nd' 
+                               ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                               : 'bg-slate-50 text-slate-400 border-slate-100'
+                           }`}>
+                              {r.initiation || "-"}
                            </div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="flex items-center gap-2 text-slate-600 font-bold text-xs uppercase tracking-tight">
+                           <div className="flex items-center gap-2 text-slate-600 font-bold text-sm uppercase tracking-tight">
                               <MapPin className="w-3.5 h-3.5 text-indigo-400" />
-                              {r.center || "—"}
+                              {r.center || "-"}
                            </div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="flex items-center gap-2 text-slate-600 font-bold text-xs">
+                           <div className="flex items-center gap-2 text-slate-600 font-bold text-sm">
                               <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
-                              {r.counsellor || "—"}
+                              {r.counsellor || "-"}
                            </div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-emerald-600 font-black text-xs tabular-nums">{r.whatsapp_no || "—"}</div>
+                           <div className="text-emerald-600 font-black text-sm tabular-nums">{r.whatsapp_no || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-bold text-xs tabular-nums whitespace-nowrap">{r.contact_no || "—"}</div>
+                           <div className="text-slate-500 font-bold text-sm tabular-nums whitespace-nowrap">{r.contact_no || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-indigo-400 font-bold text-[10px] lowercase tabular-nums whitespace-nowrap">{r.email_id || "—"}</div>
+                           <div className="text-indigo-400 font-bold text-xs lowercase tabular-nums whitespace-nowrap">{r.email_id || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center font-black text-rose-600 text-[10px] uppercase">{r.blood_group || "—"}</div>
+                           <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center font-black text-rose-600 text-xs uppercase">{r.blood_group || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-bold text-[11px] tabular-nums">{r.dob_adhar || "—"}</div>
+                           <div className="text-slate-500 font-bold text-[11px] tabular-nums">{r.dob_adhar || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-bold text-[11px] tabular-nums">{r.dob_actual || "—"}</div>
+                           <div className="text-slate-400 font-bold text-[11px] tabular-nums">{r.dob_actual || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-600 font-black text-xs uppercase tracking-wider">{r.pan_card || "—"}</div>
+                           <div className="text-slate-600 font-black text-xs uppercase tracking-wider">{r.pan_card || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-bold text-[11px] leading-relaxed max-w-[200px] line-clamp-2">{r.primary_services || "—"}</div>
+                           <div className="text-slate-500 font-bold text-[11px] leading-relaxed max-w-[200px] line-clamp-2">{r.primary_services || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-[11px] leading-relaxed max-w-[200px] line-clamp-2">{r.secondary_services || "—"}</div>
+                           <div className="text-slate-400 font-medium text-[11px] leading-relaxed max-w-[200px] line-clamp-2">{r.secondary_services || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-indigo-600 font-black text-[11px] italic underline decoration-indigo-200">{r.spiritual_master || "—"}</div>
+                           <div className="text-indigo-600 font-black text-[11px] italic underline decoration-indigo-200">{r.spiritual_master || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-600 font-black text-xs">{r.year_joining || "—"}</div>
+                           <div className="text-slate-600 font-black text-sm">{r.year_joining || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-[11px] tabular-nums tracking-wide">{r.aadhar_number || "—"}</div>
+                           <div className="text-slate-400 font-medium text-[11px] tabular-nums tracking-wide">{r.aadhar_number || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_1 || "—"}</div>
+                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_1 || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_2 || "—"}</div>
+                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_2 || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_3 || "—"}</div>
+                           <div className="text-slate-500 font-medium text-[10px] leading-snug">{r.relative_contact_3 || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-500 font-black text-[10px] uppercase tracking-widest">{r.prasadam || "—"}</div>
+                           <div className="text-slate-500 font-black text-[10px] uppercase tracking-widest">{r.prasadam || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.address_adhar || "—"}</div>
+                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.address_adhar || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.parents_address || "—"}</div>
+                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.parents_address || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
                            {r.adhar_card_copy_url ? (
-                             <a href={r.adhar_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[9px] uppercase tracking-tighter flex items-center gap-1">
+                             <a href={r.adhar_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[10px] uppercase tracking-tighter flex items-center gap-1">
                                 <Download className="w-3 h-3" /> View Adhar
                              </a>
-                           ) : "—"}
+                           ) : "-"}
                         </td>
                         <td className="px-8 py-5">
                            {r.pan_card_copy_url ? (
-                             <a href={r.pan_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[9px] uppercase tracking-tighter flex items-center gap-1">
+                             <a href={r.pan_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[10px] uppercase tracking-tighter flex items-center gap-1">
                                 <Download className="w-3 h-3" /> View Pan
                              </a>
-                           ) : "—"}
+                           ) : "-"}
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-[10px] italic">{r.custom_counsellor || "—"}</div>
+                           <div className="text-slate-400 font-medium text-xs italic">{r.custom_counsellor || "-"}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="flex items-center justify-center gap-2">
+                           <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => { setSelectedRecord(r); setIsEditing(true); }} className="w-10 h-10 bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all flex items-center justify-center shadow-sm">
                                  <Edit2 className="w-4 h-4" />
                               </button>
-                              <button onClick={() => handleDelete(r.id)} className="w-10 h-10 bg-rose-50 text-rose-300 hover:bg-rose-500 hover:text-white rounded-xl transition-all flex items-center justify-center shadow-sm">
-                                 <Trash2 className="w-4 h-4" />
-                              </button>
+                              {r.is_deleted ? (
+                                <button onClick={() => handleRestore(r.id)} title="Restore Record" className="w-10 h-10 bg-emerald-50 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl transition-all flex items-center justify-center shadow-sm">
+                                   <RefreshCcw className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button onClick={() => handleDelete(r.id)} title="Archive Record" className="w-10 h-10 bg-rose-50 text-rose-300 hover:bg-rose-500 hover:text-white rounded-xl transition-all flex items-center justify-center shadow-sm">
+                                   <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                            </div>
                         </td>
                       </tr>
@@ -599,19 +669,24 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Legal Name (Adhar)</span>
                        <input type="text" value={selectedRecord?.legal_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, legal_name: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. Rajesh Kumar" />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        <div>
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Initiation Status</span>
                           <select value={selectedRecord?.initiation || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiation: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none">
                              <option value="">Select...</option>
-                             <option value="Initiated">Initiated</option>
-                             <option value="Aspirant">Aspirant</option>
-                             <option value="Seeker">Seeker</option>
+                             <option value="1st">1st</option>
+                             <option value="2nd">2nd</option>
+                             <option value="Not Initiated">Not Initiated</option>
                           </select>
                        </div>
                        <div>
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Colour Code</span>
-                          <input type="text" value={selectedRecord?.colour || ""} onChange={(e) => setSelectedRecord({...selectedRecord, colour: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
+                           <select value={selectedRecord?.colour || ""} onChange={(e) => setSelectedRecord({...selectedRecord, colour: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none">
+                              <option value="">Select...</option>
+                              <option value="Yellow">Yellow</option>
+                              <option value="White">White</option>
+                              <option value="Saffron">Saffron</option>
+                           </select>
                        </div>
                     </div>
                  </div>
@@ -642,7 +717,7 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Spiritual Master</span>
                        <input type="text" value={selectedRecord?.spiritual_master || ""} onChange={(e) => setSelectedRecord({...selectedRecord, spiritual_master: e.target.value})} className="w-full px-8 py-5 bg-indigo-50/30 border border-indigo-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-indigo-700" />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        <div>
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Counsellor</span>
                           <input type="text" value={selectedRecord?.counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, counsellor: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
@@ -668,7 +743,7 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
 
                  {/* Block 4: Medical & Personal */}
                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        <div>
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">DOB (Adhar)</span>
                           <input type="text" value={selectedRecord?.dob_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_adhar: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
@@ -678,7 +753,7 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                           <input type="text" value={selectedRecord?.dob_actual || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_actual: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
                        </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        <div>
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Blood Group</span>
                           <input type="text" value={selectedRecord?.blood_group || ""} onChange={(e) => setSelectedRecord({...selectedRecord, blood_group: e.target.value})} className="w-full px-4 py-4 bg-rose-50 border border-rose-100 rounded-2xl font-bold outline-none text-rose-600" />

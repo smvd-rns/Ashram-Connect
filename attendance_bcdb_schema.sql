@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS bcdb (
     parents_address TEXT,
     whatsapp_no TEXT,
     custom_counsellor TEXT,
+    is_deleted BOOLEAN DEFAULT FALSE, -- Added for soft-delete
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

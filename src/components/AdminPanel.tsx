@@ -818,7 +818,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20 pt-10">
-      <div className={`${activeView === 'attendance-tracing' ? 'max-w-none px-4 sm:px-10' : 'max-w-7xl mx-auto px-4'}`}>
+      <div className={`${(activeView === 'attendance-tracing' || activeView === 'bcdb') ? 'max-w-none px-4 sm:px-10' : 'max-w-7xl mx-auto px-4'}`}>
         {/* VIEW: Dashboard Home (Grid Cards) */}
         {activeView === "home" && (
           <div className="space-y-10 animate-in fade-in zoom-in-95 duration-500">
@@ -2478,10 +2478,12 @@ export default function AdminPanel() {
 
         {/* VIEW: BCDB Portal */}
         {activeView === "bcdb" && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
-             <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all">
-                <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
-             </button>
+          <div className="space-y-6 sm:space-y-10 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
+             <div className="px-1">
+               <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-xs hover:gap-3 transition-all bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
+                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
+               </button>
+             </div>
              <BCDBManager session={session} isAdmin={isSuperAdmin} />
           </div>
         )}
