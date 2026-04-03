@@ -61,6 +61,7 @@ export default function YouTubeChannelHub() {
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [fetchedVideoMetadata, setFetchedVideoMetadata] = useState<Record<string, VideoItem>>({});
   const filterRef = useRef<HTMLDivElement>(null);
 
   const fetchedRef = useRef<Set<string>>(new Set());
@@ -254,6 +255,36 @@ export default function YouTubeChannelHub() {
     }
   }, [videos, activeVideoId, activeTab, activePlaylistId]);
 
+  useEffect(() => {
+    if (!activeVideoId) return;
+
+    // Check if it's already in some cache
+    const isCached = videos.some(v => v.id === activeVideoId) || 
+                     globalResults.some(v => v.id === activeVideoId) ||
+                     Object.values(contentCache).some(ch => 
+                       Object.values(ch).some((tabs: any) => 
+                         Object.values(tabs).some((pl: any) => 
+                           pl.items.some((v: any) => v.id === activeVideoId)
+                         )
+                       )
+                     );
+
+    if (!isCached && !fetchedVideoMetadata[activeVideoId]) {
+      const fetchMetadata = async () => {
+        try {
+          const res = await fetch(`/api/youtube?videoId=${activeVideoId}`);
+          if (res.ok) {
+            const data = await res.json();
+            setFetchedVideoMetadata(prev => ({ ...prev, [activeVideoId]: data }));
+          }
+        } catch (err) {
+          console.error("Failed to fetch one-off video metadata:", err);
+        }
+      };
+      fetchMetadata();
+    }
+  }, [activeVideoId, videos, globalResults, contentCache, fetchedVideoMetadata]);
+
   const filteredVideos = videos.filter((v: VideoItem) =>
     v.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -267,8 +298,11 @@ export default function YouTubeChannelHub() {
     // 2. Check global search results (important if clicked from search)
     const fromGlobal = globalResults.find((v: VideoItem) => v.id === activeVideoId);
     if (fromGlobal) return fromGlobal;
+
+    // 3. Check one-off fetched metadata
+    if (fetchedVideoMetadata[activeVideoId]) return fetchedVideoMetadata[activeVideoId];
     
-    // 3. Fallback: Search all channel caches
+    // 4. Fallback: Search all channel caches
     for (const chId in contentCache) {
       for (const tab in contentCache[chId]) {
         for (const plId in contentCache[chId][tab]) {

@@ -32,18 +32,53 @@ function formatRelativeDate(dateStr: string): string {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const videoId = searchParams.get("videoId");
   const channelId = searchParams.get("channelId");
   const playlistId = searchParams.get("playlistId"); // For entering a playlist
   const type = searchParams.get("type") ?? "videos";
   const pageToken = searchParams.get("pageToken") ?? "";
   const maxResults = Math.min(parseInt(searchParams.get("maxResults") ?? "50"), 50);
 
-  if (!channelId && !playlistId) {
-    return NextResponse.json({ error: "Missing identity parameter" }, { status: 400 });
-  }
-
   if (!YOUTUBE_API_KEY) {
     return NextResponse.json({ error: "API Key missing" }, { status: 503 });
+  }
+
+  // Handle single video fetch if videoId is provided
+  if (videoId) {
+    try {
+      const apiUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+      apiUrl.searchParams.set("id", videoId);
+      apiUrl.searchParams.set("part", "snippet,contentDetails");
+      apiUrl.searchParams.set("key", YOUTUBE_API_KEY);
+
+      const res = await fetch(apiUrl.toString(), { cache: "no-store" });
+      const data = await res.json();
+      const item = data.items?.[0];
+
+      if (!item) {
+        return NextResponse.json({ error: "Video not found" }, { status: 404 });
+      }
+
+      const snippet = item.snippet;
+      return NextResponse.json({
+        id: item.id,
+        title: snippet.title,
+        thumbnail: snippet.thumbnails?.maxres?.url ?? 
+                   snippet.thumbnails?.high?.url ?? 
+                   snippet.thumbnails?.medium?.url ?? 
+                   `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`,
+        date: snippet.publishedAt ? formatRelativeDate(snippet.publishedAt) : "",
+        published: snippet.publishedAt ?? "",
+        type: "video"
+      });
+    } catch (err) {
+      console.error("Single video fetch error:", err);
+      return NextResponse.json({ error: "Failed to fetch video details" }, { status: 500 });
+    }
+  }
+
+  if (!channelId && !playlistId) {
+    return NextResponse.json({ error: "Missing identity parameter" }, { status: 400 });
   }
 
   try {
