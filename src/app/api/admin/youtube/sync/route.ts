@@ -8,7 +8,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request: NextRequest) {
   try {
-    const { channelId } = await request.json();
+    const { channelId, isIncremental = false } = await request.json();
 
     if (!channelId) {
       return NextResponse.json({ error: "Missing channelId" }, { status: 400 });
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
        throw new Error("Could not find uploads playlist for this channel.");
     }
 
-    // 3. Paginate through all videos in the uploads playlist
+    // 3. Paginate through videos in the uploads playlist
     let nextPageToken = "";
     let totalSynced = 0;
 
@@ -64,11 +64,12 @@ export async function POST(request: NextRequest) {
         description: item.snippet.description,
         thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
         published_at: item.contentDetails.videoPublishedAt || item.snippet.publishedAt,
-        kind: 'video', // we treat all as videos for now
+        kind: 'video', 
         updated_at: new Date().toISOString()
       }));
 
       if (videos.length > 0) {
+        // DUPLICATE PREVENTION: .upsert on video_id handles this safely.
         const { error: upsertError } = await supabase
           .from("yt_videos")
           .upsert(videos, { onConflict: "video_id" });
@@ -77,34 +78,41 @@ export async function POST(request: NextRequest) {
         totalSynced += videos.length;
       }
 
-      nextPageToken = itemsData.nextPageToken;
+      // If incremental (automation mode), we only fetch the first page (latest 50)
+      if (isIncremental) {
+        nextPageToken = "";
+      } else {
+        nextPageToken = itemsData.nextPageToken;
+      }
     } while (nextPageToken);
 
-    // 4. Fetch and Sync Playlists
-    const playlistsUrl = new URL("https://www.googleapis.com/youtube/v3/playlists");
-    playlistsUrl.searchParams.set("channelId", channelId);
-    playlistsUrl.searchParams.set("part", "snippet,contentDetails");
-    playlistsUrl.searchParams.set("maxResults", "50");
-    playlistsUrl.searchParams.set("key", YOUTUBE_API_KEY);
+    // 4. Fetch and Sync Playlists (Only if NOT incremental or first time)
+    if (!isIncremental) {
+      const playlistsUrl = new URL("https://www.googleapis.com/youtube/v3/playlists");
+      playlistsUrl.searchParams.set("channelId", channelId);
+      playlistsUrl.searchParams.set("part", "snippet,contentDetails");
+      playlistsUrl.searchParams.set("maxResults", "50");
+      playlistsUrl.searchParams.set("key", YOUTUBE_API_KEY);
 
-    const pRes = await fetch(playlistsUrl.toString());
-    const pData = await pRes.json();
+      const pRes = await fetch(playlistsUrl.toString());
+      const pData = await pRes.json();
 
-    if (pRes.ok && pData.items) {
-      const playlists = pData.items.map((item: any) => ({
-        playlist_id: item.id,
-        channel_id: channelId,
-        title: item.snippet.title,
-        thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
-        video_count: item.contentDetails.itemCount,
-        updated_at: new Date().toISOString()
-      }));
+      if (pRes.ok && pData.items) {
+        const playlists = pData.items.map((item: any) => ({
+          playlist_id: item.id,
+          channel_id: channelId,
+          title: item.snippet.title,
+          thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
+          video_count: item.contentDetails.itemCount,
+          updated_at: new Date().toISOString()
+        }));
 
-      if (playlists.length > 0) {
-        const { error: pUpsertError } = await supabase
-          .from("yt_playlists")
-          .upsert(playlists, { onConflict: "playlist_id" });
-        if (pUpsertError) console.error("Playlist upsert error:", pUpsertError);
+        if (playlists.length > 0) {
+          const { error: pUpsertError } = await supabase
+            .from("yt_playlists")
+            .upsert(playlists, { onConflict: "playlist_id" });
+          if (pUpsertError) console.error("Playlist upsert error:", pUpsertError);
+        }
       }
     }
 
@@ -118,19 +126,20 @@ export async function POST(request: NextRequest) {
       })
       .eq("channel_id", channelId);
 
-    return NextResponse.json({ success: true, totalSynced });
+    return NextResponse.json({ success: true, totalSynced, mode: isIncremental ? 'incremental' : 'full' });
 
   } catch (error: any) {
     console.error("Sync Error:", error);
     
     // Attempt to update status to error
     try {
-        const { channelId } = await request.clone().json();
-        if (channelId) {
+        const body = await request.clone().json();
+        const cid = body.channelId;
+        if (cid) {
             await supabase
                 .from("youtube_channels")
                 .update({ sync_status: 'error', sync_error: error.message })
-                .eq("channel_id", channelId);
+                .eq("channel_id", cid);
         }
     } catch {}
 
