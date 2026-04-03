@@ -16,11 +16,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log(`[Search API] Querying: "${query}" (Channel Filter: ${channelId || "none"})`);
+    console.log(`[Search API] Querying: "${query}" (Channel Filters: ${channelId || "all"})`);
     
+    // Split comma-separated IDs into an array for the multi-channel RPC
+    const channelIds = channelId ? channelId.split(',') : null;
+
     const { data, error: searchError } = await supabase.rpc("search_youtube_content", {
       query_text: query,
-      channel_id_filter: channelId || null,
+      channel_ids: channelIds,
       max_limit: limit
     });
 

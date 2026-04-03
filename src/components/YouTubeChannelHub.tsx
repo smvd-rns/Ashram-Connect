@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import {
+  SlidersHorizontal, ChevronDown, Check,
   Search, Play, Radio, Film, Layers, ExternalLink,
   Loader2, X, Clock, CheckCircle2,
   Heart, Bookmark, Share2, Video, AlertCircle, Grid
@@ -58,6 +59,9 @@ export default function YouTubeChannelHub() {
   const [error, setError] = useState<string | null>(null);
   const [globalResults, setGlobalResults] = useState<VideoItem[]>([]);
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   const fetchedRef = useRef<Set<string>>(new Set());
 
@@ -193,22 +197,36 @@ export default function YouTubeChannelHub() {
   }, [activeChannel, activeTab, activePlaylistId]);
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     const performGlobalSearch = async () => {
       if (!searchQuery.trim()) {
         setGlobalResults([]);
         return;
       }
 
-      // If we are in a channel, only do global search if the query is at least 3 chars
-      // to prevent excessive API calls while filtering local list
-      if (activeChannel && searchQuery.length < 3) {
+      // If we are in a channel view, or have filters, or a long enough query
+      if (selectedChannelIds.length === 0 && activeChannel && searchQuery.length < 3) {
         setGlobalResults([]);
         return;
       }
 
       setIsSearchingGlobal(true);
       try {
-        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}`);
+        let url = `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`;
+        if (selectedChannelIds.length > 0) {
+          url += `&channelId=${selectedChannelIds.join(',')}`;
+        }
+        
+        const res = await fetch(url);
         const data = await res.json();
         if (res.ok) {
           setGlobalResults(data.items || []);
@@ -220,9 +238,9 @@ export default function YouTubeChannelHub() {
       }
     };
 
-    const timer = setTimeout(performGlobalSearch, 500);
+    const timer = setTimeout(performGlobalSearch, 400);
     return () => clearTimeout(timer);
-  }, [searchQuery, activeChannel]);
+  }, [searchQuery, selectedChannelIds, activeChannel]);
 
   const playerRef = useRef<HTMLDivElement>(null);
 
@@ -254,9 +272,6 @@ export default function YouTubeChannelHub() {
     playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const getEmbedUrl = () =>
-    `https://www.youtube-nocookie.com/embed/${activeVideoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
-
   if (!activeChannel) {
     return (
       <div className="min-h-screen bg-slate-50 py-10 sm:py-16 px-4">
@@ -266,32 +281,108 @@ export default function YouTubeChannelHub() {
               Spiritual <span className="text-transparent bg-clip-text bg-gradient-to-r from-devo-600 to-accent-gold">Library</span>
             </h1>
             <p className="text-xs sm:text-base text-devo-800 font-bold opacity-60 uppercase tracking-[0.2em]">Select a channel or search below</p>
-            <div className="relative mt-8 sm:mt-12 max-w-xl mx-auto group">
-              <div className="absolute inset-0 bg-devo-500/20 blur-2xl rounded-full opacity-0 group-focus-within:opacity-100 transition-opacity" />
-              <div className="relative">
-                <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-devo-400" />
-                <input 
-                  type="text"
-                  placeholder="Search across all wisdom channels..."
-                  className="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-100 rounded-3xl font-bold text-sm sm:text-base shadow-xl focus:border-devo-500 outline-none transition-all placeholder:text-slate-300"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                {isSearchingGlobal && (
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin text-devo-500" />
-                  </div>
-                )}
+            <div className="relative mt-8 sm:mt-12 max-w-2xl mx-auto flex gap-3 px-4">
+              <div className="relative flex-1 group">
+                <div className="absolute inset-0 bg-devo-500/20 blur-2xl rounded-full opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                <div className="relative">
+                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-devo-400" />
+                  <input 
+                    type="text"
+                    placeholder="Search across wisdom library..."
+                    className="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-100 rounded-3xl font-bold text-sm sm:text-base shadow-xl focus:border-devo-500 outline-none transition-all placeholder:text-slate-300"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {isSearchingGlobal && (
+                    <div className="absolute right-6 top-1/2 -translate-y-1/2">
+                      <Loader2 className="w-5 h-5 animate-spin text-devo-500" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Multi-Select Channel Dropdown Filter */}
+              <div className="relative" ref={filterRef}>
+                 <button 
+                   onClick={() => setIsFilterOpen(!isFilterOpen)}
+                   className={`h-full px-6 flex items-center gap-3 bg-white border-2 rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95 ${
+                     selectedChannelIds.length > 0 ? "border-devo-500 text-devo-600 bg-devo-50/50" : "border-slate-100 text-slate-400"
+                   }`}
+                 >
+                   <SlidersHorizontal className="w-4 h-4" />
+                   <span className="hidden sm:inline">
+                     {selectedChannelIds.length === 0 ? "All Channels" : `${selectedChannelIds.length} Teachers`}
+                   </span>
+                   <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isFilterOpen ? "rotate-180" : ""}`} />
+                 </button>
+
+                 {isFilterOpen && (
+                   <div className="absolute top-full mt-4 right-0 w-72 bg-white rounded-3xl shadow-2xl border border-slate-100 p-4 z-[100] animate-in fade-in slide-in-from-top-4 duration-300">
+                      <div className="flex items-center justify-between mb-4 px-2">
+                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Filter Teachers</span>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={() => setSelectedChannelIds(channels.map(c => c.channel_id))}
+                            className="text-[9px] font-black text-devo-600 hover:text-devo-950 uppercase"
+                          >
+                            All
+                          </button>
+                          <button 
+                            onClick={() => setSelectedChannelIds([])}
+                            className="text-[9px] font-black text-slate-400 hover:text-red-500 uppercase"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="max-h-80 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                        {channels.map((ch) => {
+                          const isSelected = selectedChannelIds.includes(ch.channel_id);
+                          return (
+                            <button
+                              key={ch.id}
+                              onClick={() => {
+                                setSelectedChannelIds(prev => 
+                                  isSelected ? prev.filter(id => id !== ch.channel_id) : [...prev, ch.channel_id]
+                                );
+                              }}
+                              className={`w-full flex items-center gap-3 p-2 rounded-xl transition-all ${
+                                isSelected ? "bg-devo-50 text-devo-900" : "hover:bg-slate-50 text-slate-600"
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                                isSelected ? "bg-devo-500 border-devo-500" : "border-slate-200"
+                              }`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-100">
+                                <Image src={ch.custom_logo || logoCache[ch.channel_id]} alt={ch.name} width={32} height={32} className="object-cover" unoptimized />
+                              </div>
+                              <span className="text-[11px] font-bold truncate text-left flex-1">{ch.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                   </div>
+                 )}
               </div>
             </div>
           </div>
 
           {searchQuery ? (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                 <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">LECTURE SEARCH RESULTS ({globalResults.length})</h2>
-                 <button onClick={() => setSearchQuery("")} className="text-[10px] font-black uppercase text-devo-600 hover:text-devo-900 transition-colors">Back to Channels</button>
-               </div>
+                 <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-200 pb-6 gap-4">
+                  <div className="flex flex-col items-center sm:items-start gap-1">
+                    <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">LECTURE SEARCH RESULTS ({globalResults.length})</h2>
+                    {selectedChannelIds.length > 0 && (
+                      <p className="text-[10px] font-bold text-devo-600 uppercase tracking-widest">
+                        Filtering by: {selectedChannelIds.length} Selected Teachers
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => { setSearchQuery(""); setSelectedChannelIds([]); }} className="px-6 py-2 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg">Back to Library</button>
+                </div>
                {globalResults.length === 0 && !isSearchingGlobal ? (
                  <div className="py-20 text-center">
                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -300,42 +391,82 @@ export default function YouTubeChannelHub() {
                     <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No matching lectures found in our library</p>
                  </div>
                ) : (
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                   {globalResults.map((item: any, i) => (
-                     <button 
-                        key={item.id + i}
-                        onClick={() => {
-                          const query = new URLSearchParams();
-                          query.set("channel", item.channelId || item.channel_id);
-                          if (item.type === "playlist") {
-                            query.set("playlist", item.id);
-                          } else {
-                            query.set("v", item.id);
-                          }
-                          setSearchQuery(""); // Clear search to show the channel view
-                          router.push(`${pathname}?${query.toString()}`);
-                        }}
-                        className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:scale-[1.02] transition-all text-left"
-                     >
-                        <div className="relative aspect-video w-full">
-                           <Image src={item.thumbnail} alt={item.title} fill className="object-cover group-hover:scale-110 transition-transform duration-700" unoptimized />
-                           <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500" />
-                           <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/20">
-                             {item.type}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10">
+                    {globalResults.map((item: any, i) => {
+                      const isPlaylist = item.type === "playlist";
+                      const isLiveItem = item.type === "live";
+                      
+                      return (
+                        <button 
+                           key={item.id + i}
+                           onClick={() => {
+                             const query = new URLSearchParams();
+                             query.set("channel", item.channelId || item.channel_id);
+                             if (isPlaylist) {
+                               query.set("playlist", item.id);
+                             } else {
+                               query.set("v", item.id);
+                             }
+                             setSearchQuery(""); 
+                             router.push(`${pathname}?${query.toString()}`);
+                           }}
+                           className="group flex flex-col text-left"
+                        >
+                           <div className="relative w-full aspect-video">
+                              {/* Playlist Stack Effect - confined to thumbnail area */}
+                              {isPlaylist && (
+                                <>
+                                  <div className="absolute -top-1.5 left-0 right-0 h-full bg-slate-200/80 rounded-3xl -z-10 translate-y-1 scale-x-[0.96] border border-slate-300/30" />
+                                  <div className="absolute -top-3 left-0 right-0 h-full bg-slate-300/60 rounded-3xl -z-20 translate-y-2 scale-x-[0.92] border border-slate-400/20" />
+                                </>
+                              )}
+
+                              <div className="relative h-full w-full rounded-3xl overflow-hidden shadow-sm group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-500 border border-slate-100 bg-slate-200">
+                                 <Image src={item.thumbnail} alt={item.title} fill className="object-cover group-hover:scale-110 transition-transform duration-1000" unoptimized />
+                                 
+                                 {/* Overlay Icons */}
+                                 <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                                    {isPlaylist ? (
+                                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                         <Layers className="w-6 h-6 text-white" />
+                                      </div>
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                         <Play className="w-6 h-6 text-white ml-1" />
+                                      </div>
+                                    )}
+                                 </div>
+
+                                 {/* Badges */}
+                                 <div className="absolute bottom-3 right-3 flex gap-2">
+                                    {isLiveItem && (
+                                      <div className="px-2 py-1 bg-red-600 rounded-lg flex items-center gap-1.5 shadow-lg border border-red-500">
+                                         <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                         <span className="text-[8px] font-black text-white uppercase tracking-widest">LIVE</span>
+                                      </div>
+                                    )}
+                                    <div className="px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/20 shadow-lg">
+                                      {isPlaylist ? `${item.playlistCount || 0} VIDEOS` : "LECTURE"}
+                                    </div>
+                                 </div>
+                              </div>
                            </div>
-                        </div>
-                        <div className="p-5 space-y-3">
-                           <h3 className="font-outfit font-black text-xs sm:text-sm text-devo-950 line-clamp-2 leading-snug group-hover:text-devo-600 transition-colors">{item.title}</h3>
-                           <div className="flex items-center gap-2">
-                             <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
-                               <Video className="w-3 h-3 text-slate-400" />
-                             </div>
-                             <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-widest">{item.channelTitle || "Devotional Library"}</p>
+
+                           <div className="pt-4 px-1 space-y-2.5">
+                              <h3 className="font-outfit font-black text-xs sm:text-[13px] text-devo-950 line-clamp-2 leading-snug group-hover:text-devo-600 transition-colors">
+                                {item.title}
+                              </h3>
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
+                                  {isPlaylist ? <Layers className="w-3 h-3 text-slate-400" /> : <Video className="w-3 h-3 text-slate-400" />}
+                                </div>
+                                <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-widest">{item.channelTitle || "Devotional Library"}</p>
+                              </div>
                            </div>
-                        </div>
-                     </button>
-                   ))}
-                 </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                )}
             </div>
           ) : (
@@ -366,7 +497,8 @@ export default function YouTubeChannelHub() {
                           fill 
                           className="object-cover group-hover:scale-110 transition-transform duration-700" 
                           unoptimized 
-                          loading={i < 6 ? "eager" : "lazy"}
+                          priority={i < 8}
+                          loading={i < 8 ? "eager" : "lazy"}
                         />
                       ) : (
                         <div className="absolute inset-0 bg-slate-50 flex items-center justify-center">
@@ -376,8 +508,8 @@ export default function YouTubeChannelHub() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     </div>
                     <div className="text-center space-y-0.5 px-2">
-                      <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors">{channel.name}</h2>
-                      <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
+                       <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors uppercase tracking-tight">{channel.name}</h2>
+                       <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
                     </div>
                   </button>
                 ))
