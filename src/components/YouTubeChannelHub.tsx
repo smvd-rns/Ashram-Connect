@@ -258,17 +258,49 @@ export default function YouTubeChannelHub() {
     v.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeVideo = videos.find((v: VideoItem) => v.id === activeVideoId);
+  const activeVideo = (() => {
+    if (!activeVideoId) return null;
+    // 1. Check current channel videos
+    const fromChannel = videos.find((v: VideoItem) => v.id === activeVideoId);
+    if (fromChannel) return fromChannel;
+    
+    // 2. Check global search results (important if clicked from search)
+    const fromGlobal = globalResults.find((v: VideoItem) => v.id === activeVideoId);
+    if (fromGlobal) return fromGlobal;
+    
+    // 3. Fallback: Search all channel caches
+    for (const chId in contentCache) {
+      for (const tab in contentCache[chId]) {
+        for (const plId in contentCache[chId][tab]) {
+           const found = contentCache[chId][tab][plId].items.find((v: any) => v.id === activeVideoId);
+           if (found) return found;
+        }
+      }
+    }
+    return null;
+  })();
 
   const handleVideoSelect = (vid: VideoItem) => {
     if (vid.type === "playlist") {
       setActivePlaylistId(vid.id);
       setActivePlaylistName(vid.title);
       setActiveVideoId(null);
+      // Sync URL
+      const query = new URLSearchParams(searchParams.toString());
+      query.set("playlist", vid.id);
+      query.delete("v");
+      router.push(`${pathname}?${query.toString()}`, { scroll: false });
       return;
     }
+    
     setActiveVideoId(vid.id);
     setIsLive(vid.type === "live");
+    
+    // Sync URL
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("v", vid.id);
+    router.push(`${pathname}?${query.toString()}`, { scroll: false });
+    
     playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -684,6 +716,7 @@ export default function YouTubeChannelHub() {
             <div ref={playerRef} className="scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
               {activeVideoId ? (
                 <OptimizedVideoPlayer 
+                  key={activeVideoId}
                   videoId={activeVideoId}
                   title={activeVideo?.title || "Video"}
                   artist={activeChannel?.name || "Devotional Library"}
