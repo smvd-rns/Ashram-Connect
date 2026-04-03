@@ -17,7 +17,7 @@ export async function GET() {
 
     return NextResponse.json(
       { channels: data || [] },
-      { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=60" } }
+      { headers: { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=59" } }
     );
   } catch (error) {
     console.error("API error:", error);
