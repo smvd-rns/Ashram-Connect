@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE OR REPLACE FUNCTION search_youtube_content(
     query_text TEXT,
     channel_ids TEXT[] DEFAULT NULL, -- CHANGED: Now accepts an array for multi-channel search
-    max_limit INT DEFAULT 50
+    max_limit INT DEFAULT 200
 )
 RETURNS TABLE (
     id TEXT,
