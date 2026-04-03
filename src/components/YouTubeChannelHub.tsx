@@ -259,9 +259,9 @@ export default function YouTubeChannelHub() {
     if (!activeVideoId) return;
 
     // Check if it's already in some cache
-    const isCached = videos.some(v => v.id === activeVideoId) || 
-                     globalResults.some(v => v.id === activeVideoId) ||
-                     Object.values(contentCache).some(ch => 
+    const isCached = videos.some((v: VideoItem) => v.id === activeVideoId) || 
+                     globalResults.some((v: VideoItem) => v.id === activeVideoId) ||
+                     Object.values(contentCache).some((ch: any) => 
                        Object.values(ch).some((tabs: any) => 
                          Object.values(tabs).some((pl: any) => 
                            pl.items.some((v: any) => v.id === activeVideoId)
