@@ -9,7 +9,7 @@ import {
   UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo, 
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
   Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck, 
-  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft
+  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft, RotateCcw
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -104,6 +104,7 @@ export default function AdminPanel() {
   const [activeYtChannel, setActiveYtChannel] = useState<any>(null);
   const [isFetchingYt, setIsFetchingYt] = useState(false);
   const [isUploadingYt, setIsUploadingYt] = useState(false);
+  const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set());
 
   // Analytics State
   const [stats, setStats] = useState<any>(null);
@@ -1596,44 +1597,89 @@ export default function AdminPanel() {
               {loadingYt ? (
                 <div className="col-span-full py-20 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-indigo-500" /></div>
               ) : ytChannels.map((channel, index) => (
-                <div key={channel.id} className="bg-white p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm hover:shadow-md border border-slate-200 hover:border-indigo-400 flex items-center gap-4 sm:gap-5 group transition-all relative overflow-hidden">
-                   {/* Reorder Controls */}
-                   <div className="flex flex-col gap-1 pr-2 sm:pr-0 border-r border-slate-100 sm:border-none">
-                     <button 
-                       disabled={index === 0} 
-                       onClick={() => handleYtChannelSwap(index, index - 1)}
-                       className="p-1.5 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
-                     >
-                       <ChevronLeft className="w-5 h-5 rotate-90" />
-                     </button>
-                     <button 
-                       disabled={index === ytChannels.length - 1}
-                       onClick={() => handleYtChannelSwap(index, index + 1)}
-                       className="p-1.5 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
-                     >
-                       <ChevronLeft className="w-5 h-5 -rotate-90" />
-                     </button>
-                   </div>
+                <div key={channel.id} className="bg-white p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm hover:shadow-md border border-slate-200 hover:border-indigo-400 flex flex-col gap-4 sm:gap-5 group transition-all relative overflow-hidden">
+                   <div className="flex items-center gap-4 sm:gap-5">
+                     {/* Reorder Controls */}
+                     <div className="flex flex-col gap-1 pr-2 border-r border-slate-100">
+                       <button 
+                         disabled={index === 0} 
+                         onClick={() => handleYtChannelSwap(index, index - 1)}
+                         className="p-1 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
+                       >
+                         <ChevronLeft className="w-5 h-5 rotate-90" />
+                       </button>
+                       <button 
+                         disabled={index === ytChannels.length - 1}
+                         onClick={() => handleYtChannelSwap(index, index + 1)}
+                         className="p-1 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
+                       >
+                         <ChevronLeft className="w-5 h-5 -rotate-90" />
+                       </button>
+                     </div>
 
-                   <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden shadow-inner border-2 border-white shrink-0 ${!channel.is_active && 'grayscale opacity-40'}`}>
-                    {channel.custom_logo ? (
-                      <Image src={channel.custom_logo} alt={channel.name} width={64} height={64} className="object-cover" unoptimized />
-                    ) : (
-                      <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300 font-black text-[10px]">{channel.order_index}</div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-grow">
-                    <div className="flex items-center gap-2">
-                       <h3 className="font-black text-devo-950 text-sm sm:text-base leading-tight truncate">{channel.name}</h3>
-                       <span className="text-[9px] font-black bg-slate-50 px-1.5 py-0.5 rounded text-slate-400">#{channel.order_index}</span>
-                    </div>
-                    <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 font-mono mt-0.5 truncate">{channel.channel_id}</p>
-                    <div className="flex gap-3 mt-2 sm:mt-3">
-                       <button onClick={() => { setActiveYtChannel(channel); setYtModalOpen(true); }} className="text-[9px] sm:text-[10px] font-black uppercase text-indigo-600 hover:text-black transition-all flex items-center gap-1"><Settings className="w-3 h-3" /> Edit</button>
-                       <button onClick={() => deleteYtChannel(channel.id)} className="text-[9px] sm:text-[10px] font-black uppercase text-red-300 hover:text-red-600 transition-all flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
-                    </div>
-                  </div>
-                  {!channel.is_active && <span className="absolute top-3 right-3 px-1.5 py-0.5 bg-slate-50 text-slate-300 text-[7px] font-black uppercase rounded tracking-widest border border-slate-100">Inactive</span>}
+                     <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden shadow-inner border-2 border-white shrink-0 ${!channel.is_active && 'grayscale opacity-40'}`}>
+                        {channel.custom_logo ? (
+                          <Image src={channel.custom_logo} alt={channel.name} width={64} height={64} className="object-cover" unoptimized />
+                        ) : (
+                          <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300 font-black text-[10px]">{channel.order_index}</div>
+                        )}
+                      </div>
+                      
+                      <div className="flex-1 min-w-0 pr-10">
+                         <div className="flex items-center gap-2">
+                            <h3 className="font-black text-devo-950 text-sm sm:text-base leading-tight truncate">{channel.name}</h3>
+                            <span className="text-[9px] font-black bg-slate-50 px-1.5 py-0.5 rounded text-slate-400">#{channel.order_index}</span>
+                         </div>
+                         <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 font-mono mt-0.5 truncate">{channel.channel_id}</p>
+                         
+                         {/* Sync Status & Timestamp */}
+                         <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${
+                              channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                              channel.sync_status === 'completed' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                              channel.sync_status === 'error' ? 'bg-rose-50 border-rose-100 text-rose-600' :
+                              'bg-slate-50 border-slate-100 text-slate-400'
+                            }`}>
+                              {channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? (
+                                <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Syncing...</>
+                              ) : channel.sync_status === 'completed' ? (
+                                <><CheckCircle className="w-2.5 h-2.5" /> Completed</>
+                              ) : channel.sync_status === 'error' ? (
+                                <><AlertCircle className="w-2.5 h-2.5" /> Failed</>
+                              ) : (
+                                "Never Synced"
+                              )}
+                            </div>
+                            {channel.last_sync_at && (
+                              <div className="flex items-center gap-1 text-[8px] font-bold text-slate-400 whitespace-nowrap">
+                                <Clock className="w-2 h-2" /> {new Date(channel.last_sync_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            )}
+                         </div>
+                      </div>
+
+                      <div className="absolute top-4 right-4 flex gap-1">
+                         <button 
+                           onClick={() => handleSyncChannel(channel.channel_id)}
+                           disabled={syncingChannels.has(channel.channel_id)}
+                           className={`p-2 rounded-lg border transition-all shadow-sm ${
+                             syncingChannels.has(channel.channel_id) 
+                             ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
+                             : 'bg-white text-indigo-600 border-slate-100 hover:border-indigo-600 hover:bg-indigo-50'
+                           }`}
+                           title="Sync Metadata"
+                         >
+                           <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
+                         </button>
+                         <button onClick={() => { setActiveYtChannel(channel); setYtModalOpen(true); }} className="p-2 bg-white text-slate-400 hover:text-indigo-600 rounded-lg border border-slate-100 hover:border-indigo-600 transition-all shadow-sm">
+                           <Settings className="w-3.5 h-3.5" />
+                         </button>
+                         <button onClick={() => deleteYtChannel(channel.id)} className="p-2 bg-white text-slate-400 hover:text-red-500 rounded-lg border border-slate-100 hover:border-red-500 transition-all shadow-sm">
+                           <Trash2 className="w-3.5 h-3.5" />
+                         </button>
+                      </div>
+                   </div>
+                   {!channel.is_active && <span className="absolute bottom-3 right-3 px-1.5 py-0.5 bg-slate-50 text-slate-300 text-[6px] font-black uppercase rounded tracking-widest border border-slate-100">Inactive</span>}
                 </div>
               ))}
             </div>
@@ -2502,6 +2548,32 @@ export default function AdminPanel() {
       console.error(err);
     } finally {
       setLoadingYt(false);
+    }
+  }
+
+  async function handleSyncChannel(channelId: string) {
+    if (syncingChannels.has(channelId)) return;
+    
+    setSyncingChannels(prev => new Set(prev).add(channelId));
+    try {
+      const res = await fetch("/api/admin/youtube/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      // Refresh channels to get updated status and timestamp
+      fetchYtChannels();
+    } catch (err: any) {
+      alert("Sync failed: " + err.message);
+    } finally {
+      setSyncingChannels(prev => {
+        const next = new Set(prev);
+        next.delete(channelId);
+        return next;
+      });
     }
   }
 

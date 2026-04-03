@@ -14,10 +14,12 @@ interface VideoItem {
   id: string;
   title: string;
   thumbnail: string;
-  date: string;
+  date?: string;
   published: string;
   type: "video" | "live" | "short" | "playlist";
   playlistCount?: number;
+  channelId?: string;
+  channelTitle?: string;
 }
 
 interface Channel {
@@ -28,9 +30,6 @@ interface Channel {
   custom_logo: string;  // Manually uploaded to Supabase
   banner_style: string;
 }
-
-// The list of channels is now fetched dynamically from the database
-// via GET /api/youtube/channels
 
 const tabs = [
   { id: "videos", label: "Videos", icon: Play },
@@ -51,18 +50,17 @@ export default function YouTubeChannelHub() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  // Cache: { [channelId]: { [tabId]: { [playlistId]: { items: [], token: "" } } } }
   const [contentCache, setContentCache] = useState<Record<string, any>>({});
   const [logoCache, setLogoCache] = useState<Record<string, string>>({});
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadMoreLoading, setLoadMoreLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [globalResults, setGlobalResults] = useState<VideoItem[]>([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
 
-  // Ref to track which channel-tab combinations have been initiated
   const fetchedRef = useRef<Set<string>>(new Set());
 
-  // Fetch initial channels
   useEffect(() => {
     const fetchChannels = async () => {
       setLoadingChannels(true);
@@ -72,11 +70,17 @@ export default function YouTubeChannelHub() {
         if (data.channels?.length > 0) {
           setChannels(data.channels);
           
-          // Initial deep-link check on mount
           const urlChannelId = searchParams.get("channel");
+          const urlPlaylistId = searchParams.get("playlist");
+          const urlVideoId = searchParams.get("v");
+
           if (urlChannelId) {
             const found = data.channels.find((c: any) => c.channel_id === urlChannelId);
-            if (found) setActiveChannel(found);
+            if (found) {
+              setActiveChannel(found);
+              if (urlPlaylistId) setActivePlaylistId(urlPlaylistId);
+              if (urlVideoId) setActiveVideoId(urlVideoId);
+            }
           }
         }
       } catch (err) {
@@ -88,21 +92,36 @@ export default function YouTubeChannelHub() {
     fetchChannels();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle URL changes (Browser Back/Forward)
   useEffect(() => {
     const urlChannelId = searchParams.get("channel");
+    const urlPlaylistId = searchParams.get("playlist");
+    const urlVideoId = searchParams.get("v");
+
     if (!urlChannelId) {
-      setActiveChannel(null);
+      if (activeChannel) {
+        setActiveChannel(null);
+        setActivePlaylistId(null);
+        setActiveVideoId(null);
+      }
       return;
     }
     
     if (channels.length > 0) {
       const matched = channels.find(c => c.channel_id === urlChannelId);
-      if (matched && matched.id !== activeChannel?.id) {
+      if (matched && matched.channel_id !== activeChannel?.channel_id) {
         setActiveChannel(matched);
       }
+      
+      // Only set if they exist in URL and differ from current state
+      // This prevents the "null" in URL from fighting with the "auto-select" logic
+      if (urlPlaylistId && urlPlaylistId !== activePlaylistId) {
+        setActivePlaylistId(urlPlaylistId);
+      }
+      if (urlVideoId && urlVideoId !== activeVideoId) {
+        setActiveVideoId(urlVideoId);
+      }
     }
-  }, [searchParams, channels, activeChannel?.id]);
+  }, [searchParams, channels, activeChannel?.channel_id, activePlaylistId, activeVideoId]);
 
   const currentTabContent = activeChannel 
     ? (contentCache[activeChannel.channel_id]?.[activeTab]?.[activePlaylistId || "main"] || { items: [], token: "" })
@@ -110,16 +129,12 @@ export default function YouTubeChannelHub() {
     
   const videos = currentTabContent.items;
   const nextPageToken = currentTabContent.token;
-  
-  // LOGO PRIORITY: 1. Manual Upload (DB) > 2. Live YouTube Logo (Cache) > 3. Placeholder
   const activeLogo = activeChannel?.custom_logo || (activeChannel ? logoCache[activeChannel.channel_id] : null);
 
   const fetchContent = useCallback(async (channel: Channel, tab: string, isLoadMore = false) => {
     if (!channel) return;
     const pId = activePlaylistId || "main";
     const cacheKey = `${channel.channel_id}-${tab}-${pId}`;
-    
-    // Bypassing cache if it's already empty/zero (to allow recovery from failed loads)
     const currentVideosCount = contentCache[channel.channel_id]?.[tab]?.[pId]?.items?.length || 0;
     if (!isLoadMore && fetchedRef.current.has(cacheKey) && currentVideosCount > 0) return;
 
@@ -133,14 +148,11 @@ export default function YouTubeChannelHub() {
     try {
       const pageToken = isLoadMore ? nextPageToken : "";
       const plParam = activePlaylistId ? `&playlistId=${activePlaylistId}` : "";
-      
-      // Use a timestamp to prevent browser caching if it's an intentional refresh
       const tParam = `&_t=${Date.now()}`;
       const res = await fetch(`/api/youtube?channelId=${channel.channel_id}&type=${tab}&pageToken=${pageToken}${plParam}${tParam}`);
       const data = await res.json();
       
       if (!res.ok) {
-        // If it failed, don't mark as permanently fetched
         fetchedRef.current.delete(cacheKey);
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
@@ -174,16 +186,46 @@ export default function YouTubeChannelHub() {
       setLoading(false);
       setLoadMoreLoading(false);
     }
-  }, [nextPageToken, activePlaylistId, contentCache]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nextPageToken, activePlaylistId, contentCache]);
 
-  // Fetch on channel, tab, or playlist change
   useEffect(() => {
     if (activeChannel) fetchContent(activeChannel, activeTab);
-  }, [activeChannel, activeTab, activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeChannel, activeTab, activePlaylistId]);
+
+  useEffect(() => {
+    const performGlobalSearch = async () => {
+      if (!searchQuery.trim()) {
+        setGlobalResults([]);
+        return;
+      }
+
+      // If we are in a channel, only do global search if the query is at least 3 chars
+      // to prevent excessive API calls while filtering local list
+      if (activeChannel && searchQuery.length < 3) {
+        setGlobalResults([]);
+        return;
+      }
+
+      setIsSearchingGlobal(true);
+      try {
+        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        if (res.ok) {
+          setGlobalResults(data.items || []);
+        }
+      } catch (err) {
+        console.error("Global search error:", err);
+      } finally {
+        setIsSearchingGlobal(false);
+      }
+    };
+
+    const timer = setTimeout(performGlobalSearch, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery, activeChannel]);
 
   const playerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-select first video once initial videos load for a NEW channel/playlist
   useEffect(() => {
     const isShowingPlaylist = activePlaylistId !== null;
     const isMainVideoTab = activeTab === "videos" && !isShowingPlaylist;
@@ -215,86 +257,141 @@ export default function YouTubeChannelHub() {
   const getEmbedUrl = () =>
     `https://www.youtube-nocookie.com/embed/${activeVideoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
 
-  // ──── VIEW A: CHANNEL SELECTION GRID ─────────────────────────────
   if (!activeChannel) {
     return (
       <div className="min-h-screen bg-slate-50 py-10 sm:py-16 px-4">
         <div className="max-w-7xl mx-auto space-y-10 sm:space-y-16">
-          
-          {/* Header */}
           <div className="text-center space-y-3 sm:space-y-5 max-w-2xl mx-auto animate-in fade-in slide-in-from-top-4 duration-700">
             <h1 className="text-3xl sm:text-6xl font-outfit font-black text-devo-950 tracking-tight leading-tight">
               Spiritual <span className="text-transparent bg-clip-text bg-gradient-to-r from-devo-600 to-accent-gold">Library</span>
             </h1>
-            <p className="text-xs sm:text-base text-devo-800 font-bold opacity-60 uppercase tracking-[0.2em]">Select a channel to begin</p>
+            <p className="text-xs sm:text-base text-devo-800 font-bold opacity-60 uppercase tracking-[0.2em]">Select a channel or search below</p>
+            <div className="relative mt-8 sm:mt-12 max-w-xl mx-auto group">
+              <div className="absolute inset-0 bg-devo-500/20 blur-2xl rounded-full opacity-0 group-focus-within:opacity-100 transition-opacity" />
+              <div className="relative">
+                <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-devo-400" />
+                <input 
+                  type="text"
+                  placeholder="Search across all wisdom channels..."
+                  className="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-100 rounded-3xl font-bold text-sm sm:text-base shadow-xl focus:border-devo-500 outline-none transition-all placeholder:text-slate-300"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {isSearchingGlobal && (
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-devo-500" />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Grid - More Compact columns */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8 gap-x-4 sm:gap-x-6">
-            {loadingChannels ? (
-              // Shimmer Skeletons
-              Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="space-y-4 animate-pulse">
-                  <div className="w-full h-[180px] sm:h-[240px] rounded-[2rem] sm:rounded-[3rem] bg-slate-200 border border-slate-100" />
-                  <div className="space-y-2 px-4 flex flex-col items-center">
-                    <div className="h-3 bg-slate-200 rounded-full w-2/3" />
-                    <div className="h-2 bg-slate-100 rounded-full w-1/3" />
+          {searchQuery ? (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+               <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                 <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">LECTURE SEARCH RESULTS ({globalResults.length})</h2>
+                 <button onClick={() => setSearchQuery("")} className="text-[10px] font-black uppercase text-devo-600 hover:text-devo-900 transition-colors">Back to Channels</button>
+               </div>
+               {globalResults.length === 0 && !isSearchingGlobal ? (
+                 <div className="py-20 text-center">
+                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <X className="w-8 h-8 text-slate-300" />
+                    </div>
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No matching lectures found in our library</p>
+                 </div>
+               ) : (
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                   {globalResults.map((item: any, i) => (
+                     <button 
+                        key={item.id + i}
+                        onClick={() => {
+                          const query = new URLSearchParams();
+                          query.set("channel", item.channelId || item.channel_id);
+                          if (item.type === "playlist") {
+                            query.set("playlist", item.id);
+                          } else {
+                            query.set("v", item.id);
+                          }
+                          setSearchQuery(""); // Clear search to show the channel view
+                          router.push(`${pathname}?${query.toString()}`);
+                        }}
+                        className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:scale-[1.02] transition-all text-left"
+                     >
+                        <div className="relative aspect-video w-full">
+                           <Image src={item.thumbnail} alt={item.title} fill className="object-cover group-hover:scale-110 transition-transform duration-700" unoptimized />
+                           <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500" />
+                           <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/20">
+                             {item.type}
+                           </div>
+                        </div>
+                        <div className="p-5 space-y-3">
+                           <h3 className="font-outfit font-black text-xs sm:text-sm text-devo-950 line-clamp-2 leading-snug group-hover:text-devo-600 transition-colors">{item.title}</h3>
+                           <div className="flex items-center gap-2">
+                             <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
+                               <Video className="w-3 h-3 text-slate-400" />
+                             </div>
+                             <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-widest">{item.channelTitle || "Devotional Library"}</p>
+                           </div>
+                        </div>
+                     </button>
+                   ))}
+                 </div>
+               )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8 gap-x-4 sm:gap-x-6">
+              {loadingChannels ? (
+                Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="space-y-4 animate-pulse">
+                    <div className="w-full h-[180px] sm:h-[240px] rounded-[2rem] sm:rounded-[3rem] bg-slate-200 border border-slate-100" />
+                    <div className="space-y-2 px-4 flex flex-col items-center">
+                      <div className="h-3 bg-slate-200 rounded-full w-2/3" />
+                      <div className="h-2 bg-slate-100 rounded-full w-1/3" />
+                    </div>
                   </div>
-                </div>
-              ))
-            ) : (
-              channels.map((channel, i) => (
-                <button 
-                  key={channel.id}
-                  onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
-                  className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700"
-                  style={{ animationDelay: `${i * 50}ms` }}
-                >
-                  {/* Full-Bleed Image Card Box */}
-                  <div 
-                    className="relative w-full aspect-[4/5] sm:aspect-[3/4] h-auto rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:shadow-2xl group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-slate-100"
+                ))
+              ) : (
+                channels.map((channel, i) => (
+                  <button 
+                    key={channel.id}
+                    onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
+                    className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700"
+                    style={{ animationDelay: `${i * 50}ms` }}
                   >
-                    {/* Primary Full Image */}
-                    {channel.custom_logo || logoCache[channel.channel_id] ? (
-                      <Image 
-                        src={channel.custom_logo || logoCache[channel.channel_id]} 
-                        alt={channel.name} 
-                        fill 
-                        className="object-cover group-hover:scale-110 transition-transform duration-700" 
-                        unoptimized 
-                        loading={i < 6 ? "eager" : "lazy"}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-slate-50 flex items-center justify-center">
-                        <Video className="w-12 h-12 text-slate-200" />
-                      </div>
-                    )}
-                    
-                    {/* Subtle Gradient Overlay for depth */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  </div>
-
-                  {/* Info Below Card - No overlapping */}
-                  <div className="text-center space-y-0.5 px-2">
-                    <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors">{channel.name}</h2>
-                    <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
+                    <div className="relative w-full aspect-[4/5] sm:aspect-[3/4] h-auto rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:shadow-2xl group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-slate-100">
+                      {channel.custom_logo || logoCache[channel.channel_id] ? (
+                        <Image 
+                          src={channel.custom_logo || logoCache[channel.channel_id]} 
+                          alt={channel.name} 
+                          fill 
+                          className="object-cover group-hover:scale-110 transition-transform duration-700" 
+                          unoptimized 
+                          loading={i < 6 ? "eager" : "lazy"}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-slate-50 flex items-center justify-center">
+                          <Video className="w-12 h-12 text-slate-200" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    </div>
+                    <div className="text-center space-y-0.5 px-2">
+                      <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors">{channel.name}</h2>
+                      <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // ──── VIEW B: ACTIVE CHANNEL PORTAL HUB ───────────────────────────
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 pt-6 lg:pt-0 pb-20 lg:pb-0">
-      {/* ─── DESKTOP SIDEBAR (lg+) ─────────────────────────────────── */}
       <aside className="hidden lg:flex w-14 xl:w-20 bg-white border-r border-slate-200 flex-col items-center py-4 xl:py-6 gap-4 xl:gap-6 sticky top-20 h-[calc(100vh-80px)] z-50 shrink-0">
-        
-        {/* Back to Library Button */}
         <button 
           onClick={() => router.push(pathname)}
           title="Back to Global Library"
@@ -302,7 +399,6 @@ export default function YouTubeChannelHub() {
         >
           <Grid className="w-5 h-5 group-hover:rotate-12 transition-transform" />
         </button>
-
         <div className="flex flex-col items-center gap-3 xl:gap-5 flex-grow overflow-y-auto w-full custom-scrollbar pb-6 px-1">
           {channels.map((channel) => (
             <button
@@ -329,7 +425,6 @@ export default function YouTubeChannelHub() {
                   <Video className="w-5 h-5 xl:w-6 xl:h-6 text-slate-400" />
                 )}
               </div>
-              {/* Tooltip */}
               <span className="absolute left-full ml-4 px-3 py-1.5 bg-devo-950 text-white text-[10px] font-black uppercase tracking-widest rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-xl">
                 {channel.name}
               </span>
@@ -338,7 +433,6 @@ export default function YouTubeChannelHub() {
         </div>
       </aside>
 
-      {/* ─── MOBILE/TABLET CHANNEL TRAY (<lg) ─────────────────────────── */}
       <div className="lg:hidden sticky top-16 z-[60] mt-0 bg-white border-b border-slate-200 px-4 py-4 shadow-sm">
         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-1">
           {channels.map((channel) => (
@@ -349,7 +443,7 @@ export default function YouTubeChannelHub() {
                 activeChannel?.id === channel.id ? "scale-105" : "opacity-60"
               }`}
             >
-              <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 shadow-sm ${
+               <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 shadow-sm ${
                 activeChannel?.id === channel.id ? "border-devo-500 ring-2 ring-devo-100" : "border-white"
               }`}>
                 {channel.custom_logo || logoCache[channel.channel_id] ? (
@@ -375,17 +469,13 @@ export default function YouTubeChannelHub() {
         </div>
       </div>
 
-      {/* ─── MAIN CONTENT ────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
-
-        {/* Banner with Logo Priority */}
         <div className="h-44 sm:h-64 relative">
           <div
             className="absolute inset-0 opacity-90 transition-all duration-700"
             style={{ background: activeChannel.banner_style }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
-
           <div className="absolute -bottom-16 sm:-bottom-20 left-1/2 sm:left-8 -translate-x-1/2 sm:translate-x-0 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 w-full sm:w-auto px-4 sm:px-0">
             <div className="relative w-28 h-28 sm:w-44 sm:h-44 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden border-4 sm:border-8 border-white shadow-2xl bg-slate-100 flex items-center justify-center shrink-0">
               {(activeLogo) ? (
@@ -414,13 +504,8 @@ export default function YouTubeChannelHub() {
           </div>
         </div>
 
-        {/* Content grid */}
         <div className="pt-24 px-4 sm:px-10 pb-20 grid grid-cols-1 lg:grid-cols-12 gap-8">
-
-          {/* ── Left: Player + Info ── */}
           <div className="lg:col-span-8 space-y-6">
-
-            {/* Tab bar */}
             {!activePlaylistId ? (
               <div className="flex bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px]">
               <button
@@ -464,7 +549,6 @@ export default function YouTubeChannelHub() {
               </div>
             )}
 
-            {/* Player Container */}
             <div ref={playerRef} className="scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
               {activeVideoId ? (
                 <OptimizedVideoPlayer 
@@ -473,8 +557,7 @@ export default function YouTubeChannelHub() {
                   artist={activeChannel?.name || "Devotional Library"}
                   thumbnail={activeVideo?.thumbnail}
                   onStateChange={(state: number) => {
-                    // Sync internal loading state if needed
-                    if (state === -1) setLoading(true); // Unstarted
+                    if (state === -1) setLoading(true);
                     else setLoading(false);
                   }}
                 />
@@ -487,7 +570,6 @@ export default function YouTubeChannelHub() {
               )}
             </div>
 
-            {/* Video info card */}
             {activeVideo && (
               <div className="bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
@@ -523,10 +605,7 @@ export default function YouTubeChannelHub() {
             )}
           </div>
 
-          {/* ── Right: Video List ── */}
           <div className="lg:col-span-4 space-y-4">
-
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -538,13 +617,11 @@ export default function YouTubeChannelHub() {
               />
             </div>
 
-            {/* List label */}
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 pl-2 flex items-center gap-2">
               <Play className="w-3 h-3" />
               {loading ? "Loading…" : `${activePlaylistId ? "Playlist" : activeTab.toUpperCase()}: ${filteredVideos.length} Items`}
             </p>
 
-            {/* Video list */}
             <div className="space-y-3 max-h-[1200px] overflow-y-auto pr-1 custom-scrollbar">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
@@ -562,48 +639,118 @@ export default function YouTubeChannelHub() {
                   <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
                   <p className="text-red-400 font-bold text-xs uppercase tracking-widest">Failed to load</p>
                 </div>
-              ) : filteredVideos.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
-                  <X className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                    {activePlaylistId ? "No videos found in this playlist" : `No ${activeTab} found`}
-                  </p>
-                </div>
               ) : (
                 <>
-                  {filteredVideos.map((vid: VideoItem) => (
-                    <button
-                      key={vid.id + vid.type}
-                      onClick={() => handleVideoSelect(vid)}
-                      className={`w-full group flex items-start gap-4 p-4 rounded-[2rem] transition-all duration-300 border-2 text-left ${activeVideoId === vid.id
-                          ? "bg-white border-devo-400 shadow-lg"
-                          : "bg-white/50 border-transparent hover:bg-white hover:border-slate-200"
-                        }`}
-                    >
-                      <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
-                        <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
-                        {vid.type === "playlist" && (
-                          <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
-                            <Layers className="w-6 h-6 mb-1" />
-                            <span className="text-[10px] font-black uppercase">{vid.playlistCount ?? "?"} Videos</span>
-                          </div>
-                        )}
-                        {activeVideoId === vid.id && (
-                          <div className="absolute inset-0 bg-devo-600/30 backdrop-blur-[2px] flex items-center justify-center">
-                            <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
-                              <Radio className="w-4 h-4 text-devo-600 animate-pulse" />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-1.5 py-1 flex-1 min-w-0">
-                        <p className={`font-outfit font-black text-[11px] sm:text-xs leading-snug line-clamp-3 ${activeVideoId === vid.id ? "text-devo-700" : "text-slate-700"}`}>
-                          {vid.title}
+                  {/* Local Results Section */}
+                  {filteredVideos.length > 0 && (
+                    <div className="space-y-3">
+                      {activeChannel && !searchQuery && (
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 pl-2">
+                          All Content
                         </p>
-                        {vid.type !== "playlist" && <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest">{vid.date}</p>}
-                      </div>
-                    </button>
-                  ))}
+                      )}
+                      {searchQuery && (
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600 pl-2">
+                          Matches in this Channel
+                        </p>
+                      )}
+                      {filteredVideos.map((vid: VideoItem) => (
+                        <button
+                          key={vid.id + vid.type}
+                          onClick={() => handleVideoSelect(vid)}
+                          className={`w-full group flex items-start gap-4 p-4 rounded-[2rem] transition-all duration-300 border-2 text-left ${activeVideoId === vid.id
+                              ? "bg-white border-devo-400 shadow-lg"
+                              : "bg-white/50 border-transparent hover:bg-white hover:border-slate-200"
+                            }`}
+                        >
+                          <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
+                            <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
+                            {vid.type === "playlist" && (
+                              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
+                                <Layers className="w-6 h-6 mb-1" />
+                                <span className="text-[10px] font-black uppercase">{vid.playlistCount ?? "?"} Videos</span>
+                              </div>
+                            )}
+                            {activeVideoId === vid.id && (
+                              <div className="absolute inset-0 bg-devo-600/30 backdrop-blur-[2px] flex items-center justify-center">
+                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                  <Radio className="w-4 h-4 text-devo-600 animate-pulse" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-1.5 py-1 flex-1 min-w-0">
+                            <p className={`font-outfit font-black text-[13px] sm:text-sm leading-snug line-clamp-3 ${activeVideoId === vid.id ? "text-devo-700" : "text-slate-700"}`}>
+                              {vid.title}
+                            </p>
+                            {vid.type !== "playlist" && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{vid.date}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Divider if both have results */}
+                  {searchQuery && filteredVideos.length > 0 && globalResults.length > 0 && (
+                    <div className="h-px bg-slate-200 my-6 mx-4" />
+                  )}
+
+                  {/* Global Results Section */}
+                  {searchQuery && (
+                    <div className="space-y-4 pt-2">
+                       {(globalResults.length > 0 || isSearchingGlobal) && (
+                         <>
+                           <div className="flex items-center justify-between px-2">
+                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600">
+                               Global Spiritual Search
+                             </p>
+                             {isSearchingGlobal && <Loader2 className="w-3 h-3 animate-spin text-devo-400" />}
+                           </div>
+                           
+                           <div className="space-y-3">
+                             {globalResults
+                               .filter(gr => gr.channelId !== activeChannel?.channel_id)
+                               .slice(0, 10)
+                               .map((item: any, i) => (
+                               <button
+                                 key={item.id + i}
+                                 onClick={() => {
+                                   const query = new URLSearchParams();
+                                   query.set("channel", item.channelId || item.channel_id);
+                                   if (item.type === "playlist") query.set("playlist", item.id);
+                                   else query.set("v", item.id);
+                                   setSearchQuery("");
+                                   router.push(`${pathname}?${query.toString()}`);
+                                 }}
+                                 className="w-full group flex items-start gap-3 p-3 rounded-2xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 text-left"
+                               >
+                                 <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 shadow-sm">
+                                   <Image src={item.thumbnail} alt={item.title} fill className="object-cover" unoptimized />
+                                 </div>
+                                 <div className="flex-1 min-w-0 space-y-1">
+                                   <p className="font-outfit font-black text-[13px] leading-tight text-slate-700 line-clamp-2 group-hover:text-devo-600 transition-colors">
+                                     {item.title}
+                                   </p>
+                                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                                     {item.channelTitle}
+                                   </p>
+                                 </div>
+                               </button>
+                             ))}
+                           </div>
+                         </>
+                        )}
+                        
+                        {!isSearchingGlobal && globalResults.length === 0 && searchQuery.length >= 2 && filteredVideos.length === 0 && (
+                          <div className="text-center py-10 bg-white/30 rounded-3xl border-2 border-dashed border-slate-100">
+                            <Search className="w-8 h-8 text-slate-200 mx-auto mb-2 opacity-50" />
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
+                              No matches discovered in {activeChannel.name} or the wider library
+                            </p>
+                          </div>
+                        )}
+                    </div>
+                  )}
 
                   {nextPageToken && (
                     <button
@@ -617,7 +764,6 @@ export default function YouTubeChannelHub() {
                 </>
               )}
             </div>
-
           </div>
         </div>
       </main>
