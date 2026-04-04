@@ -105,9 +105,16 @@ export default function OptimizedVideoPlayer({
     };
 
     navigator.mediaSession.metadata = new (window as any).MediaMetadata(metadata);
+    navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING ? "playing" : "paused";
 
-    navigator.mediaSession.setActionHandler("play", () => playerInstance.current?.playVideo());
-    navigator.mediaSession.setActionHandler("pause", () => playerInstance.current?.pauseVideo());
+    navigator.mediaSession.setActionHandler("play", () => {
+      playerInstance.current?.playVideo();
+      navigator.mediaSession.playbackState = "playing";
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      playerInstance.current?.pauseVideo();
+      navigator.mediaSession.playbackState = "paused";
+    });
     navigator.mediaSession.setActionHandler("seekto", (details) => {
       if (details.seekTime !== undefined) {
         playerInstance.current?.seekTo(details.seekTime);
@@ -116,6 +123,8 @@ export default function OptimizedVideoPlayer({
   };
 
   // 2. Initialize/Update Player Instance
+  const wasPlayingRef = useRef(false);
+
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
 
@@ -136,8 +145,12 @@ export default function OptimizedVideoPlayer({
           },
           onStateChange: (event: any) => {
             if (onStateChange) onStateChange(event.data);
-            if (event.data === window.YT.PlayerState.PLAYING) {
+            const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
+            if (isPlaying) {
               updateMediaSession();
+              wasPlayingRef.current = true;
+            } else if (event.data === (window as any).YT?.PlayerState?.PAUSED) {
+              wasPlayingRef.current = false;
             }
           },
           onError: () => {
@@ -160,12 +173,36 @@ export default function OptimizedVideoPlayer({
   // 4. Persistence Logic: Prevent pause on tab hidden
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.hidden && playerInstance.current && playerInstance.current.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING) {
-        setTimeout(() => playerInstance.current?.playVideo(), 150);
+      if (!playerInstance.current || !window.YT) return;
+
+      if (document.hidden) {
+        // Tab is hidden. If it was playing just before, force resume.
+        if (wasPlayingRef.current) {
+          // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
+          setTimeout(() => {
+            playerInstance.current?.playVideo();
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.playbackState = "playing";
+            }
+          }, 150);
+        }
+      } else {
+        // Tab is visible again.
+        if (wasPlayingRef.current) {
+          playerInstance.current?.playVideo();
+        }
       }
     };
+
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("blur", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+    
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("blur", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
   }, []);
 
   return (
