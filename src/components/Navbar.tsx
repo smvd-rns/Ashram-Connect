@@ -89,8 +89,8 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* ─── MOBILE TOP HEADER (Fixed) ────────────────── */}
-      <nav className="md:hidden fixed top-0 left-0 right-0 h-16 z-[100] bg-white/90 backdrop-blur-md border-b border-slate-100 px-4 flex items-center justify-between">
+      {/* ─── MOBILE TOP HEADER (Scrollable) ────────────────── */}
+      <nav className="md:hidden relative h-16 z-[100] bg-white border-b border-slate-100 px-4 flex items-center justify-between">
         <NextLink href="/" className="flex items-center gap-2 group shrink-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-devo-500 to-orange-400 flex items-center justify-center text-white font-outfit font-black text-[10px] shadow-sm">
             SE

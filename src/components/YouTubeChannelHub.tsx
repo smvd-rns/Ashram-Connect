@@ -632,7 +632,7 @@ export default function YouTubeChannelHub() {
         </div>
       </aside>
 
-      <div className="lg:hidden sticky top-16 z-[60] mt-0 bg-white border-b border-slate-200 px-4 py-4 shadow-sm">
+      <div className="lg:hidden relative z-[60] mt-0 bg-white border-b border-slate-200 px-4 py-4 shadow-sm">
         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-1">
           {channels.map((channel) => (
             <button

@@ -23,7 +23,7 @@ export default function RootLayout({
       >
         <div className="min-h-screen flex flex-col">
           {/* Main Content Area */}
-          <main className="w-full pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
+          <main className="w-full pt-0 md:pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
             <AuthGuard>
               {children}
             </AuthGuard>
