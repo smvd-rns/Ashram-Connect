@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { syncYouTubeChannel } from "@/lib/youtube-sync";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -11,59 +12,45 @@ export async function GET(request: NextRequest) {
   
   // Security check: Verify the Cron Secret
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.error("[Sync All] Unauthorized attempt from header:", authHeader);
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
   try {
-    // 1. Fetch all channels that need syncing
+    // 1. Fetch all active channels
     const { data: channels, error: fetchError } = await supabase
       .from("youtube_channels")
-      .select("channel_id, name");
+      .select("channel_id, name")
+      .eq("is_active", true);
 
     if (fetchError) throw fetchError;
 
-    console.log(`[Sync All] Starting automation for ${channels?.length || 0} channels`);
+    console.log(`[Sync All] Starting automated sync for ${channels?.length || 0} channels`);
 
-    const results = [];
-    const baseUrl = new URL(request.url).origin;
-
-    // 2. Trigger an incremental sync for each channel
-    // We do them one by one to avoid hitting rate limits or timeouts too quickly
-    for (const channel of (channels || [])) {
+    // 2. Perform syncs in parallel
+    // We use allSettled to ensure that one channel failing doesn't stop the rest
+    const syncPromises = (channels || []).map(async (channel) => {
       try {
-        const syncRes = await fetch(`${baseUrl}/api/admin/youtube/sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            channelId: channel.channel_id, 
-            isIncremental: true 
-          })
-        });
-        
-        const syncData = await syncRes.json();
-        results.push({
-          channel: channel.name,
-          success: syncRes.ok,
-          videosSynced: syncData.totalSynced || 0,
-          error: syncData.error || null
-        });
+        const result = await syncYouTubeChannel(channel.channel_id, true);
+        console.log(`[Sync All] SUCCESS: ${channel.name} (${result.totalSynced} videos)`);
+        return { channel: channel.name, success: true, videos: result.totalSynced };
       } catch (err: any) {
-        results.push({
-          channel: channel.name,
-          success: false,
-          error: err.message
-        });
+        console.error(`[Sync All] FAILED: ${channel.name} - ${err.message}`);
+        return { channel: channel.name, success: false, error: err.message };
       }
-    }
+    });
+
+    const results = await Promise.allSettled(syncPromises);
 
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      summary: results
+      channelsCount: channels?.length || 0,
+      results: results.map((r: any) => r.value)
     });
 
   } catch (error: any) {
-    console.error("[Sync All Error]:", error);
+    console.error("[Sync All Global Error]:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
