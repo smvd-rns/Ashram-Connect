@@ -31,7 +31,9 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [confirmConfig, setConfirmConfig] = useState<{ title: string, message: string, onConfirm: () => void } | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [showDeleted, setShowDeleted] = useState(false);
   
@@ -95,6 +97,13 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
     }
     return sortableItems;
   }, [data, sortConfig]);
+
+  useEffect(() => {
+    if (statusMsg) {
+      const timer = setTimeout(() => setStatusMsg(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [statusMsg]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -173,58 +182,101 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
     }
   };
 
-  const handleRestore = async (id: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/bcdb", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}` 
-        },
-        body: JSON.stringify({ action: "upsert", data: { id, is_deleted: false } })
-      });
-
-      if (res.ok) {
-        setStatusMsg({ type: 'success', text: "Record restored successfully." });
-        fetchData();
+  const handleDelete = async (id: string) => {
+    setConfirmConfig({
+      title: "Confirm Archive",
+      message: "Are you sure you want to move this record to archives? You can restore it later.",
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+           const res = await fetch(`/api/admin/bcdb?id=${id}`, {
+             method: "DELETE",
+             headers: { "Authorization": `Bearer ${session.access_token}` }
+           });
+    
+           if (!res.ok) {
+             const text = await res.text();
+             let errMsg = "Delete failed";
+             try {
+                const errJson = JSON.parse(text);
+                errMsg = errJson.error || errMsg;
+             } catch {}
+             setStatusMsg({ type: 'error', text: errMsg });
+             return;
+           }
+    
+           setStatusMsg({ type: 'success', text: "Record moved to archives." });
+           fetchData();
+        } catch (err) {
+          console.error("Delete error:", err);
+          setStatusMsg({ type: 'error', text: "Network error occurred." });
+        } finally {
+          setLoading(false);
+          setConfirmConfig(null);
+        }
       }
-    } catch (err) {
-      console.error("Restore error:", err);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Move this record to archives? It can be restored later.")) return;
-    setLoading(true);
-    try {
-       const res = await fetch(`/api/admin/bcdb?id=${id}`, {
-         method: "DELETE",
-         headers: { "Authorization": `Bearer ${session.access_token}` }
-       });
+  const handleRestore = async (id: string) => {
+    setConfirmConfig({
+      title: "Confirm Restore",
+      message: "This will bring the record back from archives. Proceed?",
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          const res = await fetch("/api/admin/bcdb", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}` 
+            },
+            body: JSON.stringify({ action: "upsert", data: { id, is_deleted: false } })
+          });
+    
+          if (res.ok) {
+            setStatusMsg({ type: 'success', text: "Record restored successfully." });
+            fetchData();
+          }
+        } catch (err) {
+          console.error("Restore error:", err);
+        } finally {
+          setLoading(false);
+          setConfirmConfig(null);
+        }
+      }
+    });
+  };
 
-       if (!res.ok) {
-         const text = await res.text();
-         let errMsg = "Delete failed";
-         try {
-            const errJson = JSON.parse(text);
-            errMsg = errJson.error || errMsg;
-         } catch {}
-         setStatusMsg({ type: 'error', text: errMsg });
-         return;
-       }
-
-       if (res.ok) {
-         setStatusMsg({ type: 'success', text: "Record deleted." });
-         fetchData();
-       }
-    } catch (err) {
-      console.error("Delete error:", err);
-    } finally {
-      setLoading(false);
-    }
+  const syncToProfiles = async () => {
+    if (!session) return;
+    
+    setConfirmConfig({
+      title: "Confirm Sync",
+      message: "This will migrate eligible BCDB records to user profiles. Existing profiles will be skipped. Proceed?",
+      onConfirm: async () => {
+        setSyncing(true);
+        try {
+          const res = await fetch("/api/admin/profiles/sync-bcdb", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${session.access_token}` }
+          });
+          
+          const result = await res.json();
+          if (res.ok) {
+            setStatusMsg({ type: 'success', text: result.message || "Sync completed!" });
+          } else {
+            setStatusMsg({ type: 'error', text: result.error || "Sync failed" });
+          }
+        } catch (err) {
+          console.error("Sync error:", err);
+          setStatusMsg({ type: 'error', text: "Network error occurred." });
+        } finally {
+          setSyncing(false);
+          setConfirmConfig(null);
+        }
+      }
+    });
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,8 +372,9 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
 
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-none">
-      
+    <>
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-none relative">
+        
       {/* Header Bar */}
       <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-6 sm:p-10 rounded-[2.5rem] sm:rounded-[4rem] text-white shadow-2xl relative overflow-hidden group">
          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full -mr-[250px] -mt-[250px] blur-[120px] group-hover:scale-110 transition-transform duration-1000"></div>
@@ -369,6 +422,14 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
             <button onClick={() => { setSelectedRecord({}); setIsEditing(true); }} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-indigo-600 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-200">
                <Plus className="w-5 h-5" />
                Add New
+            </button>
+            <button 
+              onClick={syncToProfiles} 
+              disabled={syncing}
+              className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-emerald-600 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200"
+            >
+               {syncing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
+               <span className="hidden sm:inline">Sync to Profiles</span><span className="sm:hidden">Sync PF</span>
             </button>
             <button 
               onClick={() => setShowDeleted(!showDeleted)} 
@@ -824,27 +885,68 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                  </div>
 
                  <div className="md:col-span-2 pt-8 flex gap-4">
-                    <button type="submit" className="flex-1 py-5 bg-indigo-600 hover:bg-slate-900 text-white font-black rounded-3xl text-[12px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3 active:scale-95">
-                       {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> Commit Changes</>}
-                    </button>
-                    <button type="button" onClick={() => setIsEditing(false)} className="px-12 py-5 bg-slate-100 hover:bg-slate-200 text-slate-500 font-black rounded-3xl text-[12px] uppercase tracking-widest transition-all">
-                       Cancel
-                    </button>
-                 </div>
-              </form>
-           </div>
-        </div>
-      )}
+                     <button type="submit" className="flex-1 py-5 bg-indigo-600 hover:bg-slate-900 text-white font-black rounded-3xl text-[12px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3 active:scale-95">
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> Commit Changes</>}
+                     </button>
+                     <button type="button" onClick={() => setIsEditing(false)} className="px-12 py-5 bg-slate-100 hover:bg-slate-200 text-slate-500 font-black rounded-3xl text-[12px] uppercase tracking-widest transition-all">
+                        Cancel
+                     </button>
+                  </div>
+               </form>
+            </div>
+         </div>
+       )}
+      </div>
 
-      {/* Global Status Message */}
+      {/* Floating Status Toast */}
       {statusMsg && (
-        <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] px-8 py-5 rounded-[2rem] shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom duration-500 ${statusMsg.type === 'success' ? 'bg-emerald-900 text-white' : 'bg-rose-900 text-white'}`}>
-           {statusMsg.type === 'success' ? <CheckCircle2 className="w-6 h-6 text-emerald-400" /> : <AlertCircle className="w-6 h-6 text-rose-400" />}
-           <div className="font-outfit font-black uppercase text-xs tracking-widest">{statusMsg.text}</div>
-           <button onClick={() => setStatusMsg(null)} className="ml-4 opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
+        <div className={`fixed bottom-10 right-10 z-[9999] px-8 py-5 rounded-[2rem] shadow-2xl backdrop-blur-xl border-2 flex items-center gap-4 animate-in slide-in-from-bottom-10 duration-500 font-bold ${
+          statusMsg.type === 'success' 
+            ? 'bg-emerald-500/90 text-white border-emerald-400/50' 
+            : 'bg-rose-500/90 text-white border-rose-400/50'
+        }`}>
+          {statusMsg.type === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+          <span className="max-w-xs">{statusMsg.text}</span>
+          <button onClick={() => setStatusMsg(null)} className="ml-4 opacity-50 hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
         </div>
       )}
 
-    </div>
+      {/* Modern Confirm Modal Overlay with Deep Background Isolation */}
+      {confirmConfig && (
+        <div 
+          className="fixed inset-0 z-[100000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-3xl animate-in fade-in duration-500"
+          style={{ backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+        >
+           {/* Inner Modal Card */}
+          <div className="bg-white/95 w-full max-w-md rounded-[3.5rem] shadow-[0_0_100px_-10px_rgba(0,0,0,0.5)] border-[8px] border-white p-10 sm:p-14 space-y-10 animate-in zoom-in-95 slide-in-from-bottom-10 duration-500 relative z-[100001]">
+             <div className="flex flex-col items-center text-center space-y-6">
+                <div className="w-24 h-24 bg-indigo-50 rounded-[2rem] flex items-center justify-center mb-2 shadow-inner">
+                   <AlertCircle className="w-12 h-12 text-indigo-500" />
+                </div>
+                <div>
+                   <h3 className="text-3xl sm:text-[40px] font-black text-slate-900 tracking-tighter uppercase font-outfit leading-none mb-3">{confirmConfig.title}</h3>
+                   <p className="text-slate-500 font-bold leading-relaxed text-lg px-2">{confirmConfig.message}</p>
+                </div>
+             </div>
+             
+             <div className="flex flex-col gap-4">
+                <button 
+                  onClick={confirmConfig.onConfirm}
+                  disabled={loading || syncing}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-6 rounded-3xl font-black text-sm uppercase tracking-[0.25em] transition-all shadow-[0_20px_50px_-12px_rgba(79,70,229,0.5)] active:scale-95 disabled:opacity-50"
+                >
+                   {loading || syncing ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-white/50" /> : "Confirm Action"}
+                </button>
+                <button 
+                  onClick={() => setConfirmConfig(null)}
+                  className="w-full bg-slate-100/50 hover:bg-slate-100 text-slate-400 py-6 rounded-3xl font-black text-sm uppercase tracking-[0.25em] transition-all active:scale-95 border border-slate-200/50"
+                >
+                   Cancel
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

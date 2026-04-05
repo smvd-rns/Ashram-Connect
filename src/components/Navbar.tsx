@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
-import { LogOut, Settings, Radio, Monitor, UserCheck } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -14,6 +14,21 @@ export default function Navbar() {
 
   // New imports for mobile bar
   const HomeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+  
+  const Youtube = ({ className }: { className?: string }) => (
+    <svg 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      className={`lucide lucide-youtube ${className}`}
+    >
+      <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.42a2.78 2.78 0 0 0-1.94 2C1 8.14 1 12 1 12s0 3.86.46 5.58a2.78 2.78 0 0 0 1.94 2c1.72.42 8.6.42 8.6.42s6.88 0 8.6-.42a2.78 2.78 0 0 0 1.94-2C23 15.86 23 12 23 12s0-3.86-.46-5.58z" />
+      <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" />
+    </svg>
+  );
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -64,10 +79,9 @@ export default function Navbar() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-50 text-orange-600 border border-orange-100 hover:bg-orange-600 hover:text-white transition-all group shadow-sm hover:shadow-orange-200"
           >
             <div className="flex items-center justify-center relative">
-               <Radio className="w-5 h-5" />
-               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping" />
+               <Youtube className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Online Portal</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">Brahmachari Yt</span>
           </NextLink>
 
           {profile?.role === 1 && (
@@ -126,10 +140,9 @@ export default function Navbar() {
 
         <NextLink href="/portal" className="flex flex-col items-center gap-1 group relative">
           <div className="p-2 bg-devo-50 text-devo-600 rounded-xl group-active:scale-95 transition-all shadow-inner">
-             <Radio className="w-6 h-6" />
-             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-ping" />
+             <Youtube className="w-6 h-6" />
           </div>
-          <span className="text-[9px] font-black uppercase tracking-widest text-devo-600">Live</span>
+          <span className="text-[9px] font-black uppercase tracking-widest text-devo-600">Brahmachari Yt</span>
         </NextLink>
 
       </nav>
