@@ -69,28 +69,57 @@ export async function GET(req: NextRequest) {
 
     // Populate logs into matrix
     logsList.forEach(log => {
-      // Find all machines that match this serial number 
       const matchingMachines = machinesList.filter(mac => mac.serial_number === log.device_sn);
-      
       matchingMachines.forEach(machine => {
         const mapping = mappingsList.find(
           m => m.machine_id === machine.id && String(m.zk_user_id) === String(log.zk_user_id)
         );
-        
         if (!mapping) return;
-
         const email = mapping.user_email;
         if (!matrix[email]) return;
-
         const date = new Date(log.check_time).toISOString().split('T')[0];
         const sessionName = machine.description || log.device_sn;
-
         if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
         if (!matrix[email].dates[date][sessionName]) matrix[email].dates[date][sessionName] = [];
-
         matrix[email].dates[date][sessionName].push(log);
       });
     });
+
+    // --- HARINAM INTEGRATION ---
+    const { data: harinamData } = await supabase
+      .from("harinam_attendance")
+      .select("*")
+      .gte("date", startDate)
+      .lte("date", endDate);
+
+    const harinamVirtualMachine = {
+      id: "harinam_virtual",
+      serial_number: "VIRTUAL_HARINAM",
+      description: "Hari Nam",
+      is_manual: true,
+      p_start: "07:00:00",
+      p_end: "09:00:00"
+    };
+    
+    machinesList.push(harinamVirtualMachine);
+
+    (harinamData || []).forEach(record => {
+      const email = record.user_email;
+      if (!matrix[email]) return;
+      const date = record.date;
+      if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
+      matrix[email].dates[date]["Hari Nam"] = [{
+        is_manual: true,
+        ...record
+      }];
+    });
+    // Add "Hari Nam" to assigned machines for ALL users so they show up in Harinam view
+    Object.values(matrix).forEach((user: any) => {
+       if (!user.assigned_machines.includes("harinam_virtual")) {
+          user.assigned_machines.push("harinam_virtual");
+       }
+    });
+    // --- END HARINAM ---
 
     // 6. Compute status per session per day using the EARLIEST punch only
     Object.values(matrix).forEach((user: any) => {
@@ -98,15 +127,17 @@ export async function GET(req: NextRequest) {
         Object.entries(dateSessions).forEach(([sessionName, sessionLogs]: [string, any]) => {
           if (!sessionLogs || sessionLogs.length === 0) return;
 
+          // Skip status calculation for manual sessions
+          if (sessionLogs[0].is_manual) return;
+
           const machine = machinesList.find(m => (m.description || m.serial_number) === sessionName);
           if (!machine) return;
 
-          // Find earliest punch
           const earliest = sessionLogs.reduce((min: any, log: any) =>
             new Date(log.check_time) < new Date(min.check_time) ? log : min
           , sessionLogs[0]);
 
-          const checkTimeStr = new Date(earliest.check_time).toISOString().slice(11, 19); // UTC HH:mm:ss
+          const checkTimeStr = new Date(earliest.check_time).toISOString().slice(11, 19);
 
           let status = "absent";
           if (machine.p_start && machine.p_end && checkTimeStr >= machine.p_start && checkTimeStr <= machine.p_end) {
@@ -115,7 +146,6 @@ export async function GET(req: NextRequest) {
             status = "late";
           }
 
-          // Tag each log with the computed status
           dateSessions[sessionName] = sessionLogs.map((log: any) => ({
             ...log,
             computed_status: status,
