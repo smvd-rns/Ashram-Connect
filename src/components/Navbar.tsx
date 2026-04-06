@@ -2,23 +2,30 @@
 
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
+import { usePathname } from "next/navigation";
 import { LogOut, Settings, Monitor, UserCheck } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
 
 export default function Navbar() {
+  const pathname = usePathname();
   const [session, setSession] = useState<any>(null);
   const { profile, refreshProfile } = useProfile(session);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // New imports for mobile bar
-  const HomeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+  const HomeIcon = ({ active }: { active?: boolean }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home">
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  );
   
-  const Youtube = ({ className }: { className?: string }) => (
+  const Youtube = ({ className, active }: { className?: string, active?: boolean }) => (
     <svg 
       viewBox="0 0 24 24" 
-      fill="none" 
+      fill={active ? "currentColor" : "none"} 
       stroke="currentColor" 
       strokeWidth="2" 
       strokeLinecap="round" 
@@ -26,7 +33,7 @@ export default function Navbar() {
       className={`lucide lucide-youtube ${className}`}
     >
       <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.42a2.78 2.78 0 0 0-1.94 2C1 8.14 1 12 1 12s0 3.86.46 5.58a2.78 2.78 0 0 0 1.94 2c1.72.42 8.6.42 8.6.42s6.88 0 8.6-.42a2.78 2.78 0 0 0 1.94-2C23 15.86 23 12 23 12s0-3.86-.46-5.58z" />
-      <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" />
+      <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill={active ? "white" : "none"} />
     </svg>
   );
 
@@ -48,6 +55,9 @@ export default function Navbar() {
     }
     return session?.user?.email?.[0].toUpperCase() || "U";
   };
+
+  const isHome = pathname === "/";
+  const isClass = pathname === "/class";
 
   return (
     <>
@@ -75,19 +85,19 @@ export default function Navbar() {
 
 
           <NextLink 
-            href="/portal" 
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-50 text-orange-600 border border-orange-100 hover:bg-orange-600 hover:text-white transition-all group shadow-sm hover:shadow-orange-200"
+            href="/class" 
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isClass ? 'bg-orange-600 text-white border-orange-600 shadow-orange-200' : 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-600 hover:text-white'}`}
           >
             <div className="flex items-center justify-center relative">
-               <Youtube className="w-5 h-5" />
+               <Youtube className="w-5 h-5" active={isClass} />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Brahmachari Yt</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">Brahmachari Class</span>
           </NextLink>
 
           {profile?.role === 1 && (
             <NextLink 
               href="/admin" 
-              className="text-[10px] font-black uppercase tracking-widest text-devo-700 hover:text-white hover:bg-devo-600 px-4 py-2.5 rounded-xl transition-all border border-devo-100/50 flex items-center gap-2"
+              className={`text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all border flex items-center gap-2 ${pathname.startsWith('/admin') ? 'bg-devo-600 text-white border-devo-600' : 'text-devo-700 hover:text-white hover:bg-devo-600 border-devo-100/50'}`}
             >
               <Settings className="w-4 h-4" /> <span>Admin Panel</span>
             </NextLink>
@@ -116,7 +126,7 @@ export default function Navbar() {
 
         <div className="flex items-center gap-2">
           {profile?.role === 1 && (
-            <NextLink href="/admin" className="p-2 text-slate-400 hover:text-devo-600 active:scale-95 transition-all">
+            <NextLink href="/admin" className={`p-2 active:scale-95 transition-all ${pathname.startsWith('/admin') ? 'text-devo-600' : 'text-slate-400 hover:text-devo-600'}`}>
               <Settings className="w-5 h-5" />
             </NextLink>
           )}
@@ -132,17 +142,17 @@ export default function Navbar() {
       {/* ─── MOBILE TAB BAR (Bottom) ─────────────────────────── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-6 py-3 flex items-center justify-center gap-20 safe-area-bottom">
         <NextLink href="/" className="flex flex-col items-center gap-1 group">
-          <div className="p-2 rounded-xl group-active:scale-95 transition-all text-slate-400">
-            <HomeIcon /> 
+          <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isHome ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
+            <HomeIcon active={isHome} /> 
           </div>
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Home</span>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${isHome ? 'text-devo-600' : 'text-slate-400'}`}>Home</span>
         </NextLink>
 
-        <NextLink href="/portal" className="flex flex-col items-center gap-1 group relative">
-          <div className="p-2 bg-devo-50 text-devo-600 rounded-xl group-active:scale-95 transition-all shadow-inner">
-             <Youtube className="w-6 h-6" />
+        <NextLink href="/class" className="flex flex-col items-center gap-1 group relative">
+          <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isClass ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
+             <Youtube className="w-6 h-6" active={isClass} />
           </div>
-          <span className="text-[9px] font-black uppercase tracking-widest text-devo-600">Brahmachari Yt</span>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>Brahmachari Class</span>
         </NextLink>
 
       </nav>
