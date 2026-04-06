@@ -359,19 +359,63 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     setShowDeleteConfirm(true);
   };
 
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     if (!activeMachine || filteredUsers.length === 0) return;
 
     const isHarinam = activeMachine.id === 'harinam_virtual';
     const dates = getDateColumns();
-    const rows = [
-      ["Name", "Email", "Biometric ID", ...dates.map(d => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })), ...(isHarinam ? ["Total Hrs"] : ["P", "L", "A", "%"])]
-    ];
+    
+    // Build HTML table structure for Excel styling support
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>${activeMachine.description.replace(/\s+/g, '_')}</x:Name>
+                <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          table { border-collapse: collapse; }
+          th, td { border: 1px solid #e2e8f0; padding: 10px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; }
+          th { background-color: #0f172a; color: #ffffff; font-weight: bold; text-transform: uppercase; }
+          .present { background-color: #10b981; color: #ffffff; font-weight: bold; text-align: center; }
+          .late { background-color: #fbbf24; color: #ffffff; font-weight: bold; text-align: center; }
+          .absent { background-color: #f43f5e; color: #ffffff; font-weight: bold; text-align: center; }
+          .name-col { text-align: left; font-weight: bold; min-width: 180px; }
+          .summary-col { background-color: #f8fafc; font-weight: bold; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Biometric ID</th>
+              ${dates.map(d => `<th>${new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</th>`).join('')}
+              ${isHarinam ? '<th>Total Hrs</th>' : '<th>P</th><th>L</th><th>A</th><th>%</th>'}
+            </tr>
+          </thead>
+          <tbody>
+    `;
 
     filteredUsers.forEach(user => {
       let p = 0, l = 0, a = 0;
       let totalHarinamMins = 0;
-      const userRow: any[] = [user.full_name, user.email, user.dates[Object.keys(user.dates)[0]]?.[activeMachine?.description]?.[0]?.zk_user_id || "--"];
+      const biometricId = user.dates[Object.keys(user.dates)[0]]?.[activeMachine?.description]?.[0]?.zk_user_id || "--";
+      
+      html += `<tr>
+        <td class="name-col">${user.full_name}</td>
+        <td>${user.email}</td>
+        <td>${biometricId}</td>`;
 
       dates.forEach(date => {
         const logs = (user.dates[date]?.[activeMachine?.description] || []);
@@ -382,35 +426,53 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
             totalHarinamMins += dayMins;
           }
           const hrs = dayMins / 60;
-          userRow.push(hrs > 0 ? (hrs % 1 === 0 ? hrs : hrs.toFixed(1)) : 0);
+          html += `<td style="text-align: center;">${hrs > 0 ? (hrs % 1 === 0 ? hrs : hrs.toFixed(1)) : 0}</td>`;
         } else {
           const status = getStatus(logs, activeMachine);
-          if (status === 'present') p++;
-          else if (status === 'late') l++;
-          else a++;
-          userRow.push(status.charAt(0).toUpperCase());
+          let cellClass = "";
+          let displayVal = status.charAt(0).toUpperCase();
+
+          if (status === 'present') { p++; cellClass = "present"; }
+          else if (status === 'late') { l++; cellClass = "late"; }
+          else { a++; cellClass = "absent"; }
+
+          if (logs.length > 0 && status !== 'absent') {
+            const earliest = logs.reduce((min: any, log: any) => 
+              (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
+            , logs[0]);
+            const time = formatRawTime(earliest.check_time);
+            displayVal += ` (${time})`;
+          }
+
+          html += `<td class="${cellClass}">${displayVal}</td>`;
         }
       });
 
       if (isHarinam) {
         const totalHrs = totalHarinamMins / 60;
-        userRow.push(totalHrs % 1 === 0 ? totalHrs : totalHrs.toFixed(1));
+        html += `<td class="summary-col">${totalHrs % 1 === 0 ? totalHrs : totalHrs.toFixed(1)}</td>`;
       } else {
-        userRow.push(p, l, a, `${Math.round(((p + l) / dates.length) * 100)}%`);
+        html += `
+          <td class="summary-col">${p}</td>
+          <td class="summary-col">${l}</td>
+          <td class="summary-col">${a}</td>
+          <td class="summary-col">${Math.round(((p + l) / dates.length) * 100)}%</td>`;
       }
-      rows.push(userRow);
+      html += `</tr>`;
     });
 
-    const csvContent = rows.map(r => r.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    html += `</tbody></table></body></html>`;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `attendance_${activeMachine.description.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `attendance_${activeMachine.description.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.xls`);
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const confirmDelete = async () => {
@@ -613,7 +675,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                         <ChevronRight className="w-3.5 h-3.5 text-indigo-400 rotate-90 flex-shrink-0 -ml-1 absolute right-3 top-1/2 -translate-y-1/2 sm:static" />
                       </div>
 
-                      <button onClick={handleExportCSV} className="flex-1 sm:flex-none flex justify-center items-center gap-2.5 bg-slate-900 hover:bg-slate-950 text-white px-5 py-2.5 rounded-xl transition-all active:scale-95 group/export shadow-[0_10px_20px_-5px_rgba(15,23,42,0.15)] overflow-hidden relative">
+                      <button onClick={handleExportExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2.5 bg-slate-900 hover:bg-slate-950 text-white px-5 py-2.5 rounded-xl transition-all active:scale-95 group/export shadow-[0_10px_20px_-5px_rgba(15,23,42,0.15)] overflow-hidden relative">
                         <div className="absolute inset-x-0 bottom-0 h-0.5 bg-indigo-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                         <Download className="w-4 h-4 text-indigo-400 group-hover/export:animate-bounce" />
                         <span className="text-xs sm:text-sm font-black uppercase tracking-widest whitespace-nowrap">Export</span>
@@ -722,7 +784,14 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                     <span className="bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">#{row.logs[0]?.zk_user_id || "--"}</span>
                                   </td>
                                   <td className="px-6 py-2 text-center text-xs font-bold text-slate-600 tabular-nums">{new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                                  <td className="px-6 py-2 text-center text-xs font-black text-indigo-600 tabular-nums">{row.logs.length > 0 ? formatRawTime(row.logs[0].check_time) : "--:--"}</td>
+                                  <td className="px-6 py-2 text-center text-xs font-black text-indigo-600 tabular-nums">
+                                    {row.logs.length > 0 ? (() => {
+                                      const earliest = row.logs.reduce((min: any, log: any) => 
+                                        (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
+                                      , row.logs[0]);
+                                      return formatRawTime(earliest.check_time);
+                                    })() : "--:--"}
+                                  </td>
                                   <td className="px-6 py-2 last:rounded-r-2xl">
                                     <div className="flex justify-center">
                                       {row.status === 'present' ? (
@@ -803,11 +872,23 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                           return <div className="font-black text-indigo-600 text-[10px] sm:text-[11px] whitespace-nowrap">{hrs % 1 === 0 ? hrs : hrs.toFixed(1)} hr</div>;
                                         })()
                                       ) : (
-                                        <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-125 hover:z-20 shadow-sm ${status === 'present' ? 'bg-emerald-500 text-white shadow-emerald-200' :
-                                          status === 'late' ? 'bg-amber-400 text-white shadow-amber-200' :
-                                            'bg-rose-400 text-white'
-                                          }`}>
-                                          {status === 'present' ? 'P' : status === 'late' ? 'L' : 'A'}
+                                        <div className="flex flex-col items-center justify-center gap-0.5">
+                                          <div className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-lg flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-110 shadow-sm ${status === 'present' ? 'bg-emerald-500 text-white shadow-emerald-200' :
+                                            status === 'late' ? 'bg-amber-400 text-white shadow-amber-200' :
+                                              'bg-rose-400 text-white'
+                                            }`}>
+                                            {status === 'present' ? 'P' : status === 'late' ? 'L' : 'A'}
+                                          </div>
+                                          {logs.length > 0 && status !== 'absent' && (
+                                            <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
+                                              {(() => {
+                                                const earliest = logs.reduce((min, log) => 
+                                                  (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
+                                                , logs[0]);
+                                                return formatRawTime(earliest.check_time);
+                                              })()}
+                                            </span>
+                                          )}
                                         </div>
                                       )
                                     ) : <div className="w-1 h-1 mx-auto bg-slate-200 rounded-full opacity-20" />}
@@ -1084,12 +1165,16 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                 renderContent = <div className="text-slate-300 font-black text-[8px] sm:text-[10px] opacity-40">--</div>;
                               }
                             } else {
-                              if (logs[0]?.is_manual) {
+                              const earliest = logs.reduce((min: any, log: any) => 
+                                (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
+                              , logs[0]);
+
+                              if (earliest?.is_manual) {
                                 renderContent = <div className="flex items-center justify-center gap-1 font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-indigo-100 shadow-sm mx-auto w-fit">Manual</div>;
                               } else if (status === 'present') {
-                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-emerald-600 bg-emerald-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-emerald-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> {formatRawTime(logs[0]?.check_time)}</div>;
+                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-emerald-600 bg-emerald-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-emerald-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> {formatRawTime(earliest?.check_time)}</div>;
                               } else if (status === 'late') {
-                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-amber-600 bg-amber-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-amber-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span> {formatRawTime(logs[0]?.check_time)}</div>;
+                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-amber-600 bg-amber-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-amber-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span> {formatRawTime(earliest?.check_time)}</div>;
                               } else {
                                 renderContent = <div className="flex items-center justify-center font-black text-slate-300 text-[8px] sm:text-[10px] uppercase mx-auto w-fit opacity-40">--</div>;
                               }
