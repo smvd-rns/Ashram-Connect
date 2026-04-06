@@ -73,7 +73,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
     "Mangal Aarti": { icon: Clock, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-100", gradient: "from-orange-500 to-amber-600", shadow: "shadow-orange-200/50", accent: "bg-orange-500" },
     "SB Class": { icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100", gradient: "from-indigo-500 to-purple-600", shadow: "shadow-indigo-200/50", accent: "bg-indigo-500" },
     "BC Class": { icon: Monitor, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-100", gradient: "from-purple-500 to-indigo-600", shadow: "shadow-purple-200/50", accent: "bg-purple-500" },
-    "Hari Nam": { icon: Users, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", gradient: "from-rose-500 to-pink-600", shadow: "shadow-rose-200/50", accent: "bg-rose-500" },
+    "Harinam": { icon: Users, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", gradient: "from-rose-500 to-pink-600", shadow: "shadow-rose-200/50", accent: "bg-rose-500" },
     "Afternoon Session": { icon: Settings, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100", gradient: "from-amber-500 to-orange-600", shadow: "shadow-amber-200/50", accent: "bg-amber-500" },
     "default": { icon: HardDrive, color: "text-slate-600", bg: "bg-slate-50", border: "border-slate-100", gradient: "from-slate-500 to-slate-700", shadow: "shadow-slate-200/50", accent: "bg-slate-500" }
   };
@@ -90,6 +90,25 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  };
+
+  // Maps short session names to more descriptive labels as requested
+  const getSessionLabel = (name: string) => {
+    if (!name) return "";
+    const mapping: Record<string, string> = {
+      "BC": "BC Class",
+      "SB": "SB Class",
+      "Mangal": "Mangal Aarti",
+      "Hari": "Harinam",
+      "Harinam": "Harinam",
+      "Hari Nam": "Harinam"
+    };
+    // Check for exact matches first, then case-insensitive
+    if (mapping[name]) return mapping[name];
+    const upper = name.toUpperCase();
+    if (mapping[upper]) return mapping[upper];
+    // Return original if no mapping found
+    return name;
   };
 
   // Helper to get range based on pivot and type
@@ -383,7 +402,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
           <x:ExcelWorkbook>
             <x:ExcelWorksheets>
               <x:ExcelWorksheet>
-                <x:Name>${activeMachine.description.replace(/\s+/g, '_')}</x:Name>
+                <x:Name>${getSessionLabel(activeMachine.description).replace(/\s+/g, '_')}</x:Name>
                 <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
               </x:ExcelWorksheet>
             </x:ExcelWorksheets>
@@ -475,7 +494,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `attendance_${activeMachine.description.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.xls`);
+    link.setAttribute("download", `attendance_${getSessionLabel(activeMachine.description).replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.xls`);
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
@@ -678,7 +697,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
                             className="appearance-none bg-transparent border-none outline-none text-sm font-black text-slate-900 tracking-tight uppercase cursor-pointer w-full sm:w-auto text-center sm:text-left pr-4 max-w-[160px] truncate"
                           >
                             {machines.filter(m => m.p_start && m.p_end).map(m => (
-                              <option key={m.id} value={m.id}>{m.description}</option>
+                              <option key={m.id} value={m.id}>{getSessionLabel(m.description)}</option>
                             ))}
                           </select>
                         </div>
@@ -743,7 +762,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
                             <tr key={`${row.user.email}-${row.date}`} className="bg-white rounded-2xl shadow-sm transition-all group">
                               <td className="px-6 py-2 first:rounded-l-2xl">
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white text-[10px] shadow-lg bg-gradient-to-br ${sessionIcons[activeMachine?.description]?.gradient || 'from-slate-400 to-slate-500'} group-hover:rotate-6 transition-transform`}>{row.user.full_name?.[0]?.toUpperCase()}</div>
+                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white text-[10px] shadow-lg bg-gradient-to-br ${sessionIcons[getSessionLabel(activeMachine?.description)]?.gradient || 'from-slate-400 to-slate-500'} group-hover:rotate-6 transition-transform`}>{row.user.full_name?.[0]?.toUpperCase()}</div>
                                   <div>
                                     <div className="font-black text-slate-800 text-[15px] leading-tight tracking-tight">{row.user.full_name}</div>
                                     <div className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">{row.user.email}</div>
@@ -1001,7 +1020,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
                     </div>
                   </div>
                 )}
-                {machines.filter(m => m.p_start && m.p_end).map((m, idx) => <SessionCard key={m.id} m={m} idx={idx} sessionIcons={sessionIcons} handleDeleteMachine={handleDeleteMachine} handleUpdateMachine={handleUpdateMachine} />)}
+                {machines.filter(m => m.p_start && m.p_end).map((m, idx) => <SessionCard key={m.id} m={m} idx={idx} sessionIcons={sessionIcons} handleDeleteMachine={handleDeleteMachine} handleUpdateMachine={handleUpdateMachine} getSessionLabel={getSessionLabel} />)}
               </div>
             </div>
           ) : (
@@ -1113,14 +1132,15 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
                       <tr className="bg-slate-900 text-white">
                         <th className="px-3 sm:px-6 py-3 sm:py-5 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] sm:tracking-[0.2em] relative sm:sticky sm:left-0 bg-slate-900 z-10 sm:z-30 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[90px] sm:min-w-[120px]">Timeline</th>
                         {machines.map(m => {
-                          const config = sessionIcons[m.description] || sessionIcons.default;
+                          const label = getSessionLabel(m.description);
+                          const config = sessionIcons[label] || sessionIcons.default;
                           return (
                             <th key={m.id} className="px-2 sm:px-6 py-3 sm:py-5 text-center border-l border-white/5 min-w-0">
                               <div className="flex flex-col items-center justify-center gap-1">
                                 <div className={`p-1 sm:p-1.5 rounded-lg bg-white/10 ${config.color}`}>
                                   <config.icon className="w-3 h-3 sm:w-4 sm:h-4" />
                                 </div>
-                                <span className="text-[7px] sm:text-[11px] font-black uppercase tracking-tight sm:tracking-widest leading-none mt-0.5">{m.description.split(' ')[0]}</span>
+                                <span className="text-[7px] sm:text-[11px] font-black uppercase tracking-tight sm:tracking-widest leading-none mt-0.5">{label}</span>
                               </div>
                             </th>
                           );
@@ -1273,10 +1293,10 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
   );
 }
 
-function SessionCard({ m, idx, sessionIcons, handleDeleteMachine, handleUpdateMachine }: any) {
+function SessionCard({ m, idx, sessionIcons, handleDeleteMachine, handleUpdateMachine, getSessionLabel }: any) {
   const [localData, setLocalData] = React.useState(m);
   const [hasChanges, setHasChanges] = React.useState(false);
-  const config = sessionIcons[m.description] || sessionIcons.default;
+  const config = sessionIcons[getSessionLabel(m.description)] || sessionIcons.default;
 
   React.useEffect(() => { setLocalData(m); setHasChanges(false); }, [m]);
   const handleChange = (updates: any) => { setLocalData({ ...localData, ...updates }); setHasChanges(true); };
