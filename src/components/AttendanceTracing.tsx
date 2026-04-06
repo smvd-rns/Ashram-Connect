@@ -548,7 +548,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
   };
 
   return (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative min-h-screen overflow-x-hidden">
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative overflow-x-hidden no-scrollbar">
       {/* Dynamic Background Blobs for Visual Depth */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-200/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-100/30 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
@@ -728,7 +728,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
 
               <div className="p-2 sm:p-6">
                 {timeRange === 'day' ? (
-                  <div className="overflow-x-auto custom-attendance-scrollbar pb-4">
+                  <div className="overflow-x-auto overflow-y-hidden custom-attendance-scrollbar pb-4">
                     <table className="w-full text-left border-separate border-spacing-y-3 sm:border-spacing-y-4 min-w-[800px]">
                       <thead>
                         <tr>
@@ -841,7 +841,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
                     </table>
                   </div>
                 ) : (
-                  <div className="rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto custom-attendance-scrollbar relative">
+                  <div className="rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto overflow-y-hidden custom-attendance-scrollbar relative">
                     <table className="text-left border-separate border-spacing-0" style={{ minWidth: `${140 + (getDateColumns().length * 45)}px` }}>
                       <thead>
                         <tr className="bg-slate-900 text-white">
@@ -1126,7 +1126,7 @@ export default function AttendanceTracing({ isAdmin = false, forceUserView = fal
                 </div>
               </div>
               <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] mt-8 border border-slate-100 w-full overflow-hidden">
-                <div className="overflow-x-auto custom-attendance-scrollbar w-full">
+                <div className="overflow-x-auto overflow-y-hidden custom-attendance-scrollbar w-full">
                   <table className="w-full text-left border-separate border-spacing-0 min-w-0">
                     <thead>
                       <tr className="bg-slate-900 text-white">
