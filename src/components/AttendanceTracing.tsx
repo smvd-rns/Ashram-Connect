@@ -20,7 +20,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const [machines, setMachines] = useState<any[]>([]);
 
   // Filtering State
-  const [timeRange, setTimeRange] = useState<"day" | "week" | "month" | "custom">("day");
+  const [timeRange, setTimeRange] = useState<"day" | "week" | "month" | "custom">("month");
   const [currentPivotDate, setCurrentPivotDate] = useState(new Date().toISOString().split('T')[0]);
   const [customRangeStart, setCustomRangeStart] = useState("");
   const [customRangeEnd, setCustomRangeEnd] = useState("");
@@ -54,6 +54,10 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
+  // User History date range navigator
+  const [historyRange, setHistoryRange] = useState<"week" | "month">("month");
+  const [historyPivot, setHistoryPivot] = useState(new Date().toISOString().split('T')[0]);
+
   // Harinam dropdown open state: tracks email-date key
   const [openHarinamKey, setOpenHarinamKey] = useState<string | null>(null);
 
@@ -66,6 +70,20 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     "default": { icon: HardDrive, color: "text-slate-600", bg: "bg-slate-50", border: "border-slate-100", gradient: "from-slate-500 to-slate-700", shadow: "shadow-slate-200/50", accent: "bg-slate-500" }
   };
 
+  // Parse a YYYY-MM-DD string as LOCAL date (not UTC)
+  const parseLocalDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  // Format a Date object to YYYY-MM-DD using local time
+  const toLocalDateStr = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   // Helper to get range based on pivot and type
   const getRange = (pivot: string, type: "day" | "week" | "month" | "custom") => {
     if (type === "custom") {
@@ -74,26 +92,27 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
         end: customRangeEnd || pivot
       };
     }
-    const date = new Date(pivot);
+    // Use local date parsing to avoid UTC timezone offset issues
+    const date = parseLocalDate(pivot);
     if (type === "day") {
       return { start: pivot, end: pivot };
     }
     if (type === "week") {
       const day = date.getDay();
       const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-      const start = new Date(date.setDate(diff));
-      const end = new Date(new Date(start).setDate(start.getDate() + 6));
+      const start = new Date(date.getFullYear(), date.getMonth(), diff);
+      const end = new Date(date.getFullYear(), date.getMonth(), diff + 6);
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0]
+        start: toLocalDateStr(start),
+        end: toLocalDateStr(end)
       };
     }
     if (type === "month") {
       const start = new Date(date.getFullYear(), date.getMonth(), 1);
       const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0]
+        start: toLocalDateStr(start),
+        end: toLocalDateStr(end)
       };
     }
     return { start: pivot, end: pivot };
@@ -102,7 +121,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   useEffect(() => {
     fetchReport();
     fetchMachines();
-  }, [currentPivotDate, timeRange, customRangeStart, customRangeEnd, session]);
+  }, [viewMode, currentPivotDate, timeRange, customRangeStart, customRangeEnd, historyRange, historyPivot, session]);
 
   const fetchMachines = async () => {
     if (!session) return;
@@ -121,8 +140,24 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
     if (!session) return;
     setLoading(true);
     try {
-      const { start, end } = getRange(currentPivotDate, timeRange);
-      const res = await fetch(`/api/attendance/report?startDate=${start}&endDate=${end}`, {
+      let startStr: string, endStr: string;
+      if (viewMode === 'history') {
+        const pivot = parseLocalDate(historyPivot);
+        if (historyRange === 'week') {
+          const day = pivot.getDay();
+          const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
+          startStr = toLocalDateStr(new Date(pivot.getFullYear(), pivot.getMonth(), diff));
+          endStr = toLocalDateStr(new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6));
+        } else {
+          startStr = toLocalDateStr(new Date(pivot.getFullYear(), pivot.getMonth(), 1));
+          endStr = toLocalDateStr(new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0));
+        }
+      } else {
+        const { start, end } = getRange(currentPivotDate, timeRange);
+        startStr = start;
+        endStr = end;
+      }
+      const res = await fetch(`/api/attendance/report?startDate=${startStr}&endDate=${endStr}`, {
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
       const data = await res.json();
@@ -142,26 +177,53 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   };
 
   const handleMarkHarinam = async (email: string, date: string, field: string, value: number) => {
+    // Optimistically update local state immediately (no flicker/refresh)
+    setReport(prev => prev.map(user => {
+      if (user.email !== email) return user;
+      const updatedDates = { ...user.dates };
+      if (!updatedDates[date]) updatedDates[date] = {};
+      // Find the harinam_virtual session key
+      const harinamKey = Object.keys(updatedDates[date]).find(k => k.toLowerCase().includes('hari')) || 'Hari Nam';
+      const existingLogs = updatedDates[date][harinamKey] || [{}];
+      updatedDates[date] = {
+        ...updatedDates[date],
+        [harinamKey]: [{ ...existingLogs[0], [field]: value }]
+      };
+      return { ...user, dates: updatedDates };
+    }));
+    // Save to server in background
     try {
-      const res = await fetch('/api/admin/harinam', {
+      await fetch('/api/admin/harinam', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
         body: JSON.stringify({ action: "update_harinam", data: { user_email: email, date, [field]: value } })
       });
-      if (res.ok) fetchReport();
     } catch (e) { console.error(e); }
   };
 
   const handleBulkHarinam = async (field: string, date: string, value: number) => {
+    const emails = filteredUsers.map(u => u.email);
+    if (emails.length === 0) return;
+    // Optimistic update for all affected users
+    setReport(prev => prev.map(user => {
+      if (!emails.includes(user.email)) return user;
+      const updatedDates = { ...user.dates };
+      if (!updatedDates[date]) updatedDates[date] = {};
+      const harinamKey = Object.keys(updatedDates[date]).find(k => k.toLowerCase().includes('hari')) || 'Hari Nam';
+      const existingLogs = updatedDates[date][harinamKey] || [{}];
+      updatedDates[date] = {
+        ...updatedDates[date],
+        [harinamKey]: [{ ...existingLogs[0], [field]: value }]
+      };
+      return { ...user, dates: updatedDates };
+    }));
+    // Save to server in background
     try {
-      const emails = filteredUsers.map(u => u.email);
-      if (emails.length === 0) return;
-      const res = await fetch('/api/admin/harinam', {
+      await fetch('/api/admin/harinam', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
         body: JSON.stringify({ action: "bulk_update_harinam", data: { emails, date, update: { [field]: value } } })
       });
-      if (res.ok) fetchReport();
     } catch (e) { console.error(e); }
   };
 
@@ -210,11 +272,12 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
 
   const getPeriodLabel = () => {
     const { start, end } = getRange(currentPivotDate, timeRange);
+    // Parse as local time (not UTC) by using T00:00:00
     if (timeRange === "day") {
-      return new Date(start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      return new Date(start + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     }
-    const startStr = new Date(start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-    const endStr = new Date(end).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const startStr = new Date(start + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    const endStr = new Date(end + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     return `${startStr} - ${endStr}`;
   };
 
@@ -380,17 +443,23 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const getDateColumns = () => {
     const { start, end } = getRange(currentPivotDate, timeRange);
     const dates = [];
-    let curr = new Date(start);
-    const last = new Date(end);
+    // Parse as local time to avoid timezone shift
+    const [sy, sm, sd] = start.split('-').map(Number);
+    const [ey, em, ed] = end.split('-').map(Number);
+    let curr = new Date(sy, sm - 1, sd);
+    const last = new Date(ey, em - 1, ed);
     while (curr <= last) {
-      dates.push(curr.toISOString().split('T')[0]);
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, '0');
+      const d = String(curr.getDate()).padStart(2, '0');
+      dates.push(`${y}-${m}-${d}`);
       curr.setDate(curr.getDate() + 1);
     }
     return dates;
   };
 
   return (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative min-h-screen overflow-hidden">
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative min-h-screen overflow-x-hidden">
       {/* Dynamic Background Blobs for Visual Depth */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-200/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-100/30 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
@@ -456,26 +525,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
         </div>
       </div>
 
-      {machines.length > 0 ? (
-        <div className="flex overflow-x-auto pb-6 pt-4 gap-4 sm:gap-6 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory">
-          {machines.filter(m => m.p_start && m.p_end).map(m => {
-            const config = sessionIcons[m.description] || sessionIcons.default;
-            const isSelected = selectedMachineId === m.id;
-            return (
-              <button key={m.id} onClick={() => setSelectedMachineId(m.id)} className={`flex-shrink-0 w-52 sm:w-72 p-5 sm:p-8 rounded-[2.5rem] sm:rounded-[3rem] border-2 transition-all duration-500 text-left relative overflow-hidden group snap-center ${isSelected ? `bg-white shadow-2xl ${config.border} border-indigo-500 scale-105 z-10 ${config.shadow}` : 'bg-white/60 border-transparent hover:border-slate-200 shadow-sm'}`}>
-                {isSelected && <div className={`absolute top-0 right-0 w-32 sm:w-40 h-32 sm:h-40 bg-gradient-to-br ${config.gradient} rounded-full -mr-16 sm:-mr-20 -mt-16 sm:-mt-20 opacity-10 blur-3xl`} />}
-                <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center mb-4 sm:mb-5 shadow-lg group-hover:-rotate-12 transition-transform ${isSelected ? `bg-gradient-to-tr ${config.gradient}` : 'bg-slate-100'}`}><config.icon className={`w-5 h-5 sm:w-7 sm:h-7 ${isSelected ? 'text-white' : 'text-slate-400'}`} /></div>
-                <h3 className={`font-black text-lg sm:text-xl tracking-tighter leading-none ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>{m.description}</h3>
-                <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
-                  <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isSelected ? config.color : 'text-slate-300'}`} />
-                  <p className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-indigo-600' : 'text-slate-300'}`}>{formatRawTime(m.p_start)} - {formatRawTime(m.p_end)}</p>
-                </div>
-                {isSelected && <div className={`absolute top-6 sm:top-10 right-6 sm:right-10 w-2 h-2 ${config.accent} rounded-full animate-ping opacity-75`} />}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+
 
       {loading ? (
         <div className="h-[500px] flex flex-col items-center justify-center gap-4 bg-white/30 backdrop-blur-sm rounded-[4rem] border-2 border-dashed border-slate-200">
@@ -488,73 +538,100 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
       ) : (
         <div className="grid gap-12 w-full">
           {viewMode === "matrix" ? (
-            <div className="bg-white/80 backdrop-blur-xl rounded-[3rem] sm:rounded-[4rem] border border-white shadow-[0_40px_80px_-24px_rgba(0,0,0,0.08)] overflow-hidden w-full">
-              <div className="p-6 sm:p-10 border-b border-slate-100 flex flex-col bg-slate-50/30 gap-6">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between w-full gap-6">
-                  <div className="relative flex-1 max-w-3xl group/search w-full">
-                    <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 sm:w-6 sm:h-6 text-slate-300 transition-colors group-focus-within/search:text-indigo-600" />
-                    <input type="text" placeholder="Search team member..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-14 sm:pl-16 pr-8 py-4 sm:py-5 bg-white/50 border-2 border-slate-100 rounded-2xl sm:rounded-3xl focus:ring-[12px] focus:ring-indigo-100/50 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all shadow-inner placeholder:text-slate-300 text-sm sm:text-base" />
-                    <div className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none border-2 border-transparent group-focus-within/search:border-indigo-500/20 transition-all" />
-                  </div>
-                  {activeMachine && (
-                    <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
-                      <div className="flex items-center gap-4 bg-white px-6 sm:px-8 py-3 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] border border-indigo-100 shadow-sm group hover:border-indigo-400 transition-all flex-1 sm:flex-none">
-                        <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-indigo-50 ${sessionIcons[activeMachine.description]?.glow}`}>
-                          <Monitor className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Current Session</p>
-                          <span className="text-xs sm:text-sm font-black text-indigo-900 uppercase tracking-tight truncate block max-w-[150px] sm:max-w-none">{activeMachine.description}</span>
-                        </div>
-                      </div>
+            <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] sm:rounded-[4rem] border border-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] overflow-hidden w-full transition-all duration-700">
+              <div className="p-3 sm:p-4 flex flex-col bg-slate-50/20">
 
-                      <button onClick={handleExportCSV} className="flex items-center gap-3 bg-slate-900 hover:bg-slate-800 text-white px-6 sm:px-8 py-4 sm:py-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-xl shadow-slate-200 transition-all active:scale-95 group/export">
-                        <Download className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400 group-hover/export:text-white transition-colors" />
-                        <span className="text-[10px] sm:text-[12px] font-black uppercase tracking-widest">Export Ledger</span>
-                      </button>
+                {/* Single Row Compact Header */}
+                <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 w-full pb-2">
+
+                  {/* Filter & Date Controls */}
+                  <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                    {/* Time Range */}
+                    <div className="flex items-center p-1 bg-slate-100/50 rounded-xl sm:rounded-2xl border border-slate-200/50 shadow-inner w-full sm:w-auto overflow-x-auto no-scrollbar">
+                      {(["day", "week", "month", "custom"] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setTimeRange(r)}
+                          className={`px-4 py-2 rounded-lg sm:rounded-xl font-black text-xs sm:text-sm uppercase tracking-tight transition-all duration-300 whitespace-nowrap ${timeRange === r ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'}`}
+                        >
+                          {r}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </div>
-                <div className="flex flex-col xl:flex-row xl:items-center gap-4 w-full justify-start mt-2">
-                  <div className="flex items-center bg-indigo-50/50 p-1 rounded-2xl border border-indigo-100/50 w-full sm:w-auto">
-                    {(["day", "week", "month", "custom"] as const).map((r) => (
-                      <button key={r} onClick={() => setTimeRange(r)} className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${timeRange === r ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'text-indigo-400 hover:text-indigo-700'}`}>
-                        {r}
-                      </button>
-                    ))}
-                  </div>
 
-                  {/* Navigation Center */}
-                  <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-inner w-full sm:w-auto justify-between sm:justify-center">
-                    {timeRange !== 'custom' ? (
-                      <>
-                        <button onClick={() => handleNavigate(-1)} className="p-2 hover:bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"><ChevronLeft className="w-5 h-5" /></button>
-                        <div className="relative flex flex-col items-center justify-center px-4 min-w-[140px] sm:min-w-[180px]">
-                          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{timeRange} Frame</span>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-3 h-3 text-indigo-400" />
-                            <span className="text-[11px] sm:text-[13px] font-black uppercase tracking-tight tabular-nums text-slate-800">
+                    {/* Navigation Pills */}
+                    <div className="flex items-center bg-white p-1 rounded-xl sm:rounded-2xl border border-slate-100 shadow-sm gap-1 group/nav w-full sm:w-auto">
+                      {timeRange !== 'custom' ? (
+                        <>
+                          <button onClick={() => handleNavigate(-1)} className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90 overflow-hidden relative">
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+
+                          <div className="relative flex-1 sm:flex-none flex items-center justify-center px-4 py-2 bg-indigo-50/30 border border-indigo-100/30 rounded-lg group/date cursor-pointer">
+                            <Calendar className="w-4 h-4 text-indigo-400 mr-2" />
+                            <span className="text-sm font-black text-slate-700 tracking-tight tabular-nums group-hover/date:text-indigo-600 transition-colors whitespace-nowrap">
                               {getPeriodLabel()}
                             </span>
+                            <input type="date" value={currentPivotDate} onChange={(e) => setCurrentPivotDate(e.target.value)} className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10" />
                           </div>
-                          <input type="date" value={currentPivotDate} onChange={(e) => setCurrentPivotDate(e.target.value)} className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10" />
+
+                          <button onClick={() => handleNavigate(1)} className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90 overflow-hidden relative">
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 px-3 w-full sm:w-auto">
+                          <div className="flex-1 sm:flex-none flex flex-col items-center px-4 py-1 bg-slate-50/50 border border-slate-100 rounded-lg hover:border-indigo-400 focus-within:border-indigo-500 focus-within:bg-white transition-all shadow-sm relative">
+                            <input type="date" value={customRangeStart || currentPivotDate} onChange={(e) => setCustomRangeStart(e.target.value)} className="bg-transparent border-none p-0 text-xs sm:text-sm font-black text-slate-700 outline-none w-full sm:w-24 text-center" />
+                          </div>
+                          <ArrowRightLeft className="hidden sm:block w-3.5 h-3.5 text-indigo-400" />
+                          <div className="flex-1 sm:flex-none flex flex-col items-center px-4 py-1 bg-slate-50/50 border border-slate-100 rounded-lg hover:border-indigo-400 focus-within:border-indigo-500 focus-within:bg-white transition-all shadow-sm relative">
+                            <input type="date" value={customRangeEnd || currentPivotDate} onChange={(e) => setCustomRangeEnd(e.target.value)} className="bg-transparent border-none p-0 text-xs sm:text-sm font-black text-slate-700 outline-none w-full sm:w-24 text-center" />
+                          </div>
                         </div>
-                        <button onClick={() => handleNavigate(1)} className="p-2 hover:bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all active:scale-90"><ChevronRight className="w-5 h-5" /></button>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-2 px-2 py-0.5">
-                        <div className="flex flex-col items-start px-2 py-1 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition-all focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-50 shadow-sm">
-                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 ml-0.5">Start</p>
-                          <input type="date" value={customRangeStart || currentPivotDate} onChange={(e) => setCustomRangeStart(e.target.value)} className="bg-transparent border-none p-0 text-[10px] font-black text-slate-700 outline-none w-24" />
-                        </div>
-                        <ArrowRightLeft className="w-3 h-3 text-slate-300 shrink-0" />
-                        <div className="flex flex-col items-start px-2 py-1 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition-all focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-50 shadow-sm">
-                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 ml-0.5">End</p>
-                          <input type="date" value={customRangeEnd || currentPivotDate} onChange={(e) => setCustomRangeEnd(e.target.value)} className="bg-transparent border-none p-0 text-[10px] font-black text-slate-700 outline-none w-24" />
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
+
+                  {/* 3. Session & Export Actions (14px) */}
+                  {activeMachine && (
+                    <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0 xl:ml-auto pr-1">
+                      <div className="relative flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm transition-all hover:bg-white hover:shadow-md group/session">
+                        <Monitor className="w-4 h-4 text-indigo-600 group-hover/session:rotate-6 transition-transform flex-shrink-0" />
+                        <div className="leading-tight text-center sm:text-left flex-1 sm:flex-none">
+                          <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Session</p>
+                          <select
+                            value={selectedMachineId || ''}
+                            onChange={(e) => setSelectedMachineId(e.target.value)}
+                            className="appearance-none bg-transparent border-none outline-none text-sm font-black text-slate-900 tracking-tight uppercase cursor-pointer w-full sm:w-auto text-center sm:text-left pr-4 max-w-[160px] truncate"
+                          >
+                            {machines.filter(m => m.p_start && m.p_end).map(m => (
+                              <option key={m.id} value={m.id}>{m.description}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-indigo-400 rotate-90 flex-shrink-0 -ml-1 absolute right-3 top-1/2 -translate-y-1/2 sm:static" />
+                      </div>
+
+                      <button onClick={handleExportCSV} className="flex-1 sm:flex-none flex justify-center items-center gap-2.5 bg-slate-900 hover:bg-slate-950 text-white px-5 py-2.5 rounded-xl transition-all active:scale-95 group/export shadow-[0_10px_20px_-5px_rgba(15,23,42,0.15)] overflow-hidden relative">
+                        <div className="absolute inset-x-0 bottom-0 h-0.5 bg-indigo-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                        <Download className="w-4 h-4 text-indigo-400 group-hover/export:animate-bounce" />
+                        <span className="text-xs sm:text-sm font-black uppercase tracking-widest whitespace-nowrap">Export</span>
+                      </button>
+
+                      <div className="relative flex items-center w-full sm:w-auto group/search">
+                        <Search className="absolute left-3.5 w-4 h-4 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
+                        <input
+                          type="text"
+                          placeholder="Search users..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full sm:w-56 pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
 
@@ -615,8 +692,8 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                           key={opt.id}
                                           onClick={(e) => { e.stopPropagation(); handleMarkHarinam(row.user.email, row.date, opt.id, isActive ? 0 : opt.val); }}
                                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-black text-[9px] sm:text-[10px] border transition-all duration-200 select-none tracking-tight ${isActive
-                                              ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200/50 scale-[1.02]'
-                                              : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 hover:shadow-sm'
+                                            ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200/50 scale-[1.02]'
+                                            : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 hover:shadow-sm'
                                             }`}
                                         >
                                           {isActive && <span className="w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_4px_white]" />}
@@ -666,11 +743,11 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                     </table>
                   </div>
                 ) : (
-                  <div className="rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto custom-attendance-scrollbar">
-                    <table className="text-left border-collapse" style={{ minWidth: `${140 + (getDateColumns().length * 45)}px` }}>
+                  <div className="rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto custom-attendance-scrollbar relative">
+                    <table className="text-left border-separate border-spacing-0" style={{ minWidth: `${140 + (getDateColumns().length * 45)}px` }}>
                       <thead>
                         <tr className="bg-slate-900 text-white">
-                          <th className="px-4 sm:px-6 py-4 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] sticky left-0 bg-slate-900 z-20 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[120px] sm:min-w-[180px]">Portfolio</th>
+                          <th className="px-4 sm:px-6 py-4 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] relative sm:sticky sm:left-0 bg-slate-900 z-10 sm:z-20 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[120px] sm:min-w-[180px]">Portfolio</th>
                           {getDateColumns().map(date => (
                             <th key={date} className="px-1 sm:px-4 py-4 text-center min-w-[40px] sm:min-w-[50px] border-r border-white/5">
                               <div className="text-[10px] sm:text-xs font-black leading-none mb-1">{new Date(date).toLocaleDateString('en-IN', { day: '2-digit' })}</div>
@@ -689,14 +766,14 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                           )}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="">
                         {filteredUsers.map((user, uIdx) => {
                           const datesInRange = getDateColumns();
                           let pCount = 0, lCount = 0, aCount = 0;
                           let totalHarinamMins = 0;
                           return (
                             <tr key={user.email} className={`transition-colors group ${uIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-indigo-50/30`}>
-                              <td className={`px-6 py-2 sticky left-0 z-10 border-r border-slate-100 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.05)] ${uIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} group-hover:bg-indigo-50`}>
+                              <td className={`px-6 py-2 relative sm:sticky sm:left-0 z-10 sm:z-30 border-r border-b border-slate-200 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.05)] ${uIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} group-hover:bg-indigo-50`}>
                                 <div className="font-black text-slate-800 text-sm sm:text-[15px] tracking-tighter leading-none mb-1 truncate max-w-[150px]">{user.full_name}</div>
                                 <div className="flex items-center gap-1.5 mt-1.5">
                                   <span className="text-[10px] font-black text-slate-400 tabular-nums">#{user.dates[Object.keys(user.dates)[0]]?.[activeMachine?.description]?.[0]?.zk_user_id || '--'}</span>
@@ -716,7 +793,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                 }
 
                                 return (
-                                  <td key={date} className="px-1 py-1.5 border-r border-slate-100/50 text-center">
+                                  <td key={date} className="px-1 py-1.5 border-r border-b border-slate-100/50 text-center">
                                     {logs.length > 0 ? (
                                       activeMachine?.id === 'harinam_virtual' ? (
                                         (() => {
@@ -727,8 +804,8 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                         })()
                                       ) : (
                                         <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-125 hover:z-20 shadow-sm ${status === 'present' ? 'bg-emerald-500 text-white shadow-emerald-200' :
-                                            status === 'late' ? 'bg-amber-400 text-white shadow-amber-200' :
-                                              'bg-rose-400 text-white'
+                                          status === 'late' ? 'bg-amber-400 text-white shadow-amber-200' :
+                                            'bg-rose-400 text-white'
                                           }`}>
                                           {status === 'present' ? 'P' : status === 'late' ? 'L' : 'A'}
                                         </div>
@@ -738,7 +815,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                 );
                               })}
                               {activeMachine?.id === 'harinam_virtual' ? (
-                                <td className="px-4 py-2 text-center bg-indigo-500/5 shadow-[inset_0_-2px_0_#6366f122]">
+                                <td className="px-4 py-2 text-center border-b border-slate-200 bg-indigo-500/5 shadow-[inset_0_-2px_0_#6366f122]">
                                   <div className="inline-flex flex-col items-center">
                                     <span className="text-xs sm:text-[13px] font-black text-indigo-600 leading-none">
                                       {(totalHarinamMins / 60) % 1 === 0 ? (totalHarinamMins / 60) : (totalHarinamMins / 60).toFixed(1)} hr
@@ -747,10 +824,10 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                 </td>
                               ) : (
                                 <>
-                                  <td className="px-4 py-2 text-center bg-emerald-500/5 font-black text-emerald-600 text-xs sm:text-[13px] border-r border-slate-100 shadow-[inset_0_-2px_0_#10b98122]">{pCount}</td>
-                                  <td className="px-4 py-2 text-center bg-amber-500/5 font-black text-amber-600 text-xs sm:text-[13px] border-r border-slate-100 shadow-[inset_0_-2px_0_#fbbf2422]">{lCount}</td>
-                                  <td className="px-4 py-2 text-center bg-rose-500/5 font-black text-rose-500 text-xs sm:text-[13px] border-r border-slate-100 shadow-[inset_0_-2px_0_#f43f5e22]">{aCount}</td>
-                                  <td className="px-4 py-2 text-center bg-indigo-500/5 shadow-[inset_0_-2px_0_#6366f122]">
+                                  <td className="px-4 py-2 text-center border-b border-r border-slate-200 bg-emerald-500/5 font-black text-emerald-600 text-xs sm:text-[13px] shadow-[inset_0_-2px_0_#10b98122]">{pCount}</td>
+                                  <td className="px-4 py-2 text-center border-b border-r border-slate-200 bg-amber-500/5 font-black text-amber-600 text-xs sm:text-[13px] shadow-[inset_0_-2px_0_#fbbf2422]">{lCount}</td>
+                                  <td className="px-4 py-2 text-center border-b border-r border-slate-200 bg-rose-500/5 font-black text-rose-500 text-xs sm:text-[13px] shadow-[inset_0_-2px_0_#f43f5e22]">{aCount}</td>
+                                  <td className="px-4 py-2 text-center border-b border-slate-200 bg-indigo-500/5 shadow-[inset_0_-2px_0_#6366f122]">
                                     <div className="inline-flex flex-col items-center">
                                       <span className="text-xs sm:text-[13px] font-black text-indigo-600 leading-none">{Math.round(((pCount + lCount) / datesInRange.length) * 100)}%</span>
                                     </div>
@@ -768,21 +845,21 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
             </div>
           ) : viewMode === "config" ? (
             <div className="space-y-8 animate-in zoom-in-95 duration-500">
-              <div className="p-6 sm:p-10 bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 rounded-[2.5rem] sm:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full -mr-[250px] -mt-[250px] blur-[120px] group-hover:scale-110 transition-transform duration-1000"></div>
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 sm:gap-10">
-                  <div>
-                    <h3 className="text-3xl sm:text-5xl font-black tracking-tighter font-outfit mb-2 sm:mb-4">Command Center</h3>
-                    <p className="text-indigo-200 font-bold text-sm sm:text-lg opacity-80 leading-tight max-w-xl">Define session windows, telemetry rules, and biometric status windows.</p>
+              <div className="p-6 sm:px-8 sm:py-5 bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 rounded-3xl text-white shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-[60px] group-hover:scale-110 transition-transform duration-1000"></div>
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="text-left w-full md:w-auto">
+                    <h3 className="text-2xl sm:text-3xl font-black tracking-tighter font-outfit mb-1">Command Center</h3>
+                    <p className="text-indigo-200 font-bold text-xs opacity-80 leading-tight">Define session windows, telemetry rules, and biometric status windows.</p>
                   </div>
-                  <div className="flex gap-4 w-full md:w-auto">
-                    <div className="flex-1 md:flex-none bg-white/10 px-5 py-3 rounded-2xl backdrop-blur-md border border-white/10 text-center">
-                      <div className="text-xl sm:text-2xl font-black leading-none mb-1">{machines.length}</div>
+                  <div className="flex gap-3 w-full md:w-auto">
+                    <div className="flex-1 md:flex-none bg-white/5 px-6 py-2 rounded-xl backdrop-blur-md border border-white/10 text-center">
+                      <div className="text-lg font-black leading-none mb-0.5">{machines.length}</div>
                       <div className="text-[8px] font-black uppercase tracking-widest opacity-40">Devices</div>
                     </div>
-                    <div className="flex-1 md:flex-none bg-indigo-600 px-5 py-3 rounded-2xl backdrop-blur-md border border-indigo-400 text-center shadow-2xl shadow-indigo-500/20">
-                      <div className="text-xl sm:text-2xl font-black leading-none mb-1">{machines.filter(m => m.p_start).length}</div>
-                      <div className="text-[8px] font-black uppercase tracking-widest opacity-60">Configs</div>
+                    <div className="flex-1 md:flex-none bg-indigo-600 px-6 py-2 rounded-xl backdrop-blur-md border border-indigo-400 text-center shadow-lg shadow-indigo-500/20">
+                      <div className="text-lg font-black leading-none mb-0.5">{machines.filter(m => m.p_start).length}</div>
+                      <div className="text-[8px] font-black uppercase tracking-widest opacity-80 text-white">Configs</div>
                     </div>
                   </div>
                 </div>
@@ -824,9 +901,9 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                       </div>
                       <div className="space-y-6 pt-6 border-t border-slate-50">
                         <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2"><Clock className="w-4 h-4" /> Telemetry Window Constraints</h5>
-                        <div className="grid grid-cols-2 gap-6">
-                          <div className="space-y-2"><label className="text-[9px] font-black text-emerald-600/50 uppercase tracking-widest ml-4">Present Range</label><div className="flex gap-2"><input type="time" value={newMachine.p_start} onChange={(e) => setNewMachine({ ...newMachine, p_start: e.target.value })} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /><input type="time" value={newMachine.p_end} onChange={(e) => setNewMachine({ ...newMachine, p_end: e.target.value })} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /></div></div>
-                          <div className="space-y-2"><label className="text-[9px] font-black text-amber-600/50 uppercase tracking-widest ml-4">Late Range</label><div className="flex gap-2"><input type="time" value={newMachine.l_start} onChange={(e) => setNewMachine({ ...newMachine, l_start: e.target.value })} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /><input type="time" value={newMachine.l_end} onChange={(e) => setNewMachine({ ...newMachine, l_end: e.target.value })} className="flex-1 bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /></div></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                          <div className="space-y-2"><label className="text-[9px] font-black text-emerald-600/50 uppercase tracking-widest ml-4">Present Range</label><div className="flex flex-col sm:flex-row gap-2"><input type="time" value={newMachine.p_start} onChange={(e) => setNewMachine({ ...newMachine, p_start: e.target.value })} className="flex-1 w-full bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /><input type="time" value={newMachine.p_end} onChange={(e) => setNewMachine({ ...newMachine, p_end: e.target.value })} className="flex-1 w-full bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /></div></div>
+                          <div className="space-y-2"><label className="text-[9px] font-black text-amber-600/50 uppercase tracking-widest ml-4">Late Range</label><div className="flex flex-col sm:flex-row gap-2"><input type="time" value={newMachine.l_start} onChange={(e) => setNewMachine({ ...newMachine, l_start: e.target.value })} className="flex-1 w-full bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /><input type="time" value={newMachine.l_end} onChange={(e) => setNewMachine({ ...newMachine, l_end: e.target.value })} className="flex-1 w-full bg-slate-50 border border-slate-100 px-4 py-4 rounded-2xl font-bold text-sm shadow-inner" /></div></div>
                         </div>
                       </div>
                       <button onClick={handleAddMachine} className="w-full bg-indigo-600 hover:bg-slate-900 text-white font-black py-6 rounded-[2.5rem] shadow-[0_20px_40px_-10px_rgba(79,70,229,0.3)] transition-all uppercase tracking-widest text-xs mt-4">Save Engine Config</button>
@@ -837,103 +914,157 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
               </div>
             </div>
           ) : (
-            <div className="space-y-12 animate-in slide-in-from-right-10 duration-700">
-              <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-8 sm:p-16 rounded-[3rem] sm:rounded-[4.5rem] text-white shadow-2xl flex flex-col xl:flex-row xl:items-center justify-between overflow-hidden relative border-4 sm:border-8 border-white/5 group gap-10">
-                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-white/5 rounded-full -mr-72 -mt-72 blur-[120px] transition-transform duration-1000 group-hover:scale-125"></div>
-                <div className="relative z-10 space-y-4 sm:space-y-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <button onClick={() => setViewMode("matrix")} className="flex items-center gap-3 text-indigo-300 font-black uppercase tracking-[0.3em] text-[9px] sm:text-[10px] bg-white/5 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all transform hover:-translate-x-2 shrink-0">
-                      <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" /> Back to Matrix
-                    </button>
+            <div className="space-y-12 animate-in slide-in-from-right-10 duration-700 w-full">
+              <div className="bg-white/95 backdrop-blur-3xl p-6 sm:px-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 w-full relative z-50">
+                <div className="w-full md:w-auto">
+                  <h3 className="text-2xl sm:text-3xl font-black tracking-tighter font-outfit text-slate-900 leading-none mb-1.5 break-words">{displayUser?.full_name}</h3>
+                  <p className="text-slate-500 font-bold text-xs sm:text-sm tracking-tight break-all">{displayUser?.email}</p>
+                </div>
 
-                    {isAdmin && (
-                      <div className="relative w-full max-w-sm group/hsearch">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400/50 group-focus-within/hsearch:text-indigo-300 transition-colors" />
-                        <input
-                          type="text"
-                          placeholder="Search student..."
-                          value={historySearchQuery}
-                          onChange={(e) => { setHistorySearchQuery(e.target.value); setShowUserDropdown(true); }}
-                          onFocus={() => setShowUserDropdown(true)}
-                          className="w-full bg-white/10 border border-white/10 pl-11 pr-4 py-3 rounded-2xl outline-none font-bold text-sm text-white placeholder:text-indigo-300/40 focus:bg-white/20 focus:border-white/30 transition-all backdrop-blur-md shadow-inner"
-                        />
-
-                        {showUserDropdown && historySearchQuery.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 mt-2 bg-slate-950/95 backdrop-blur-2xl border border-white/20 rounded-2xl shadow-2xl z-[100] p-2 space-y-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                            {report.filter(u =>
-                              u.full_name?.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
-                              u.email?.toLowerCase().includes(historySearchQuery.toLowerCase())
-                            ).slice(0, 6).map((u) => (
-                              <button
-                                key={u.email}
-                                onClick={() => {
-                                  setSelectedUserEmail(u.email);
-                                  setHistorySearchQuery("");
-                                  setShowUserDropdown(false);
-                                }}
-                                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors text-left"
-                              >
-                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center font-black text-[10px] text-indigo-300">{u.full_name?.[0]?.toUpperCase()}</div>
-                                <div>
-                                  <div className="text-[11px] font-black text-white leading-none">{u.full_name}</div>
-                                  <div className="text-[9px] font-bold text-indigo-300/60 mt-1">{u.email}</div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                {/* Date Range Navigator */}
+                <div className="flex flex-nowrap md:justify-center items-center gap-2 sm:gap-3 w-full md:w-auto flex-1 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                  {/* Week / Month toggle */}
+                  <div className="flex shrink-0 items-center p-1 bg-slate-100/60 rounded-xl border border-slate-200/60 shadow-inner">
+                    {(['week', 'month'] as const).map(r => (
+                      <button key={r} onClick={() => setHistoryRange(r)}
+                        className={`px-3 sm:px-4 py-1.5 rounded-lg font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all ${historyRange === r ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-600'}`}>
+                        {r}
+                      </button>
+                    ))}
                   </div>
-                  <div>
-                    <h3 className="text-4xl sm:text-7xl font-black tracking-tighter font-outfit truncate max-w-2xl leading-none">{displayUser?.full_name}</h3>
-                    <p className="text-indigo-300 font-bold text-lg sm:text-xl mt-2 sm:mt-3 opacity-60 tracking-tight truncate">{displayUser?.email}</p>
+                  {/* Prev / Date label / Next */}
+                  <div className="flex shrink-0 items-center bg-white rounded-xl border border-slate-100 shadow-sm gap-1 p-1">
+                    <button onClick={() => {
+                      const d = parseLocalDate(historyPivot);
+                      if (historyRange === 'week') d.setDate(d.getDate() - 7);
+                      else d.setMonth(d.getMonth() - 1);
+                      setHistoryPivot(toLocalDateStr(d));
+                    }} className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <div className="relative flex items-center justify-center px-4 py-1.5 bg-indigo-50/30 border border-indigo-100/30 rounded-lg cursor-pointer group/hdate">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-400 mr-1.5" />
+                      <span className="text-xs font-black text-slate-700 tracking-tight group-hover/hdate:text-indigo-600 transition-colors whitespace-nowrap">
+                        {(() => {
+                          const pivot = parseLocalDate(historyPivot);
+                          if (historyRange === 'week') {
+                            const day = pivot.getDay();
+                            const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
+                            const start = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
+                            const end = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
+                            return `${start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
+                          }
+                          return pivot.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                        })()}
+                      </span>
+                      <input type="date" value={historyPivot} onChange={e => setHistoryPivot(e.target.value)} className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10" />
+                    </div>
+                    <button onClick={() => {
+                      const d = parseLocalDate(historyPivot);
+                      if (historyRange === 'week') d.setDate(d.getDate() + 7);
+                      else d.setMonth(d.getMonth() + 1);
+                      setHistoryPivot(toLocalDateStr(d));
+                    }} className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                <div className="relative z-10 flex gap-10 sm:gap-20">
-                  <div className="text-center group/stat">
-                    <div className="text-4xl sm:text-7xl font-black mb-1 sm:mb-2 font-outfit text-emerald-400 drop-shadow-[0_0_15px_#10b98155] transition-transform group-hover/stat:scale-110">94%</div>
-                    <div className="text-[8px] sm:text-[10px] uppercase font-black text-indigo-300 tracking-[0.3em]">Health Score</div>
-                  </div>
-                  <div className="text-center border-l border-white/10 pl-10 sm:pl-20 group/stat">
-                    <div className="text-4xl sm:text-7xl font-black mb-1 sm:mb-2 font-outfit transition-transform group-hover/stat:scale-110">
-                      {Object.keys(displayUser?.dates || {}).length}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
+                  <button onClick={() => setViewMode("matrix")} className="flex items-center justify-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] bg-indigo-50 px-5 py-2.5 rounded-xl hover:bg-indigo-100 transition-all shrink-0 w-full sm:w-auto">
+                    <ChevronLeft className="w-4 h-4" /> Back to Matrix
+                  </button>
+                  {isAdmin && (
+                    <div className="relative flex items-center w-full sm:w-72 group/hsearch">
+                      <Search className="absolute left-3.5 w-4 h-4 text-slate-400 group-focus-within/hsearch:text-indigo-600 transition-colors" />
+                      <input
+                        type="text"
+                        placeholder="Search student..."
+                        value={historySearchQuery}
+                        onChange={(e) => { setHistorySearchQuery(e.target.value); setShowUserDropdown(true); }}
+                        onFocus={() => setShowUserDropdown(true)}
+                        className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl outline-none font-bold text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
+                      />
+
+                      {showUserDropdown && historySearchQuery.length > 0 && (
+                        <div className="absolute top-full left-0 sm:right-0 sm:left-auto w-full sm:w-80 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[200] p-2 space-y-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                          {report.filter(u =>
+                            u.full_name?.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                            u.email?.toLowerCase().includes(historySearchQuery.toLowerCase())
+                          ).slice(0, 6).map((u) => (
+                            <button
+                              key={u.email}
+                              onClick={() => {
+                                setSelectedUserEmail(u.email);
+                                setHistorySearchQuery("");
+                                setShowUserDropdown(false);
+                              }}
+                              className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center font-black text-[10px] text-indigo-600 border border-indigo-100">{u.full_name?.[0]?.toUpperCase()}</div>
+                              <div>
+                                <div className="text-[11px] font-black text-slate-900 leading-none">{u.full_name}</div>
+                                <div className="text-[9px] font-bold text-slate-400 mt-1">{u.email}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[8px] sm:text-[10px] uppercase font-black text-indigo-300 tracking-[0.3em]">Logs Scanned</div>
-                  </div>
+                  )}
                 </div>
               </div>
-
-              <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] overflow-hidden mt-8 border border-slate-100">
-                <div className="overflow-x-auto custom-attendance-scrollbar">
-                  <table className="w-full text-left border-collapse min-w-[800px]">
+              <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] mt-8 border border-slate-100 w-full overflow-hidden">
+                <div className="overflow-x-auto custom-attendance-scrollbar w-full">
+                  <table className="w-full text-left border-separate border-spacing-0 min-w-0">
                     <thead>
                       <tr className="bg-slate-900 text-white">
-                        <th className="px-6 py-5 text-[10px] font-black uppercase tracking-[0.2em] sticky left-0 bg-slate-900 z-20 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)]">Timeline</th>
+                        <th className="px-3 sm:px-6 py-3 sm:py-5 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] sm:tracking-[0.2em] relative sm:sticky sm:left-0 bg-slate-900 z-10 sm:z-30 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[90px] sm:min-w-[120px]">Timeline</th>
                         {machines.map(m => {
                           const config = sessionIcons[m.description] || sessionIcons.default;
                           return (
-                            <th key={m.id} className="px-6 py-5 text-center border-l border-white/5 whitespace-nowrap min-w-[120px]">
-                              <div className="flex flex-col items-center justify-center gap-1.5">
-                                <div className={`p-1.5 rounded-lg bg-white/10 ${config.color} group-hover:scale-110 transition-transform`}>
-                                  <config.icon className="w-4 h-4" />
+                            <th key={m.id} className="px-2 sm:px-6 py-3 sm:py-5 text-center border-l border-white/5 min-w-0">
+                              <div className="flex flex-col items-center justify-center gap-1">
+                                <div className={`p-1 sm:p-1.5 rounded-lg bg-white/10 ${config.color}`}>
+                                  <config.icon className="w-3 h-3 sm:w-4 sm:h-4" />
                                 </div>
-                                <span className="text-[11px] font-black uppercase tracking-widest leading-none mt-1">{m.description}</span>
+                                <span className="text-[7px] sm:text-[11px] font-black uppercase tracking-tight sm:tracking-widest leading-none mt-0.5">{m.description.split(' ')[0]}</span>
                               </div>
                             </th>
                           );
                         })}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {Object.entries(displayUser?.dates || {}).sort().reverse().map(([date, sessions]: any, idx) => (
-                        <tr key={date} className={`transition-colors hover:bg-slate-50/80 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
-                          <td className="px-6 py-4 sticky left-0 z-10 bg-inherit border-r border-slate-100 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.02)]">
-                            <div className="font-black text-slate-900 text-[14px] sm:text-[15px] tracking-tighter uppercase font-outfit whitespace-nowrap">
-                              {new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                     <tbody className="">
+                       {(() => {
+                         // Compute the date range for history view
+                         const pivot = parseLocalDate(historyPivot);
+                         let hStart: Date, hEnd: Date;
+                         if (historyRange === 'week') {
+                           const day = pivot.getDay();
+                           const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
+                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
+                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
+                         } else {
+                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), 1);
+                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0);
+                         }
+                         const hStartStr = toLocalDateStr(hStart);
+                         const hEndStr = toLocalDateStr(hEnd);
+                         const filteredEntries = Object.entries(displayUser?.dates || {})
+                           .filter(([date]) => date >= hStartStr && date <= hEndStr)
+                           .sort(([a], [b]) => b.localeCompare(a));
+                         if (filteredEntries.length === 0) return (
+                           <tr><td colSpan={machines.length + 1} className="py-16 text-center text-slate-300 font-black uppercase text-xs italic opacity-40">No records in this period</td></tr>
+                         );
+                         return filteredEntries.map(([date, sessions]: [string, any], idx) => (
+                        <tr key={date} className={`transition-colors group hover:bg-slate-50/80 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                          <td className={`px-3 sm:px-6 py-2 sm:py-4 relative sm:sticky sm:left-0 z-10 sm:z-20 border-r border-b border-slate-100 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.02)] ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} group-hover:bg-slate-50/95`}>
+                            <div className="font-black text-slate-900 text-[11px] sm:text-[15px] tracking-tight sm:tracking-tighter uppercase font-outfit whitespace-nowrap">
+                              {new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
+                              <span className="hidden sm:inline">, {new Date(date).toLocaleDateString('en-US', { year: 'numeric' })}</span>
                             </div>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                              {new Date(date).toLocaleDateString('en-US', { weekday: 'long' })}
+                            <div className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                              {new Date(date).toLocaleDateString('en-US', { weekday: 'short' })}
                             </div>
                           </td>
                           {machines.map(m => {
@@ -948,31 +1079,92 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                               }
                               if (dailyHarinamMins > 0) {
                                 const hrsStr = dailyHarinamMins % 60 === 0 ? (dailyHarinamMins / 60).toString() : (dailyHarinamMins / 60).toFixed(1);
-                                renderContent = <div className="font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg text-[11px] tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">{hrsStr} hr</div>;
+                                renderContent = <div className="font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[11px] tracking-tight sm:tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">{hrsStr}hr</div>;
                               } else {
-                                renderContent = <div className="text-slate-300 font-black text-[10px] opacity-40">--:--</div>;
+                                renderContent = <div className="text-slate-300 font-black text-[8px] sm:text-[10px] opacity-40">--</div>;
                               }
                             } else {
                               if (logs[0]?.is_manual) {
-                                renderContent = <div className="flex items-center justify-center gap-1.5 font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg text-[10px] uppercase border border-indigo-100 shadow-sm mx-auto w-fit">Manual</div>;
+                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-indigo-100 shadow-sm mx-auto w-fit">Manual</div>;
                               } else if (status === 'present') {
-                                renderContent = <div className="flex items-center justify-center gap-1.5 font-black text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg text-[10px] uppercase border border-emerald-100 shadow-sm mx-auto w-fit"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> {formatRawTime(logs[0]?.check_time)}</div>;
+                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-emerald-600 bg-emerald-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-emerald-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> {formatRawTime(logs[0]?.check_time)}</div>;
                               } else if (status === 'late') {
-                                renderContent = <div className="flex items-center justify-center gap-1.5 font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg text-[10px] uppercase border border-amber-100 shadow-sm mx-auto w-fit"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span> {formatRawTime(logs[0]?.check_time)}</div>;
+                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-amber-600 bg-amber-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-amber-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span> {formatRawTime(logs[0]?.check_time)}</div>;
                               } else {
-                                renderContent = <div className="flex items-center justify-center font-black text-slate-300 text-[10px] uppercase mx-auto w-fit opacity-40">--:--</div>;
+                                renderContent = <div className="flex items-center justify-center font-black text-slate-300 text-[8px] sm:text-[10px] uppercase mx-auto w-fit opacity-40">--</div>;
                               }
                             }
 
                             return (
-                              <td key={m.id} className="px-2 py-4 text-center border-l border-slate-100/50">
+                              <td key={m.id} className="px-1 sm:px-2 py-2 sm:py-4 text-center border-l border-b border-slate-100/50">
                                 {renderContent}
                               </td>
                             );
                           })}
                         </tr>
-                      ))}
-                    </tbody>
+                      ));
+                    })()}
+                     </tbody>
+                     <tfoot>
+                       {(() => {
+                         // Re-compute range for totals
+                         const pivot = parseLocalDate(historyPivot);
+                         let hStart: Date, hEnd: Date;
+                         if (historyRange === 'week') {
+                           const day = pivot.getDay();
+                           const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
+                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
+                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
+                         } else {
+                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), 1);
+                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0);
+                         }
+                         const hStartStr = toLocalDateStr(hStart);
+                         const hEndStr = toLocalDateStr(hEnd);
+                         const filteredEntries = Object.entries(displayUser?.dates || {})
+                           .filter(([date]) => date >= hStartStr && date <= hEndStr);
+                         if (filteredEntries.length === 0) return null;
+                         // Compute per-machine totals
+                         const totals: Record<string, { present: number; late: number; harinamMins: number }> = {};
+                         machines.forEach(m => { totals[m.id] = { present: 0, late: 0, harinamMins: 0 }; });
+                         filteredEntries.forEach(([, sessions]: [string, any]) => {
+                           machines.forEach(m => {
+                             const logs = (sessions[m.description] || []);
+                             if (m.id === 'harinam_virtual') {
+                               if (logs[0]) totals[m.id].harinamMins += (logs[0].h7am || 0) + (logs[0].h740am || 0) + (logs[0].hpdc || 0) + (logs[0].hcustom_mins || 0);
+                             } else {
+                               const st = getStatus(logs, m);
+                               if (st === 'present') totals[m.id].present++;
+                               else if (st === 'late') totals[m.id].late++;
+                             }
+                           });
+                         });
+                         return (
+                           <tr className="bg-slate-900 text-white">
+                             <td className="px-3 sm:px-6 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400">
+                               Total
+                             </td>
+                             {machines.map(m => {
+                               const t = totals[m.id];
+                               return (
+                                 <td key={m.id} className="px-1 sm:px-2 py-3 sm:py-4 text-center border-l border-white/5">
+                                   {m.id === 'harinam_virtual' ? (
+                                     <div className="font-black text-indigo-300 text-[9px] sm:text-[13px]">
+                                       {t.harinamMins === 0 ? '--' : `${t.harinamMins % 60 === 0 ? t.harinamMins / 60 : (t.harinamMins / 60).toFixed(1)} hr`}
+                                     </div>
+                                   ) : (
+                                     <div className="flex flex-col items-center gap-0.5">
+                                       <span className="font-black text-emerald-400 text-[9px] sm:text-[13px]">{t.present}P</span>
+                                       {t.late > 0 && <span className="font-black text-amber-400 text-[8px] sm:text-[11px]">{t.late}L</span>}
+                                     </div>
+                                   )}
+                                 </td>
+                               );
+                             })}
+                           </tr>
+                         );
+                       })()}
+                     </tfoot>
                   </table>
                 </div>
               </div>

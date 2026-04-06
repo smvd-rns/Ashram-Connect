@@ -31,28 +31,61 @@ export async function GET(req: NextRequest) {
     if (mappingsError) throw mappingsError;
     const mappingsList = mappings || [];
 
-    // 3. Fetch all unique emails from mappings and their profile names
-    const emails = [...new Set(mappingsList.map(m => m.user_email))];
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("email, full_name")
-      .in("email", emails);
-    const profileMap: Record<string, string> = {};
-    (profiles || []).forEach(p => { profileMap[p.email] = p.full_name; });
+    // 3. Fetch BCDB users (Only temple Brahmacharis should have access to Harinam)
+    const { data: bcdbUsers, error: bcdbError } = await supabase
+      .from("bcdb")
+      .select("email_id, initiated_name, legal_name")
+      .eq("is_deleted", false);
+    if (bcdbError) throw bcdbError;
 
-    // 4. Fetch logs for the date range
-    const { data: logs, error: logsError } = await supabase
-      .from("physical_attendance")
-      .select("*")
-      .gte("check_time", `${startDate}T00:00:00Z`)
-      .lte("check_time", `${endDate}T23:59:59Z`);
-    if (logsError) throw logsError;
-    const logsList = logs || [];
+    // 4. Fetch logs for the date range with pagination to bypass Supabase 1000-row max default
+    let logsList: any[] = [];
+    let hasMoreLogs = true;
+    let logPage = 0;
+    const limit = 1000;
+
+    while (hasMoreLogs) {
+      const { data: chunk, error: chunkError } = await supabase
+        .from("physical_attendance")
+        .select("*")
+        .gte("check_time", `${startDate}T00:00:00Z`)
+        .lte("check_time", `${endDate}T23:59:59Z`)
+        .range(logPage * limit, (logPage + 1) * limit - 1);
+
+      if (chunkError) throw chunkError;
+
+      if (chunk && chunk.length > 0) {
+        logsList = [...logsList, ...chunk];
+      }
+
+      if (!chunk || chunk.length < limit) {
+        hasMoreLogs = false;
+      } else {
+        logPage++;
+      }
+    }
 
     // 5. Build matrix: user → date → session → [logs]
     const matrix: any = {};
 
-    // Pre-populate all mapped users and their assigned machines
+    // Pre-populate matrix with BCDB users and grant them Harinam access
+    (bcdbUsers || []).forEach(u => {
+      if (!u.email_id) return;
+      matrix[u.email_id] = {
+        email: u.email_id,
+        full_name: u.initiated_name || u.legal_name || u.email_id.split("@")[0],
+        assigned_machines: ["harinam_virtual"],
+        dates: {}
+      };
+    });
+
+    // Fallback dictionary for physical mappers not in BCDB
+    const emails = [...new Set(mappingsList.map(m => m.user_email))];
+    const { data: profiles } = await supabase.from("profiles").select("email, full_name").in("email", emails);
+    const profileMap: Record<string, string> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.email] = p.full_name; });
+
+    // Pre-populate hardware assigned_machines from mappings
     mappingsList.forEach(m => {
       if (!matrix[m.user_email]) {
         matrix[m.user_email] = {
@@ -86,11 +119,30 @@ export async function GET(req: NextRequest) {
     });
 
     // --- HARINAM INTEGRATION ---
-    const { data: harinamData } = await supabase
-      .from("harinam_attendance")
-      .select("*")
-      .gte("date", startDate)
-      .lte("date", endDate);
+    let harinamDataList: any[] = [];
+    let hasMoreHarinam = true;
+    let hPage = 0;
+
+    while (hasMoreHarinam) {
+      const { data: chunk, error: hError } = await supabase
+        .from("harinam_attendance")
+        .select("*")
+        .gte("date", startDate)
+        .lte("date", endDate)
+        .range(hPage * limit, (hPage + 1) * limit - 1);
+
+      if (hError) throw hError;
+
+      if (chunk && chunk.length > 0) {
+        harinamDataList = [...harinamDataList, ...chunk];
+      }
+
+      if (!chunk || chunk.length < limit) {
+        hasMoreHarinam = false;
+      } else {
+        hPage++;
+      }
+    }
 
     const harinamVirtualMachine = {
       id: "harinam_virtual",
@@ -103,7 +155,7 @@ export async function GET(req: NextRequest) {
     
     machinesList.push(harinamVirtualMachine);
 
-    (harinamData || []).forEach(record => {
+    (harinamDataList || []).forEach((record: any) => {
       const email = record.user_email;
       if (!matrix[email]) return;
       const date = record.date;
