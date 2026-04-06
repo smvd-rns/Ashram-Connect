@@ -882,7 +882,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                           {logs.length > 0 && status !== 'absent' && (
                                             <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
                                               {(() => {
-                                                const earliest = logs.reduce((min, log) => 
+                                                const earliest = logs.reduce((min: any, log: any) => 
                                                   (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
                                                 , logs[0]);
                                                 return formatRawTime(earliest.check_time);
