@@ -10,11 +10,12 @@ import {
 
 interface AttendanceTracingProps {
   isAdmin?: boolean;
+  forceUserView?: boolean;
   session: any;
   profile: any;
 }
 
-export default function AttendanceTracing({ isAdmin = false, session, profile }: AttendanceTracingProps) {
+export default function AttendanceTracing({ isAdmin = false, forceUserView = false, session, profile }: AttendanceTracingProps) {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
@@ -30,8 +31,8 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
 
   // View Modes: "matrix" (Users x Machines for 1 Day), "history" (Dates x sessions for 1 User), or "config" (Admin session setup)
-  const [viewMode, setViewMode] = useState<"matrix" | "history" | "config">(isAdmin ? "matrix" : "history");
-  const [selectedUserEmail, setSelectedUserEmail] = useState(isAdmin ? "" : profile?.email);
+  const [viewMode, setViewMode] = useState<"matrix" | "history" | "config">((isAdmin && !forceUserView) ? "matrix" : "history");
+  const [selectedUserEmail, setSelectedUserEmail] = useState((isAdmin && !forceUserView) ? "" : profile?.email);
 
   // Machine Management State
   const [isAdding, setIsAdding] = useState(false);
@@ -54,9 +55,16 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
   const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
-  // User History date range navigator
-  const [historyRange, setHistoryRange] = useState<"week" | "month">("month");
   const [historyPivot, setHistoryPivot] = useState(new Date().toISOString().split('T')[0]);
+  const [historyRange, setHistoryRange] = useState<"week" | "month">("month");
+
+  // Sync profile data when forceUserView is active
+  useEffect(() => {
+    if (forceUserView && profile?.email) {
+      setSelectedUserEmail(profile.email);
+      setViewMode("history");
+    }
+  }, [forceUserView, profile?.email]);
 
   // Harinam dropdown open state: tracks email-date key
   const [openHarinamKey, setOpenHarinamKey] = useState<string | null>(null);
@@ -364,7 +372,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
 
     const isHarinam = activeMachine.id === 'harinam_virtual';
     const dates = getDateColumns();
-    
+
     // Build HTML table structure for Excel styling support
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -411,7 +419,7 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
       let p = 0, l = 0, a = 0;
       let totalHarinamMins = 0;
       const biometricId = user.dates[Object.keys(user.dates)[0]]?.[activeMachine?.description]?.[0]?.zk_user_id || "--";
-      
+
       html += `<tr>
         <td class="name-col">${user.full_name}</td>
         <td>${user.email}</td>
@@ -437,9 +445,9 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
           else { a++; cellClass = "absent"; }
 
           if (logs.length > 0 && status !== 'absent') {
-            const earliest = logs.reduce((min: any, log: any) => 
+            const earliest = logs.reduce((min: any, log: any) =>
               (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
-            , logs[0]);
+              , logs[0]);
             const time = formatRawTime(earliest.check_time);
             displayVal += ` (${time})`;
           }
@@ -569,19 +577,21 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
 
         {/* Row 2: Logic Switchers */}
         <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
-          <div className="flex items-center bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50 backdrop-blur-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
-            <button onClick={() => setViewMode("matrix")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'matrix' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
-              <Users className="w-3.5 h-3.5" /> All Users
-            </button>
-            <button onClick={() => setViewMode("history")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'history' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
-              <UserCheck className="w-3.5 h-3.5" /> User History
-            </button>
-            {isAdmin && (
-              <button onClick={() => setViewMode("config")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'config' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
-                <Settings className="w-3.5 h-3.5" /> Config
+          {!forceUserView && (
+            <div className="flex items-center bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50 backdrop-blur-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
+              <button onClick={() => setViewMode("matrix")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'matrix' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
+                <Users className="w-3.5 h-3.5" /> All Users
               </button>
-            )}
-          </div>
+              <button onClick={() => setViewMode("history")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'history' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
+                <UserCheck className="w-3.5 h-3.5" /> User History
+              </button>
+              {isAdmin && (
+                <button onClick={() => setViewMode("config")} className={`flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${viewMode === 'config' ? 'bg-white text-indigo-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-700'}`}>
+                  <Settings className="w-3.5 h-3.5" /> Config
+                </button>
+              )}
+            </div>
+          )}
 
 
         </div>
@@ -786,9 +796,9 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                   <td className="px-6 py-2 text-center text-xs font-bold text-slate-600 tabular-nums">{new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                                   <td className="px-6 py-2 text-center text-xs font-black text-indigo-600 tabular-nums">
                                     {row.logs.length > 0 ? (() => {
-                                      const earliest = row.logs.reduce((min: any, log: any) => 
+                                      const earliest = row.logs.reduce((min: any, log: any) =>
                                         (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
-                                      , row.logs[0]);
+                                        , row.logs[0]);
                                       return formatRawTime(earliest.check_time);
                                     })() : "--:--"}
                                   </td>
@@ -882,9 +892,9 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                                           {logs.length > 0 && status !== 'absent' && (
                                             <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
                                               {(() => {
-                                                const earliest = logs.reduce((min: any, log: any) => 
+                                                const earliest = logs.reduce((min: any, log: any) =>
                                                   (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
-                                                , logs[0]);
+                                                  , logs[0]);
                                                 return formatRawTime(earliest.check_time);
                                               })()}
                                             </span>
@@ -1051,10 +1061,12 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
-                  <button onClick={() => setViewMode("matrix")} className="flex items-center justify-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] bg-indigo-50 px-5 py-2.5 rounded-xl hover:bg-indigo-100 transition-all shrink-0 w-full sm:w-auto">
-                    <ChevronLeft className="w-4 h-4" /> Back to Matrix
-                  </button>
-                  {isAdmin && (
+                  {!forceUserView && (
+                    <button onClick={() => setViewMode("matrix")} className="flex items-center justify-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] bg-indigo-50 px-5 py-2.5 rounded-xl hover:bg-indigo-100 transition-all shrink-0 w-full sm:w-auto">
+                      <ChevronLeft className="w-4 h-4" /> Back to Matrix
+                    </button>
+                  )}
+                  {isAdmin && !forceUserView && (
                     <div className="relative flex items-center w-full sm:w-72 group/hsearch">
                       <Search className="absolute left-3.5 w-4 h-4 text-slate-400 group-focus-within/hsearch:text-indigo-600 transition-colors" />
                       <input
@@ -1115,141 +1127,141 @@ export default function AttendanceTracing({ isAdmin = false, session, profile }:
                         })}
                       </tr>
                     </thead>
-                     <tbody className="">
-                       {(() => {
-                         // Compute the date range for history view
-                         const pivot = parseLocalDate(historyPivot);
-                         let hStart: Date, hEnd: Date;
-                         if (historyRange === 'week') {
-                           const day = pivot.getDay();
-                           const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
-                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
-                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
-                         } else {
-                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), 1);
-                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0);
-                         }
-                         const hStartStr = toLocalDateStr(hStart);
-                         const hEndStr = toLocalDateStr(hEnd);
-                         const filteredEntries = Object.entries(displayUser?.dates || {})
-                           .filter(([date]) => date >= hStartStr && date <= hEndStr)
-                           .sort(([a], [b]) => b.localeCompare(a));
-                         if (filteredEntries.length === 0) return (
-                           <tr><td colSpan={machines.length + 1} className="py-16 text-center text-slate-300 font-black uppercase text-xs italic opacity-40">No records in this period</td></tr>
-                         );
-                         return filteredEntries.map(([date, sessions]: [string, any], idx) => (
-                        <tr key={date} className={`transition-colors group hover:bg-slate-50/80 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
-                          <td className={`px-3 sm:px-6 py-2 sm:py-4 relative sm:sticky sm:left-0 z-10 sm:z-20 border-r border-b border-slate-100 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.02)] ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} group-hover:bg-slate-50/95`}>
-                            <div className="font-black text-slate-900 text-[11px] sm:text-[15px] tracking-tight sm:tracking-tighter uppercase font-outfit whitespace-nowrap">
-                              {new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
-                              <span className="hidden sm:inline">, {new Date(date).toLocaleDateString('en-US', { year: 'numeric' })}</span>
-                            </div>
-                            <div className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                              {new Date(date).toLocaleDateString('en-US', { weekday: 'short' })}
-                            </div>
-                          </td>
-                          {machines.map(m => {
-                            const logs = sessions[m.description] || [];
-                            const status = getStatus(logs, m);
+                    <tbody className="">
+                      {(() => {
+                        // Compute the date range for history view
+                        const pivot = parseLocalDate(historyPivot);
+                        let hStart: Date, hEnd: Date;
+                        if (historyRange === 'week') {
+                          const day = pivot.getDay();
+                          const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
+                          hStart = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
+                          hEnd = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
+                        } else {
+                          hStart = new Date(pivot.getFullYear(), pivot.getMonth(), 1);
+                          hEnd = new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0);
+                        }
+                        const hStartStr = toLocalDateStr(hStart);
+                        const hEndStr = toLocalDateStr(hEnd);
+                        const filteredEntries = Object.entries(displayUser?.dates || {})
+                          .filter(([date]) => date >= hStartStr && date <= hEndStr)
+                          .sort(([a], [b]) => b.localeCompare(a));
+                        if (filteredEntries.length === 0) return (
+                          <tr><td colSpan={machines.length + 1} className="py-16 text-center text-slate-300 font-black uppercase text-xs italic opacity-40">No records in this period</td></tr>
+                        );
+                        return filteredEntries.map(([date, sessions]: [string, any], idx) => (
+                          <tr key={date} className={`transition-colors group hover:bg-slate-50/80 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                            <td className={`px-3 sm:px-6 py-2 sm:py-4 relative sm:sticky sm:left-0 z-10 sm:z-20 border-r border-b border-slate-100 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.02)] ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} group-hover:bg-slate-50/95`}>
+                              <div className="font-black text-slate-900 text-[11px] sm:text-[15px] tracking-tight sm:tracking-tighter uppercase font-outfit whitespace-nowrap">
+                                {new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
+                                <span className="hidden sm:inline">, {new Date(date).toLocaleDateString('en-US', { year: 'numeric' })}</span>
+                              </div>
+                              <div className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                {new Date(date).toLocaleDateString('en-US', { weekday: 'short' })}
+                              </div>
+                            </td>
+                            {machines.map(m => {
+                              const logs = sessions[m.description] || [];
+                              const status = getStatus(logs, m);
 
-                            let renderContent;
+                              let renderContent;
+                              if (m.id === 'harinam_virtual') {
+                                let dailyHarinamMins = 0;
+                                if (logs[0]) {
+                                  dailyHarinamMins = (logs[0].h7am || 0) + (logs[0].h740am || 0) + (logs[0].hpdc || 0) + (logs[0].hcustom_mins || 0);
+                                }
+                                if (dailyHarinamMins > 0) {
+                                  const hrsStr = dailyHarinamMins % 60 === 0 ? (dailyHarinamMins / 60).toString() : (dailyHarinamMins / 60).toFixed(1);
+                                  renderContent = <div className="font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[11px] tracking-tight sm:tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">{hrsStr}hr</div>;
+                                } else {
+                                  renderContent = <div className="text-slate-300 font-black text-[8px] sm:text-[10px] opacity-40">--</div>;
+                                }
+                              } else {
+                                const earliest = logs.reduce((min: any, log: any) =>
+                                  (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
+                                  , logs[0]);
+
+                                if (earliest?.is_manual) {
+                                  renderContent = <div className="flex items-center justify-center gap-1 font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-indigo-100 shadow-sm mx-auto w-fit">Manual</div>;
+                                } else if (status === 'present') {
+                                  renderContent = <div className="flex items-center justify-center gap-1 font-black text-emerald-600 bg-emerald-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-emerald-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> {formatRawTime(earliest?.check_time)}</div>;
+                                } else if (status === 'late') {
+                                  renderContent = <div className="flex items-center justify-center gap-1 font-black text-amber-600 bg-amber-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-amber-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span> {formatRawTime(earliest?.check_time)}</div>;
+                                } else {
+                                  renderContent = <div className="flex items-center justify-center font-black text-slate-300 text-[8px] sm:text-[10px] uppercase mx-auto w-fit opacity-40">--</div>;
+                                }
+                              }
+
+                              return (
+                                <td key={m.id} className="px-1 sm:px-2 py-2 sm:py-4 text-center border-l border-b border-slate-100/50">
+                                  {renderContent}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                    <tfoot>
+                      {(() => {
+                        // Re-compute range for totals
+                        const pivot = parseLocalDate(historyPivot);
+                        let hStart: Date, hEnd: Date;
+                        if (historyRange === 'week') {
+                          const day = pivot.getDay();
+                          const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
+                          hStart = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
+                          hEnd = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
+                        } else {
+                          hStart = new Date(pivot.getFullYear(), pivot.getMonth(), 1);
+                          hEnd = new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0);
+                        }
+                        const hStartStr = toLocalDateStr(hStart);
+                        const hEndStr = toLocalDateStr(hEnd);
+                        const filteredEntries = Object.entries(displayUser?.dates || {})
+                          .filter(([date]) => date >= hStartStr && date <= hEndStr);
+                        if (filteredEntries.length === 0) return null;
+                        // Compute per-machine totals
+                        const totals: Record<string, { present: number; late: number; harinamMins: number }> = {};
+                        machines.forEach(m => { totals[m.id] = { present: 0, late: 0, harinamMins: 0 }; });
+                        filteredEntries.forEach(([, sessions]: [string, any]) => {
+                          machines.forEach(m => {
+                            const logs = (sessions[m.description] || []);
                             if (m.id === 'harinam_virtual') {
-                              let dailyHarinamMins = 0;
-                              if (logs[0]) {
-                                dailyHarinamMins = (logs[0].h7am || 0) + (logs[0].h740am || 0) + (logs[0].hpdc || 0) + (logs[0].hcustom_mins || 0);
-                              }
-                              if (dailyHarinamMins > 0) {
-                                const hrsStr = dailyHarinamMins % 60 === 0 ? (dailyHarinamMins / 60).toString() : (dailyHarinamMins / 60).toFixed(1);
-                                renderContent = <div className="font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[11px] tracking-tight sm:tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">{hrsStr}hr</div>;
-                              } else {
-                                renderContent = <div className="text-slate-300 font-black text-[8px] sm:text-[10px] opacity-40">--</div>;
-                              }
+                              if (logs[0]) totals[m.id].harinamMins += (logs[0].h7am || 0) + (logs[0].h740am || 0) + (logs[0].hpdc || 0) + (logs[0].hcustom_mins || 0);
                             } else {
-                              const earliest = logs.reduce((min: any, log: any) => 
-                                (!min.check_time || (log.check_time && new Date(log.check_time) < new Date(min.check_time))) ? log : min
-                              , logs[0]);
-
-                              if (earliest?.is_manual) {
-                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-indigo-600 bg-indigo-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-indigo-100 shadow-sm mx-auto w-fit">Manual</div>;
-                              } else if (status === 'present') {
-                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-emerald-600 bg-emerald-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-emerald-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> {formatRawTime(earliest?.check_time)}</div>;
-                              } else if (status === 'late') {
-                                renderContent = <div className="flex items-center justify-center gap-1 font-black text-amber-600 bg-amber-50 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] uppercase border border-amber-100 shadow-sm mx-auto w-fit"><span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span> {formatRawTime(earliest?.check_time)}</div>;
-                              } else {
-                                renderContent = <div className="flex items-center justify-center font-black text-slate-300 text-[8px] sm:text-[10px] uppercase mx-auto w-fit opacity-40">--</div>;
-                              }
+                              const st = getStatus(logs, m);
+                              if (st === 'present') totals[m.id].present++;
+                              else if (st === 'late') totals[m.id].late++;
                             }
-
-                            return (
-                              <td key={m.id} className="px-1 sm:px-2 py-2 sm:py-4 text-center border-l border-b border-slate-100/50">
-                                {renderContent}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ));
-                    })()}
-                     </tbody>
-                     <tfoot>
-                       {(() => {
-                         // Re-compute range for totals
-                         const pivot = parseLocalDate(historyPivot);
-                         let hStart: Date, hEnd: Date;
-                         if (historyRange === 'week') {
-                           const day = pivot.getDay();
-                           const diff = pivot.getDate() - day + (day === 0 ? -6 : 1);
-                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), diff);
-                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth(), diff + 6);
-                         } else {
-                           hStart = new Date(pivot.getFullYear(), pivot.getMonth(), 1);
-                           hEnd = new Date(pivot.getFullYear(), pivot.getMonth() + 1, 0);
-                         }
-                         const hStartStr = toLocalDateStr(hStart);
-                         const hEndStr = toLocalDateStr(hEnd);
-                         const filteredEntries = Object.entries(displayUser?.dates || {})
-                           .filter(([date]) => date >= hStartStr && date <= hEndStr);
-                         if (filteredEntries.length === 0) return null;
-                         // Compute per-machine totals
-                         const totals: Record<string, { present: number; late: number; harinamMins: number }> = {};
-                         machines.forEach(m => { totals[m.id] = { present: 0, late: 0, harinamMins: 0 }; });
-                         filteredEntries.forEach(([, sessions]: [string, any]) => {
-                           machines.forEach(m => {
-                             const logs = (sessions[m.description] || []);
-                             if (m.id === 'harinam_virtual') {
-                               if (logs[0]) totals[m.id].harinamMins += (logs[0].h7am || 0) + (logs[0].h740am || 0) + (logs[0].hpdc || 0) + (logs[0].hcustom_mins || 0);
-                             } else {
-                               const st = getStatus(logs, m);
-                               if (st === 'present') totals[m.id].present++;
-                               else if (st === 'late') totals[m.id].late++;
-                             }
-                           });
-                         });
-                         return (
-                           <tr className="bg-slate-900 text-white">
-                             <td className="px-3 sm:px-6 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400">
-                               Total
-                             </td>
-                             {machines.map(m => {
-                               const t = totals[m.id];
-                               return (
-                                 <td key={m.id} className="px-1 sm:px-2 py-3 sm:py-4 text-center border-l border-white/5">
-                                   {m.id === 'harinam_virtual' ? (
-                                     <div className="font-black text-indigo-300 text-[9px] sm:text-[13px]">
-                                       {t.harinamMins === 0 ? '--' : `${t.harinamMins % 60 === 0 ? t.harinamMins / 60 : (t.harinamMins / 60).toFixed(1)} hr`}
-                                     </div>
-                                   ) : (
-                                     <div className="flex flex-col items-center gap-0.5">
-                                       <span className="font-black text-emerald-400 text-[9px] sm:text-[13px]">{t.present}P</span>
-                                       {t.late > 0 && <span className="font-black text-amber-400 text-[8px] sm:text-[11px]">{t.late}L</span>}
-                                     </div>
-                                   )}
-                                 </td>
-                               );
-                             })}
-                           </tr>
-                         );
-                       })()}
-                     </tfoot>
+                          });
+                        });
+                        return (
+                          <tr className="bg-slate-900 text-white">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              Total
+                            </td>
+                            {machines.map(m => {
+                              const t = totals[m.id];
+                              return (
+                                <td key={m.id} className="px-1 sm:px-2 py-3 sm:py-4 text-center border-l border-white/5">
+                                  {m.id === 'harinam_virtual' ? (
+                                    <div className="font-black text-indigo-300 text-[9px] sm:text-[13px]">
+                                      {t.harinamMins === 0 ? '--' : `${t.harinamMins % 60 === 0 ? t.harinamMins / 60 : (t.harinamMins / 60).toFixed(1)} hr`}
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="font-black text-emerald-400 text-[9px] sm:text-[13px]">{t.present}P</span>
+                                      {t.late > 0 && <span className="font-black text-amber-400 text-[8px] sm:text-[11px]">{t.late}L</span>}
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })()}
+                    </tfoot>
                   </table>
                 </div>
               </div>

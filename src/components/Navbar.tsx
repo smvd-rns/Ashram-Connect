@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -11,7 +11,7 @@ import { useProfile } from "@/hooks/useProfile";
 export default function Navbar() {
   const pathname = usePathname();
   const [session, setSession] = useState<any>(null);
-  const { profile, refreshProfile } = useProfile(session);
+  const { profile, isBcdb, refreshProfile } = useProfile(session);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // New imports for mobile bar
@@ -58,6 +58,7 @@ export default function Navbar() {
 
   const isHome = pathname === "/";
   const isClass = pathname === "/class";
+  const isAttendance = pathname === "/attendance";
 
   return (
     <>
@@ -93,6 +94,18 @@ export default function Navbar() {
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest">Brahmachari Class</span>
           </NextLink>
+          
+          {isBcdb && (
+            <NextLink 
+              href="/attendance" 
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isAttendance ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white'}`}
+            >
+              <div className="flex items-center justify-center relative">
+                 <CalendarDays className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest">My Attendance</span>
+            </NextLink>
+          )}
 
           {profile?.role === 1 && (
             <NextLink 
@@ -140,20 +153,28 @@ export default function Navbar() {
       </nav>
 
       {/* ─── MOBILE TAB BAR (Bottom) ─────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-6 py-3 flex items-center justify-center gap-20 safe-area-bottom">
-        <NextLink href="/" className="flex flex-col items-center gap-1 group">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 py-3 flex items-center justify-between gap-1 safe-area-bottom">
+        <NextLink href="/" className="flex flex-col items-center gap-1 group flex-1">
           <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isHome ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
             <HomeIcon active={isHome} /> 
           </div>
           <span className={`text-[9px] font-black uppercase tracking-widest ${isHome ? 'text-devo-600' : 'text-slate-400'}`}>Home</span>
         </NextLink>
-
-        <NextLink href="/class" className="flex flex-col items-center gap-1 group relative">
+        <NextLink href="/class" className="flex flex-col items-center gap-1 group flex-1">
           <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isClass ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
              <Youtube className="w-6 h-6" active={isClass} />
           </div>
           <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>Brahmachari Class</span>
         </NextLink>
+
+        {isBcdb && (
+          <NextLink href="/attendance" className="flex flex-col items-center gap-1 group flex-1">
+            <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isAttendance ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
+               <CalendarDays className="w-6 h-6" />
+            </div>
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isAttendance ? 'text-devo-600' : 'text-slate-400'}`}>Attendance</span>
+          </NextLink>
+        )}
 
       </nav>
 

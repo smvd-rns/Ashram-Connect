@@ -5,12 +5,33 @@ import { supabase } from "@/lib/supabase";
 
 export function useProfile(session: any) {
   const [profile, setProfile] = useState<any>(null);
+  const [isBcdb, setIsBcdb] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProfile = useCallback(async (userId: string) => {
     setLoading(true);
     try {
+      const checkBcdb = async (email: string, role?: number) => {
+        if (!email) return;
+
+        // Admin override
+        if (role === 1) {
+          setIsBcdb(true);
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(email)}`);
+          const data = await res.json();
+          setIsBcdb(!!data.isBcdb);
+        } catch (err) {
+          console.error("BCDB Check API Error:", err);
+          setIsBcdb(false);
+        }
+      };
+
       // 1. Try fetching by exact ID
       const { data, error: fetchError } = await supabase
         .from("profiles")
@@ -22,6 +43,7 @@ export function useProfile(session: any) {
 
       if (data) {
         setProfile(data);
+        await checkBcdb(data.email || session?.user?.email, data.role);
         setLoading(false);
         return;
       }
@@ -48,6 +70,7 @@ export function useProfile(session: any) {
           if (claimError) throw claimError;
           
           setProfile(updatedProfile);
+          await checkBcdb(updatedProfile.email || session?.user?.email, updatedProfile.role);
           setLoading(false);
           return;
         }
@@ -68,6 +91,7 @@ export function useProfile(session: any) {
         
       if (createError) throw createError;
       setProfile(newProfile);
+      await checkBcdb(newProfile.email || session?.user?.email, newProfile.role);
 
     } catch (err: any) {
       console.error("Profile Hook Error:", err.message || err);
@@ -85,5 +109,5 @@ export function useProfile(session: any) {
     }
   }, [session?.user?.id, fetchProfile]);
 
-  return { profile, loading, error, refreshProfile: () => session?.user?.id && fetchProfile(session.user.id) };
+  return { profile, isBcdb, loading, error, refreshProfile: () => session?.user?.id && fetchProfile(session.user.id) };
 }

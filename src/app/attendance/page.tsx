@@ -1,60 +1,102 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
+import { useProfile } from "@/hooks/useProfile";
 import Navbar from "@/components/Navbar";
 import AttendanceTracing from "@/components/AttendanceTracing";
-import { useProfile } from "@/hooks/useProfile";
-import { Loader2, ArrowLeft } from "lucide-react";
-import Link from "next/link";
+import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 
-export default function AttendancePage() {
+export default function PersonalAttendancePage() {
   const [session, setSession] = useState<any>(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
-
-  // Profile data
-  const { profile, loading: loadingProfile } = useProfile(session);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setLoadingAuth(false);
+      setInitializing(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setInitializing(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loadingAuth || (session && loadingProfile)) {
+  const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
+
+  if (initializing || (session && loadingProfile)) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+      <div className="flex h-screen flex-col items-center justify-center bg-slate-50 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+        <p className="text-slate-600 font-black uppercase tracking-widest text-[10px] animate-pulse">Establishing Secure Connection...</p>
       </div>
     );
   }
 
   if (!session) {
-    window.location.href = "/";
-    return null;
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-20 h-20 bg-white rounded-[2rem] shadow-xl flex items-center justify-center mb-8 border border-slate-100">
+          <LogIn className="w-10 h-10 text-indigo-600" />
+        </div>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tighter mb-4">Secure Portal</h1>
+        <p className="text-slate-500 font-bold max-w-sm mb-8">Please sign in to access your personal attendance records.</p>
+        <button
+          onClick={() => window.location.href = "/"}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg active:scale-95"
+        >
+          Sign In Now <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  if (!isBcdb) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center pt-24">
+          <div className="w-20 h-20 bg-rose-50 rounded-[2rem] shadow-xl flex items-center justify-center mb-8 border border-rose-100">
+            <ShieldAlert className="w-10 h-10 text-rose-500" />
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter mb-4">Access Restricted</h1>
+          <p className="text-slate-500 font-bold max-w-md mb-8">This portal is specifically reserved for active members of the BCDB. If you believe this is an error, please contact your administrative temple in-charge.</p>
+          <button
+            onClick={() => window.location.href = "/"}
+            className="text-slate-400 font-black uppercase tracking-widest text-xs hover:text-indigo-600 transition-colors"
+          >
+            Return to Homepage
+          </button>
+        </div>
+      </>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <>
       <Navbar />
-      <main className="max-w-7xl mx-auto px-4 py-12">
-        <div className="mb-8">
-           <Link 
-            href="/portal" 
-            className="inline-flex items-center gap-2 text-slate-400 font-black uppercase tracking-widest text-xs hover:text-indigo-600 transition-all"
-           >
-             <ArrowLeft className="w-4 h-4" /> Back to Portal
-           </Link>
+      <div className="min-h-screen bg-slate-50 pt-24 pb-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-10">
+            <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">My Attendance</h1>
+            <p className="text-slate-400 font-bold text-sm uppercase tracking-[0.2em] flex items-center gap-2">
+              <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+              Official BCDB Record
+            </p>
+          </div>
+          <Suspense fallback={<div className="p-20 text-center font-black text-slate-200 uppercase tracking-widest">Loading Records...</div>}>
+            <AttendanceTracing
+              isAdmin={profile?.role === 1}
+              forceUserView={true}
+              session={session}
+              profile={profile}
+            />
+          </Suspense>
         </div>
-        <AttendanceTracing isAdmin={profile?.role === 1} session={session} profile={profile} />
-      </main>
-    </div>
+      </div>
+    </>
   );
 }
