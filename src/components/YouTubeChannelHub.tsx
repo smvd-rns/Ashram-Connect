@@ -36,6 +36,7 @@ interface Channel {
 const tabs = [
   { id: "videos", label: "Videos", icon: Play },
   { id: "playlists", label: "Playlists", icon: Layers },
+  { id: "favorites", label: "Favorites", icon: Heart },
 ];
 
 export default function YouTubeChannelHub() {
@@ -47,6 +48,9 @@ export default function YouTubeChannelHub() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favoriteVideos, setFavoriteVideos] = useState<VideoItem[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,10 +106,20 @@ export default function YouTubeChannelHub() {
     const urlChannelId = searchParams.get("channel");
     const urlPlaylistId = searchParams.get("playlist");
     const urlVideoId = searchParams.get("v");
+    const urlTab = searchParams.get("tab");
 
     if (!urlChannelId) {
-      if (activeChannel) {
+      if (urlTab === "favorites") {
         setActiveChannel(null);
+        setActiveTab("favorites");
+        setActivePlaylistId(null);
+        setActiveVideoId(urlVideoId || null);
+        return;
+      }
+      
+      if (activeChannel || activeTab !== "videos") {
+        setActiveChannel(null);
+        setActiveTab("videos");
         setActivePlaylistId(null);
         setActiveVideoId(null);
       }
@@ -114,8 +128,15 @@ export default function YouTubeChannelHub() {
     
     if (channels.length > 0) {
       const matched = channels.find(c => c.channel_id === urlChannelId);
+      
       if (matched && matched.channel_id !== activeChannel?.channel_id) {
         setActiveChannel(matched);
+        // Reset to videos if no explicit tab is in URL (prevents sticking to favorites/playlists from prev channel)
+        if (!urlTab) setActiveTab("videos");
+      }
+      
+      if (urlTab && urlTab !== activeTab) {
+        setActiveTab(urlTab as any);
       }
       
       // Only set if they exist in URL and differ from current state
@@ -127,7 +148,75 @@ export default function YouTubeChannelHub() {
         setActiveVideoId(urlVideoId);
       }
     }
-  }, [searchParams, channels, activeChannel?.channel_id, activePlaylistId, activeVideoId]);
+  }, [searchParams, channels, activeChannel?.channel_id, activePlaylistId, activeVideoId, activeTab]);
+
+  const fetchFavorites = useCallback(async () => {
+    const sessionStr = localStorage.getItem('supabase.auth.token'); // Fallback if no session prop
+    const token = sessionStr ? JSON.parse(sessionStr).access_token : null;
+    
+    // Better way: use supabase.auth.getSession() or pass from parent
+    // For now, we'll try to get it from the supabase client directly if possible
+    // or just assume the API will handle the error if no token is sent.
+    
+    setLoadingFavorites(true);
+    try {
+      // We need the token for the API
+      const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch("/api/user/favorites", {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFavorites(data.favoriteIds || []);
+        setFavoriteVideos(data.items || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch favorites:", err);
+    } finally {
+      setLoadingFavorites(false);
+    }
+  }, []);
+
+  const toggleFavorite = async (e: React.MouseEvent, videoId: string) => {
+    e.stopPropagation();
+    try {
+      const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+      if (!session) {
+        window.dispatchEvent(new CustomEvent("show-policy")); // Or show login
+        return;
+      }
+
+      const res = await fetch("/api/user/favorites", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({ video_id: videoId })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        if (data.action === "added") {
+          setFavorites(prev => [...prev, videoId]);
+          // If we have the video in current list, add to favoriteVideos
+          const vid = videos.find((v: any) => v.id === videoId) || globalResults.find((v: any) => v.id === videoId) || fetchedVideoMetadata[videoId];
+          if (vid) setFavoriteVideos(prev => [vid, ...prev]);
+        } else {
+          setFavorites(prev => prev.filter(id => id !== videoId));
+          setFavoriteVideos(prev => prev.filter(v => v.id !== videoId));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFavorites();
+  }, [fetchFavorites]);
 
   const currentTabContent = activeChannel 
     ? (contentCache[activeChannel.channel_id]?.[activeTab]?.[activePlaylistId || "main"] || { items: [], token: "" })
@@ -195,8 +284,12 @@ export default function YouTubeChannelHub() {
   }, [nextPageToken, activePlaylistId, contentCache]);
 
   useEffect(() => {
-    if (activeChannel) fetchContent(activeChannel, activeTab);
-  }, [activeChannel, activeTab, activePlaylistId]);
+    if (activeChannel && activeTab !== "favorites") {
+      fetchContent(activeChannel, activeTab);
+    } else if (activeTab === "favorites") {
+      fetchFavorites();
+    }
+  }, [activeChannel, activeTab, activePlaylistId, fetchContent, fetchFavorites]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -286,7 +379,9 @@ export default function YouTubeChannelHub() {
     }
   }, [activeVideoId, videos, globalResults, contentCache, fetchedVideoMetadata]);
 
-  const filteredVideos = videos.filter((v: VideoItem) =>
+  const displayVideos = activeTab === "favorites" ? favoriteVideos : videos;
+
+  const filteredVideos = displayVideos.filter((v: VideoItem) =>
     v.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -336,27 +431,31 @@ export default function YouTubeChannelHub() {
     query.set("v", vid.id);
     router.push(`${pathname}?${query.toString()}`, { scroll: false });
     
-    playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (playerRef.current) {
+      playerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   };
 
-  if (!activeChannel) {
+  if (!activeChannel && activeTab !== "favorites") {
     return (
       <div className="min-h-screen bg-slate-50 py-10 sm:py-16 px-4">
         <div className="max-w-7xl mx-auto space-y-10 sm:space-y-16">
-          <div className="text-center space-y-3 sm:space-y-5 max-w-2xl mx-auto animate-in fade-in slide-in-from-top-4 duration-700">
+          <div className="text-center space-y-3 sm:space-y-5 mx-auto animate-in fade-in slide-in-from-top-4 duration-700">
             <h1 className="text-3xl sm:text-6xl font-outfit font-black text-devo-950 tracking-tight leading-tight">
               Spiritual <span className="text-transparent bg-clip-text bg-gradient-to-r from-devo-600 to-accent-gold">Library</span>
             </h1>
             <p className="text-xs sm:text-base text-devo-800 font-bold opacity-60 uppercase tracking-[0.2em]">Select a channel or search below</p>
-            <div className="relative mt-8 sm:mt-12 max-w-2xl mx-auto flex gap-3 px-4">
+            
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mt-8 sm:mt-12 max-w-4xl mx-auto px-4">
+              {/* Search Bar */}
               <div className="relative flex-1 group">
-                <div className="absolute inset-0 bg-devo-500/20 blur-2xl rounded-full opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-devo-500/10 blur-2xl rounded-full opacity-0 group-focus-within:opacity-100 transition-opacity" />
                 <div className="relative">
                   <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-devo-400" />
                   <input 
                     type="text"
                     placeholder="Search across wisdom library..."
-                    className="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-100 rounded-3xl font-bold text-sm sm:text-base shadow-xl focus:border-devo-500 outline-none transition-all placeholder:text-slate-300"
+                    className="w-full pl-14 pr-6 py-4 sm:py-5 bg-white border-2 border-slate-100 rounded-[2rem] font-bold text-sm sm:text-base shadow-xl focus:border-devo-500 outline-none transition-all placeholder:text-slate-300"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -368,20 +467,31 @@ export default function YouTubeChannelHub() {
                 </div>
               </div>
 
-              {/* Multi-Select Channel Dropdown Filter */}
-              <div className="relative" ref={filterRef}>
-                 <button 
-                   onClick={() => setIsFilterOpen(!isFilterOpen)}
-                   className={`h-full px-6 flex items-center gap-3 bg-white border-2 rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95 ${
-                     selectedChannelIds.length > 0 ? "border-devo-500 text-devo-600 bg-devo-50/50" : "border-slate-100 text-slate-400"
-                   }`}
-                 >
-                   <SlidersHorizontal className="w-4 h-4" />
-                   <span className="hidden sm:inline">
-                     {selectedChannelIds.length === 0 ? "All Channels" : `${selectedChannelIds.length} Teachers`}
-                   </span>
-                   <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isFilterOpen ? "rotate-180" : ""}`} />
-                 </button>
+              {/* Action Group */}
+              <div className="flex items-center gap-3">
+                {/* Favorites Shortcut */}
+                <button 
+                  onClick={() => router.push(`${pathname}?tab=favorites`)}
+                  className="flex-1 sm:flex-none h-[52px] sm:h-[60px] px-6 flex items-center justify-center gap-2.5 bg-white border-2 border-red-50 hover:border-red-100 rounded-[2rem] font-black text-[10px] uppercase tracking-widest text-red-500 shadow-xl transition-all hover:scale-[1.02] hover:bg-red-50/30 active:scale-95 whitespace-nowrap group"
+                >
+                  <Heart className="w-4 h-4 fill-red-500 group-hover:scale-125 transition-transform" />
+                  <span>My Favorites</span>
+                </button>
+
+                {/* Teachers Filter */}
+                <div className="relative flex-1 sm:flex-none" ref={filterRef}>
+                  <button 
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className={`h-[52px] sm:h-[60px] w-full sm:w-auto px-6 flex items-center justify-center gap-3 bg-white border-2 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95 ${
+                      selectedChannelIds.length > 0 ? "border-devo-500 text-devo-600 bg-devo-50/50" : "border-slate-100 text-slate-400"
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                    <span>
+                      {selectedChannelIds.length === 0 ? "All Channels" : `${selectedChannelIds.length} Teachers`}
+                    </span>
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isFilterOpen ? "rotate-180" : ""}`} />
+                  </button>
 
                  {isFilterOpen && (
                    <div className="absolute top-full mt-4 right-0 w-72 bg-white rounded-3xl shadow-2xl border border-slate-100 p-4 z-[100] animate-in fade-in slide-in-from-top-4 duration-300">
@@ -431,8 +541,9 @@ export default function YouTubeChannelHub() {
                           );
                         })}
                       </div>
-                   </div>
-                 )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -672,7 +783,7 @@ export default function YouTubeChannelHub() {
         <div className="h-44 sm:h-64 relative">
           <div
             className="absolute inset-0 opacity-90 transition-all duration-700"
-            style={{ background: activeChannel.banner_style }}
+            style={{ background: activeChannel?.banner_style || "linear-gradient(to right, #0F172A, #334155)" }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
           <div className="absolute -bottom-16 sm:-bottom-20 left-1/2 sm:left-8 -translate-x-1/2 sm:translate-x-0 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 w-full sm:w-auto px-4 sm:px-0">
@@ -680,24 +791,26 @@ export default function YouTubeChannelHub() {
               {(activeLogo) ? (
                 <Image
                   src={activeLogo}
-                  alt={activeChannel.name}
+                  alt={activeChannel?.name || "My Favorites"}
                   fill
                   className="object-cover"
                   unoptimized
                 />
               ) : (
-                <Video className="w-12 h-12 text-slate-300" />
+                <div className="bg-red-50 w-full h-full flex items-center justify-center">
+                   <Heart className="w-12 h-12 text-red-500 fill-red-500" />
+                </div>
               )}
             </div>
             <div className="pb-3 space-y-1 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2">
                 <h1 className="text-xl sm:text-4xl font-outfit font-black text-devo-950 tracking-tight drop-shadow-sm">
-                  {activeChannel.name}
+                  {activeChannel?.name || "My Spiritual Library"}
                 </h1>
                 <CheckCircle2 className="w-4 h-4 sm:w-6 sm:h-6 text-blue-500" />
               </div>
               <span className="inline-block text-white bg-black/25 backdrop-blur-md px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] border border-white/20">
-                {activeChannel.handle}
+                {activeChannel?.handle || "FAVORITES COLLECTION"}
               </span>
             </div>
           </div>
@@ -707,25 +820,25 @@ export default function YouTubeChannelHub() {
           <div className="lg:col-span-8 space-y-6">
             {!activePlaylistId ? (
               <div className="flex bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px]">
-              <button
-                onClick={() => { setActiveTab("videos"); setActivePlaylistId(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
-                  activeTab === "videos" ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
-                }`}
-              >
-                <Play className="w-3.5 h-3.5 sm:w-4 h-4" />
-                Videos
-              </button>
-              <button
-                onClick={() => { setActiveTab("playlists"); setActivePlaylistId(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
-                  activeTab === "playlists" ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5 sm:w-4 h-4" />
-                Playlists
-              </button>
-            </div>
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setActivePlaylistId(null);
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
+                        activeTab === tab.id ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 sm:w-4 h-4" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             ) : (
               <div className="flex items-center justify-between bg-devo-950 p-4 rounded-2xl shadow-lg sticky top-20 z-40">
                 <div className="flex items-center gap-3 overflow-hidden">
@@ -754,7 +867,7 @@ export default function YouTubeChannelHub() {
                   key={activeVideoId}
                   videoId={activeVideoId}
                   title={activeVideo?.title || "Video"}
-                  artist={activeChannel?.name || "Devotional Library"}
+                  artist={activeChannel?.name || "My Favorites"}
                   thumbnail={activeVideo?.thumbnail}
                   onStateChange={(state: number) => {
                     if (state === -1) setLoading(true);
@@ -799,17 +912,21 @@ export default function YouTubeChannelHub() {
                       </svg>
                       <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Watch on YouTube</span>
                     </button>
-                    <button className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all">
-                      <Share2 className="w-5 h-5 text-slate-400" />
+                    <button 
+                      onClick={(e) => activeVideoId && toggleFavorite(e, activeVideoId)}
+                      className={`p-3 rounded-xl transition-all group border ${activeVideoId && favorites.includes(activeVideoId) ? "bg-red-50 border-red-100 text-red-600" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100"}`}
+                      title={activeVideoId && favorites.includes(activeVideoId) ? "Remove from Favorites" : "Add to Favorites"}
+                    >
+                      <Heart className={`w-5 h-5 ${activeVideoId && favorites.includes(activeVideoId) ? "fill-red-600" : "group-hover:text-red-500"}`} />
                     </button>
                     <button className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all">
-                      <Bookmark className="w-5 h-5 text-slate-400" />
+                      <Share2 className="w-5 h-5 text-slate-400" />
                     </button>
                   </div>
                 </div>
                 <p className="text-slate-400 text-sm font-medium leading-relaxed border-t border-slate-50 pt-4">
-                  Distraction-free devotional viewing for Brahmacharis. All content is curated from
-                  approved spiritual channels. New videos from <strong>{activeChannel.name}</strong> appear here automatically.
+                  Distraction-free devotional viewing. All content is curated from
+                  approved spiritual channels. Your favorites appear here automatically for quick access.
                 </p>
               </div>
             )}
@@ -864,39 +981,51 @@ export default function YouTubeChannelHub() {
                           Matches in this Channel
                         </p>
                       )}
-                      {filteredVideos.map((vid: VideoItem) => (
-                        <button
-                          key={vid.id + vid.type}
-                          onClick={() => handleVideoSelect(vid)}
-                          className={`w-full group flex items-start gap-4 p-4 rounded-[2rem] transition-all duration-300 border-2 text-left ${activeVideoId === vid.id
-                              ? "bg-white border-devo-400 shadow-lg"
-                              : "bg-white/50 border-transparent hover:bg-white hover:border-slate-200"
-                            }`}
-                        >
-                          <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
-                            <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
-                            {vid.type === "playlist" && (
-                              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
-                                <Layers className="w-6 h-6 mb-1" />
-                                <span className="text-[10px] font-black uppercase">{vid.playlistCount ?? "?"} Videos</span>
+                      {filteredVideos.map((vid: VideoItem) => {
+                        const isFav = favorites.includes(vid.id);
+                        return (
+                          <button
+                            key={vid.id + vid.type}
+                            onClick={() => handleVideoSelect(vid)}
+                            className={`w-full group flex items-start gap-4 p-4 rounded-[2rem] transition-all duration-300 border-2 text-left relative ${activeVideoId === vid.id
+                                ? "bg-white border-devo-400 shadow-lg"
+                                : "bg-white/50 border-transparent hover:bg-white hover:border-slate-200"
+                              }`}
+                          >
+                            <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
+                              <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
+                              
+                              {/* Favorite Heart Toggle */}
+                              <div 
+                                onClick={(e) => toggleFavorite(e, vid.id)}
+                                className="absolute top-2 left-2 z-30 p-2 rounded-xl bg-black/20 backdrop-blur-md border border-white/20 hover:bg-white hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                              >
+                                <Heart className={`w-3.5 h-3.5 ${isFav ? "fill-red-500 text-red-500" : "text-white"}`} />
                               </div>
-                            )}
-                            {activeVideoId === vid.id && (
-                              <div className="absolute inset-0 bg-devo-600/30 backdrop-blur-[2px] flex items-center justify-center">
-                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
-                                  <Radio className="w-4 h-4 text-devo-600 animate-pulse" />
+
+                              {vid.type === "playlist" && (
+                                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
+                                  <Layers className="w-6 h-6 mb-1" />
+                                  <span className="text-[10px] font-black uppercase">{vid.playlistCount ?? "?"} Videos</span>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                          <div className="space-y-1.5 py-1 flex-1 min-w-0">
-                            <p className={`font-outfit font-black text-[13px] sm:text-sm leading-snug line-clamp-3 ${activeVideoId === vid.id ? "text-devo-700" : "text-slate-700"}`}>
-                              {vid.title}
-                            </p>
-                            {vid.type !== "playlist" && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{vid.date}</p>}
-                          </div>
-                        </button>
-                      ))}
+                              )}
+                              {activeVideoId === vid.id && (
+                                <div className="absolute inset-0 bg-devo-600/30 backdrop-blur-[2px] flex items-center justify-center">
+                                  <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                    <Radio className="w-4 h-4 text-devo-600 animate-pulse" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="space-y-1.5 py-1 flex-1 min-w-0">
+                              <p className={`font-outfit font-black text-[13px] sm:text-sm leading-snug line-clamp-3 ${activeVideoId === vid.id ? "text-devo-700" : "text-slate-700"}`}>
+                                {vid.title}
+                              </p>
+                              {vid.type !== "playlist" && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{vid.date}</p>}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -936,6 +1065,14 @@ export default function YouTubeChannelHub() {
                                >
                                  <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 shadow-sm">
                                    <Image src={item.thumbnail} alt={item.title} fill className="object-cover" unoptimized />
+                                   
+                                   {/* Heart Toggle */}
+                                   <div 
+                                     onClick={(e) => { e.stopPropagation(); toggleFavorite(e, item.id); }}
+                                     className="absolute top-1 left-1 z-30 p-1.5 rounded-lg bg-black/40 backdrop-blur-md border border-white/20 hover:bg-white hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                                   >
+                                     <Heart className={`w-2.5 h-2.5 ${favorites.includes(item.id) ? "fill-red-500 text-red-500" : "text-white"}`} />
+                                   </div>
                                  </div>
                                  <div className="flex-1 min-w-0 space-y-1">
                                    <p className="font-outfit font-black text-[13px] leading-tight text-slate-700 line-clamp-2 group-hover:text-devo-600 transition-colors">
@@ -955,14 +1092,14 @@ export default function YouTubeChannelHub() {
                           <div className="text-center py-10 bg-white/30 rounded-3xl border-2 border-dashed border-slate-100">
                             <Search className="w-8 h-8 text-slate-200 mx-auto mb-2 opacity-50" />
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
-                              No matches discovered in {activeChannel.name} or the wider library
+                              No matches discovered in the wider library
                             </p>
                           </div>
                         )}
                     </div>
                   )}
 
-                  {nextPageToken && (
+                  {nextPageToken && activeChannel && (
                     <button
                       onClick={() => fetchContent(activeChannel, activeTab, true)}
                       disabled={loadMoreLoading}

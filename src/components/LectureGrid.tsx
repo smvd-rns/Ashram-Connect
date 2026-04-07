@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import VideoCard, { Lecture } from "./VideoCard";
-import { Search, X, Loader2 } from "lucide-react";
+import { Search, X, Loader2, Heart } from "lucide-react";
 import OptimizedVideoPlayer from "./OptimizedVideoPlayer";
 import { openExternal } from "@/lib/device";
+import { useEffect, useCallback } from "react";
 
 export default function LectureGrid({ 
   initialLectures,
@@ -27,6 +28,47 @@ export default function LectureGrid({
 }) {
   const [search, setSearch] = useState("");
   const [activeLecture, setActiveLecture] = useState<Lecture | null>(null);
+  const [favorites, setFavorites] = useState<string[]>([]);
+
+  const fetchFavorites = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const res = await fetch("/api/user/favorites", {
+        headers: { "Authorization": `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFavorites(data.favoriteIds || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch favorites:", err);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    fetchFavorites();
+  }, [fetchFavorites]);
+
+  const handleToggleFavorite = async (videoId: string) => {
+    if (!accessToken) return;
+    try {
+      const res = await fetch("/api/user/favorites", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}` 
+        },
+        body: JSON.stringify({ video_id: videoId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.action === "added") setFavorites(prev => [...prev, videoId]);
+        else setFavorites(prev => prev.filter(id => id !== videoId));
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
@@ -69,6 +111,8 @@ export default function LectureGrid({
                 userRole={userRole}
                 onUpdate={onUpdate}
                 accessToken={accessToken}
+                isFavorite={favorites.includes(lecture.youtube_id)}
+                onToggleFavorite={handleToggleFavorite}
               />
             ))}
           </div>

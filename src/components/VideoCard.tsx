@@ -1,4 +1,4 @@
-import { Calendar, User, Pencil, Trash2, X, Loader2, Save, AlertCircle } from "lucide-react";
+import { Calendar, User, Pencil, Trash2, X, Loader2, Save, AlertCircle, Heart } from "lucide-react";
 import { useState } from "react";
 import Image from "next/image";
 import { normalizeDate } from "@/lib/dateHelper";
@@ -17,13 +17,17 @@ export default function VideoCard({
   onPlay, 
   userRole, 
   onUpdate, 
-  accessToken 
+  accessToken,
+  isFavorite,
+  onToggleFavorite
 }: { 
   lecture: Lecture, 
   onPlay: (id: string) => void,
   userRole?: number,
   onUpdate?: () => void,
-  accessToken?: string
+  accessToken?: string,
+  isFavorite?: boolean,
+  onToggleFavorite?: (videoId: string) => void
 }) {
   const [thumbUrl, setThumbUrl] = useState(`https://i.ytimg.com/vi/${lecture.youtube_id}/hqdefault.jpg`);
   const [hasError, setHasError] = useState(false);
@@ -154,6 +158,20 @@ export default function VideoCard({
             <Pencil className="w-4 h-4 sm:w-4 sm:h-4" />
           </button>
         )}
+
+        {/* Favorite Button */}
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onToggleFavorite) onToggleFavorite(lecture.youtube_id);
+          }}
+          className={`absolute top-2 left-2 z-30 p-2 sm:p-2.5 rounded-lg shadow-sm transition-all scale-90 sm:scale-100 border border-devo-50 ${
+            isFavorite ? "bg-red-50 text-red-600" : "bg-white/90 backdrop-blur-sm text-slate-400 hover:text-red-500"
+          }`}
+          title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+        >
+          <Heart className={`w-4 h-4 ${isFavorite ? "fill-red-600" : ""}`} />
+        </button>
       </div>
 
       {/* Quick Edit Modal */}
