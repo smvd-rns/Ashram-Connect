@@ -272,19 +272,35 @@ export default function OptimizedVideoPlayer({
         <>
           {/* Bottom Right Shield (Covers YouTube Logo/Watermark) */}
           <div 
-            className="absolute bottom-0 right-0 w-[12%] h-[12%] z-[35] cursor-default pointer-events-auto"
+            className="absolute bottom-0 right-0 w-[15%] h-[15%] z-[9999] cursor-default pointer-events-auto bg-white/[0.01] touch-none"
             title="Privacy Restricted"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClickCapture={(e) => {
+              e.stopPropagation(); e.preventDefault();
+              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+            }}
+            onTouchStartCapture={(e) => {
+              e.stopPropagation(); e.preventDefault();
+              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+            }}
+            onContextMenuCapture={(e) => {
+              e.stopPropagation(); e.preventDefault();
               openExternal(`https://www.youtube.com/watch?v=${videoId}`);
             }}
           />
 
           {/* Top Left Shield (Covers Title and Channel branding) */}
           <div 
-            className="absolute top-0 left-0 w-[60%] h-[15%] z-[35] cursor-default pointer-events-auto"
-            onClick={(e) => {
-              e.stopPropagation();
+            className="absolute top-0 left-0 w-[80%] h-[20%] z-[9999] cursor-default pointer-events-auto bg-white/[0.01] touch-none"
+            onClickCapture={(e) => {
+              e.stopPropagation(); e.preventDefault();
+              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+            }}
+            onTouchStartCapture={(e) => {
+              e.stopPropagation(); e.preventDefault();
+              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+            }}
+            onContextMenuCapture={(e) => {
+              e.stopPropagation(); e.preventDefault();
               openExternal(`https://www.youtube.com/watch?v=${videoId}`);
             }}
           />
@@ -296,9 +312,13 @@ export default function OptimizedVideoPlayer({
           */}
           {currentState === (window as any).YT?.PlayerState?.PAUSED && (
             <div 
-              className="absolute inset-x-0 top-0 bottom-[14%] z-40 bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group"
-              onClick={(e) => {
-                e.stopPropagation();
+              className="absolute inset-x-0 top-0 bottom-[14%] z-[9998] bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group pointer-events-auto bg-white/[0.01] touch-none"
+              onClickCapture={(e) => {
+                e.stopPropagation(); e.preventDefault();
+                playerInstance.current?.playVideo();
+              }}
+              onTouchStartCapture={(e) => {
+                e.stopPropagation(); e.preventDefault();
                 playerInstance.current?.playVideo();
               }}
             >
