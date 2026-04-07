@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import AuthGuard from "@/components/AuthGuard";
+import PolicyModal from "@/components/PolicyModal";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -28,6 +29,9 @@ export default function RootLayout({
               {children}
             </AuthGuard>
           </main>
+          
+          {/* Global Policy Modal */}
+          <PolicyModal />
           {/* Simplified elegant footer */}
           <footer className="w-full bg-slate-900/5 py-6 mt-12 border-t border-devo-200 text-center">
             <p className="text-sm font-medium text-devo-800">

@@ -8,6 +8,14 @@
 export const openExternal = (url: string) => {
   if (typeof window === "undefined") return;
 
+  // 1. Check for Ashram Policy (YouTube restriction)
+  const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
+  if (isYouTube) {
+    console.warn("[POLICY] YouTube link blocked by Temple Media Policy:", url);
+    window.dispatchEvent(new CustomEvent("show-policy"));
+    return;
+  }
+
   // 1. Check for Capacitor global object (injected by Capacitor)
   const isCapacitor = (window as any).Capacitor;
 

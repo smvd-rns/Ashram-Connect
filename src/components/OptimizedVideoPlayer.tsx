@@ -163,7 +163,19 @@ export default function OptimizedVideoPlayer({
       updateMediaSession();
     }
 
+    // Security: Apply sandbox to the generated iframe to prevent navigation
+    const applySandbox = () => {
+      const iframe = document.getElementById(playerContainerId.current) as HTMLIFrameElement;
+      if (iframe && iframe.tagName === "IFRAME") {
+        // Essential flags for YT to work but WITHOUT top-navigation or popups
+        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-presentation");
+      }
+    };
+
+    const timer = setTimeout(applySandbox, 1000); // Wait for API to replace DIV
+
     return () => {
+      clearTimeout(timer);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = null;
       }
@@ -219,6 +231,7 @@ export default function OptimizedVideoPlayer({
           className="w-full h-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
         />
       )}
 
