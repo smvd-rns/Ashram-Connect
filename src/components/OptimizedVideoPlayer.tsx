@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
+import { openExternal } from "@/lib/device";
 
 interface OptimizedVideoPlayerProps {
   videoId: string;
@@ -33,6 +34,7 @@ export default function OptimizedVideoPlayer({
   const [timedOut, setTimedOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const playerInstance = useRef<any>(null);
+  const [currentState, setCurrentState] = useState<number | null>(null);
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
 
   // Fallback URL for standard iframe (Used if JS API fails or is blocked)
@@ -144,6 +146,7 @@ export default function OptimizedVideoPlayer({
              updateMediaSession();
           },
           onStateChange: (event: any) => {
+            setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
             if (isPlaying) {
@@ -259,6 +262,54 @@ export default function OptimizedVideoPlayer({
             Retry Connection
           </button>
         </div>
+      )}
+
+      {/* 
+          UI SHIELDS: These transparent layers catch clicks on known "Leak" points
+          (YouTube logo, Title, Channel link) and redirect them to our Policy Modal.
+      */}
+      {playerReady && !timedOut && (
+        <>
+          {/* Bottom Right Shield (Covers YouTube Logo/Watermark) */}
+          <div 
+            className="absolute bottom-0 right-0 w-[12%] h-[12%] z-[35] cursor-default pointer-events-auto"
+            title="Privacy Restricted"
+            onClick={(e) => {
+              e.stopPropagation();
+              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+            }}
+          />
+
+          {/* Top Left Shield (Covers Title and Channel branding) */}
+          <div 
+            className="absolute top-0 left-0 w-[60%] h-[15%] z-[35] cursor-default pointer-events-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+            }}
+          />
+
+          {/* 
+              PAUSED INTERCEPTOR: When paused, YouTube displays a "More Videos" grid.
+              We place an overlay above the controls to block these related video clicks
+              while allowing the user to click to Resume.
+          */}
+          {currentState === (window as any).YT?.PlayerState?.PAUSED && (
+            <div 
+              className="absolute inset-x-0 top-0 bottom-[14%] z-40 bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group"
+              onClick={(e) => {
+                e.stopPropagation();
+                playerInstance.current?.playVideo();
+              }}
+            >
+               <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-8 h-8 flex items-center justify-center">
+                    <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[14px] border-l-white border-b-[8px] border-b-transparent ml-1" />
+                  </div>
+               </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
