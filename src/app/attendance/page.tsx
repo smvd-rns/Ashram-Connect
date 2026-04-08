@@ -6,6 +6,7 @@ import { useProfile } from "@/hooks/useProfile";
 import Navbar from "@/components/Navbar";
 import AttendanceTracing from "@/components/AttendanceTracing";
 import AttendanceExceptionForm from "@/components/AttendanceExceptionForm";
+import AttendanceInchargeForm from "@/components/AttendanceInchargeForm";
 import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 
 export default function PersonalAttendancePage() {
@@ -118,6 +119,13 @@ export default function PersonalAttendancePage() {
                 userEmail={profile?.email || ""}
                 onSuccess={() => setRefreshKey(prev => prev + 1)}
               />
+
+              {profile?.role === 3 && (
+                <AttendanceInchargeForm
+                  session={session}
+                  onSuccess={() => setRefreshKey((prev) => prev + 1)}
+                />
+              )}
 
               {/* Decorative card for remaining insights */}
               <div className="bg-white/40 backdrop-blur-sm border border-slate-100 rounded-[2.5rem] p-8 flex flex-col items-center text-center gap-4 opacity-60">

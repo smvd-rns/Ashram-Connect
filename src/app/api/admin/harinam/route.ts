@@ -22,8 +22,8 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== 1) {
-      return NextResponse.json({ error: "Forbidden: Admins only" }, { status: 403 });
+    if (profile?.role !== 1 && profile?.role !== 3) {
+      return NextResponse.json({ error: "Forbidden: only admin or attendance incharge" }, { status: 403 });
     }
 
     const body = await req.json();
