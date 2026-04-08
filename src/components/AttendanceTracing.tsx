@@ -600,9 +600,9 @@ export default function AttendanceTracing({
       );
       const payload = existingMachine
         ? {
-            action: "update_machine",
-            data: { id: existingMachine.id, ...newMachine },
-          }
+          action: "update_machine",
+          data: { id: existingMachine.id, ...newMachine },
+        }
         : { action: "add_machine", data: newMachine };
       await fetch("/api/admin/attendance-config", {
         method: "POST",
@@ -751,8 +751,8 @@ export default function AttendanceTracing({
             const earliest = logs.reduce(
               (min: any, log: any) =>
                 !min.check_time ||
-                (log.check_time &&
-                  new Date(log.check_time) < new Date(min.check_time))
+                  (log.check_time &&
+                    new Date(log.check_time) < new Date(min.check_time))
                   ? log
                   : min,
               logs[0],
@@ -1238,11 +1238,10 @@ export default function AttendanceTracing({
                                               isActive ? 0 : opt.val,
                                             );
                                           }}
-                                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-black text-[9px] sm:text-[10px] border transition-all duration-200 select-none tracking-tight ${
-                                            isActive
+                                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-black text-[9px] sm:text-[10px] border transition-all duration-200 select-none tracking-tight ${isActive
                                               ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200/50 scale-[1.02]"
                                               : "bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 hover:shadow-sm"
-                                          }`}
+                                            }`}
                                         >
                                           {isActive && (
                                             <span className="w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_4px_white]" />
@@ -1302,20 +1301,20 @@ export default function AttendanceTracing({
                                   <td className="px-6 py-2 text-center text-xs font-black text-indigo-600 tabular-nums">
                                     {row.logs.length > 0
                                       ? (() => {
-                                          const earliest = row.logs.reduce(
-                                            (min: any, log: any) =>
-                                              !min.check_time ||
+                                        const earliest = row.logs.reduce(
+                                          (min: any, log: any) =>
+                                            !min.check_time ||
                                               (log.check_time &&
                                                 new Date(log.check_time) <
-                                                  new Date(min.check_time))
-                                                ? log
-                                                : min,
-                                            row.logs[0],
-                                          );
-                                          return formatRawTime(
-                                            earliest.check_time,
-                                          );
-                                        })()
+                                                new Date(min.check_time))
+                                              ? log
+                                              : min,
+                                          row.logs[0],
+                                        );
+                                        return formatRawTime(
+                                          earliest.check_time,
+                                        );
+                                      })()
                                       : "--:--"}
                                   </td>
                                   <td className="px-6 py-2 last:rounded-r-2xl">
@@ -1434,7 +1433,7 @@ export default function AttendanceTracing({
                               {datesInRange.map((date) => {
                                 const logs = (
                                   user.dates[date]?.[
-                                    activeMachine?.description
+                                  activeMachine?.description
                                   ] || []
                                 ).sort(
                                   (a: any, b: any) =>
@@ -1481,7 +1480,7 @@ export default function AttendanceTracing({
                                       return null;
                                     })() || (logs.length > 0 ? (
                                       activeMachine?.id ===
-                                      "harinam_virtual" ? (
+                                        "harinam_virtual" ? (
                                         (() => {
                                           const mins =
                                             (logs[0].h7am || 0) +
@@ -1504,21 +1503,20 @@ export default function AttendanceTracing({
                                         })()
                                       ) : (
                                         <div className="flex flex-col items-center justify-center gap-0.5">
-                                            <div
-                                              className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-lg flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-110 shadow-sm ${
-                                                status === "present"
-                                                  ? "bg-emerald-500 text-white shadow-emerald-200"
-                                                  : status === "late"
-                                                    ? "bg-amber-400 text-white shadow-amber-200"
-                                                    : "bg-rose-400 text-white"
-                                              }`}
-                                            >
-                                              {status === "present"
-                                                ? "P"
+                                          <div
+                                            className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-lg flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-110 shadow-sm ${status === "present"
+                                                ? "bg-emerald-500 text-white shadow-emerald-200"
                                                 : status === "late"
-                                                  ? "L"
-                                                  : "A"}
-                                            </div>
+                                                  ? "bg-amber-400 text-white shadow-amber-200"
+                                                  : "bg-rose-400 text-white"
+                                              }`}
+                                          >
+                                            {status === "present"
+                                              ? "P"
+                                              : status === "late"
+                                                ? "L"
+                                                : "A"}
+                                          </div>
                                           {logs.length > 0 &&
                                             status !== "absent" && (
                                               <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
@@ -1526,10 +1524,10 @@ export default function AttendanceTracing({
                                                   const earliest = logs.reduce(
                                                     (min: any, log: any) =>
                                                       !min.check_time ||
-                                                      (log.check_time &&
-                                                        new Date(
-                                                          log.check_time,
-                                                        ) <
+                                                        (log.check_time &&
+                                                          new Date(
+                                                            log.check_time,
+                                                          ) <
                                                           new Date(
                                                             min.check_time,
                                                           ))
@@ -1558,8 +1556,8 @@ export default function AttendanceTracing({
                                       {(totalHarinamMins / 60) % 1 === 0
                                         ? totalHarinamMins / 60
                                         : (totalHarinamMins / 60).toFixed(
-                                            1,
-                                          )}{" "}
+                                          1,
+                                        )}{" "}
                                       hr
                                     </span>
                                   </div>
@@ -1581,7 +1579,7 @@ export default function AttendanceTracing({
                                         {Math.round(
                                           ((pCount + lCount) /
                                             datesInRange.length) *
-                                            100,
+                                          100,
                                         )}
                                         %
                                       </span>
@@ -2011,9 +2009,9 @@ export default function AttendanceTracing({
                         if (m.id === "harinam_virtual") {
                           const mins = logs[0]
                             ? (logs[0].h7am || 0) +
-                              (logs[0].h740am || 0) +
-                              (logs[0].hpdc || 0) +
-                              (logs[0].hcustom_mins || 0)
+                            (logs[0].h740am || 0) +
+                            (logs[0].hpdc || 0) +
+                            (logs[0].hcustom_mins || 0)
                             : 0;
                           dayStats[label] = Math.min(12, Math.round(mins / 15)); // Normalize to 0-12 scale
                           dayStats[`${label}_hrs`] = (mins / 60).toFixed(1);
@@ -2022,8 +2020,8 @@ export default function AttendanceTracing({
                           const earliest = logs.reduce(
                             (min: any, log: any) =>
                               !min.check_time ||
-                              (log.check_time &&
-                                new Date(log.check_time) <
+                                (log.check_time &&
+                                  new Date(log.check_time) <
                                   new Date(min.check_time))
                                 ? log
                                 : min,
@@ -2265,6 +2263,9 @@ export default function AttendanceTracing({
                               <YAxis
                                 axisLine={false}
                                 tickLine={false}
+                                domain={[0, 12]}
+                                ticks={[7.5]}
+                                tickFormatter={() => "4:30"}
                                 tick={{
                                   fontSize: 9,
                                   fontWeight: 900,
@@ -2554,97 +2555,97 @@ export default function AttendanceTracing({
                                 const logs = sessions[m.description] || [];
                                 const status = getStatus(logs, m);
                                 let renderContent;
-                                  const ex = sessions[m.description + "_exception"];
-                                  // Prefer actual attendance over exception if logs exist.
-                                  if (ex && logs.length === 0) {
-                                    const config =
-                                      exceptionConfigs[ex.reason] ||
-                                      exceptionConfigs.Other;
-                                    renderContent = (
-                                      <div
-                                        className={`relative group/ex flex items-center justify-center gap-1 font-black ${config.color} px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] uppercase border shadow-sm mx-auto w-fit cursor-help ${ex.comment ? "ring-2 ring-indigo-500 ring-offset-1" : ""}`}
-                                      >
-                                        {config.short}
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/ex:block z-[100]">
-                                          <div className="bg-slate-900 text-white text-[9px] p-2 rounded-lg shadow-xl whitespace-nowrap border border-white/10">
-                                            <p className="font-bold border-b border-white/20 mb-1 pb-1">
-                                              {ex.reason}
-                                            </p>
-                                            <p className="font-medium text-white/80 italic">
-                                              {ex.comment ||
-                                                "No comment provided"}
-                                            </p>
-                                          </div>
-                                          <div className="w-2 h-2 bg-slate-900 rotate-45 mx-auto -mt-1 border-r border-b border-white/10" />
+                                const ex = sessions[m.description + "_exception"];
+                                // Prefer actual attendance over exception if logs exist.
+                                if (ex && logs.length === 0) {
+                                  const config =
+                                    exceptionConfigs[ex.reason] ||
+                                    exceptionConfigs.Other;
+                                  renderContent = (
+                                    <div
+                                      className={`relative group/ex flex items-center justify-center gap-1 font-black ${config.color} px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] uppercase border shadow-sm mx-auto w-fit cursor-help ${ex.comment ? "ring-2 ring-indigo-500 ring-offset-1" : ""}`}
+                                    >
+                                      {config.short}
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/ex:block z-[100]">
+                                        <div className="bg-slate-900 text-white text-[9px] p-2 rounded-lg shadow-xl whitespace-nowrap border border-white/10">
+                                          <p className="font-bold border-b border-white/20 mb-1 pb-1">
+                                            {ex.reason}
+                                          </p>
+                                          <p className="font-medium text-white/80 italic">
+                                            {ex.comment ||
+                                              "No comment provided"}
+                                          </p>
                                         </div>
+                                        <div className="w-2 h-2 bg-slate-900 rotate-45 mx-auto -mt-1 border-r border-b border-white/10" />
+                                      </div>
+                                    </div>
+                                  );
+                                } else if (m.id === "harinam_virtual") {
+                                  let dailyHarinamMins = 0;
+                                  if (logs[0]) {
+                                    dailyHarinamMins =
+                                      (logs[0].h7am || 0) +
+                                      (logs[0].h740am || 0) +
+                                      (logs[0].hpdc || 0) +
+                                      (logs[0].hcustom_mins || 0);
+                                  }
+                                  if (dailyHarinamMins > 0) {
+                                    const hrsStr =
+                                      dailyHarinamMins % 60 === 0
+                                        ? (dailyHarinamMins / 60).toString()
+                                        : (dailyHarinamMins / 60).toFixed(1);
+                                    renderContent = (
+                                      <div className="font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm tracking-tight sm:tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">
+                                        {hrsStr}hr
                                       </div>
                                     );
-                                  } else if (m.id === "harinam_virtual") {
-                                    let dailyHarinamMins = 0;
-                                    if (logs[0]) {
-                                      dailyHarinamMins =
-                                        (logs[0].h7am || 0) +
-                                        (logs[0].h740am || 0) +
-                                        (logs[0].hpdc || 0) +
-                                        (logs[0].hcustom_mins || 0);
-                                    }
-                                    if (dailyHarinamMins > 0) {
-                                      const hrsStr =
-                                        dailyHarinamMins % 60 === 0
-                                          ? (dailyHarinamMins / 60).toString()
-                                          : (dailyHarinamMins / 60).toFixed(1);
-                                      renderContent = (
-                                        <div className="font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm tracking-tight sm:tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">
-                                          {hrsStr}hr
-                                        </div>
-                                      );
-                                    } else {
-                                      renderContent = (
-                                        <div className="text-slate-300 font-black text-[11px] sm:text-sm opacity-40">
-                                          --
-                                        </div>
-                                      );
-                                    }
                                   } else {
-                                    const earliest = logs.reduce(
-                                      (min: any, log: any) =>
-                                        !min.check_time ||
+                                    renderContent = (
+                                      <div className="text-slate-300 font-black text-[11px] sm:text-sm opacity-40">
+                                        --
+                                      </div>
+                                    );
+                                  }
+                                } else {
+                                  const earliest = logs.reduce(
+                                    (min: any, log: any) =>
+                                      !min.check_time ||
                                         (log.check_time &&
                                           new Date(log.check_time) <
-                                            new Date(min.check_time))
-                                          ? log
-                                          : min,
-                                      logs[0],
-                                    );
+                                          new Date(min.check_time))
+                                        ? log
+                                        : min,
+                                    logs[0],
+                                  );
 
-                                    if (earliest?.is_manual) {
-                                      renderContent = (
-                                        <div className="flex items-center justify-center gap-1.5 font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-indigo-100 shadow-sm mx-auto w-fit">
-                                          Manual
-                                        </div>
-                                      );
-                                    } else if (status === "present") {
-                                      renderContent = (
-                                        <div className="flex items-center justify-center gap-1.5 font-black text-emerald-600 bg-emerald-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-emerald-100 shadow-sm mx-auto w-fit">
-                                          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span>{" "}
-                                          {formatRawTime(earliest?.check_time)}
-                                        </div>
-                                      );
-                                    } else if (status === "late") {
-                                      renderContent = (
-                                        <div className="flex items-center justify-center gap-1.5 font-black text-amber-600 bg-amber-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-amber-100 shadow-sm mx-auto w-fit">
-                                          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span>{" "}
-                                          {formatRawTime(earliest?.check_time)}
-                                        </div>
-                                      );
-                                    } else {
-                                      renderContent = (
-                                        <div className="flex items-center justify-center font-black text-slate-300 text-[11px] sm:text-sm uppercase mx-auto w-fit opacity-40">
-                                          --
-                                        </div>
-                                      );
-                                    }
+                                  if (earliest?.is_manual) {
+                                    renderContent = (
+                                      <div className="flex items-center justify-center gap-1.5 font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-indigo-100 shadow-sm mx-auto w-fit">
+                                        Manual
+                                      </div>
+                                    );
+                                  } else if (status === "present") {
+                                    renderContent = (
+                                      <div className="flex items-center justify-center gap-1.5 font-black text-emerald-600 bg-emerald-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-emerald-100 shadow-sm mx-auto w-fit">
+                                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span>{" "}
+                                        {formatRawTime(earliest?.check_time)}
+                                      </div>
+                                    );
+                                  } else if (status === "late") {
+                                    renderContent = (
+                                      <div className="flex items-center justify-center gap-1.5 font-black text-amber-600 bg-amber-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-amber-100 shadow-sm mx-auto w-fit">
+                                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_#fbbf24]"></span>{" "}
+                                        {formatRawTime(earliest?.check_time)}
+                                      </div>
+                                    );
+                                  } else {
+                                    renderContent = (
+                                      <div className="flex items-center justify-center font-black text-slate-300 text-[11px] sm:text-sm uppercase mx-auto w-fit opacity-40">
+                                        --
+                                      </div>
+                                    );
                                   }
+                                }
 
                                 return (
                                   <td

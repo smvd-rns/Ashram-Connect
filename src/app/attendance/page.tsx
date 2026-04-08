@@ -95,7 +95,7 @@ export default function PersonalAttendancePage() {
                   </div>
                 </div>
               </div>
-              
+
               <Suspense fallback={
                 <div className="p-32 flex flex-col items-center justify-center gap-6 bg-white/50 rounded-[3rem] border-4 border-dashed border-slate-200">
                   <Loader2 className="w-12 h-12 text-indigo-200 animate-spin" />
@@ -114,16 +114,16 @@ export default function PersonalAttendancePage() {
 
             {/* Sidebar Space - Now housing the Exception Reporting Form */}
             <div className="flex flex-col lg:col-span-4 xl:col-span-3 lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300">
-               <AttendanceExceptionForm 
+              <AttendanceExceptionForm
                 userEmail={profile?.email || ""}
                 onSuccess={() => setRefreshKey(prev => prev + 1)}
-               />
-               
-               {/* Decorative card for remaining insights */}
-               <div className="bg-white/40 backdrop-blur-sm border border-slate-100 rounded-[2.5rem] p-8 flex flex-col items-center text-center gap-4 opacity-60">
-                 <p className="font-black text-slate-400 uppercase tracking-[0.3em] text-[8px]">Wisdom Analytics</p>
-                 <p className="text-slate-300 font-bold text-[10px] leading-relaxed">Additional patterns and insights will appear here as your data grows.</p>
-               </div>
+              />
+
+              {/* Decorative card for remaining insights */}
+              <div className="bg-white/40 backdrop-blur-sm border border-slate-100 rounded-[2.5rem] p-8 flex flex-col items-center text-center gap-4 opacity-60">
+                <p className="font-black text-slate-400 uppercase tracking-[0.3em] text-[8px]">Wisdom Analytics</p>
+                <p className="text-slate-300 font-bold text-[10px] leading-relaxed">Additional patterns and insights will appear here as your data grows.</p>
+              </div>
             </div>
           </div>
         </div>
