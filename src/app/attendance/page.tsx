@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
 import Navbar from "@/components/Navbar";
 import AttendanceTracing from "@/components/AttendanceTracing";
+import AttendanceExceptionForm from "@/components/AttendanceExceptionForm";
 import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 
 export default function PersonalAttendancePage() {
@@ -26,6 +27,8 @@ export default function PersonalAttendancePage() {
   }, []);
 
   const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
+
+  const [refreshKey, setRefreshKey] = useState(0);
 
   if (initializing || (session && loadingProfile)) {
     return (
@@ -78,23 +81,51 @@ export default function PersonalAttendancePage() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-slate-50 pt-24 pb-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-10">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">My Attendance</h1>
-            <p className="text-slate-400 font-bold text-sm uppercase tracking-[0.2em] flex items-center gap-2">
-              <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
-              Official BCDB Record
-            </p>
+      <div className="min-h-screen bg-slate-50 pt-24 pb-20 overflow-x-hidden">
+        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+            {/* Main Attendance Section - Left side */}
+            <div className="col-span-1 lg:col-span-8 xl:col-span-9 space-y-8 lg:space-y-10">
+              <div className="animate-in fade-in slide-in-from-left-4 duration-700">
+                <h1 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tighter mb-2 font-outfit uppercase">My Attendance</h1>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                    <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(79,70,229,0.5)]"></span>
+                    <p className="text-slate-500 font-black text-[9px] uppercase tracking-[0.2em]">Official BCDB Record</p>
+                  </div>
+                </div>
+              </div>
+              
+              <Suspense fallback={
+                <div className="p-32 flex flex-col items-center justify-center gap-6 bg-white/50 rounded-[3rem] border-4 border-dashed border-slate-200">
+                  <Loader2 className="w-12 h-12 text-indigo-200 animate-spin" />
+                  <p className="font-black text-slate-300 uppercase tracking-widest text-xs">Synchronizing Records...</p>
+                </div>
+              }>
+                <AttendanceTracing
+                  key={refreshKey}
+                  isAdmin={profile?.role === 1}
+                  forceUserView={true}
+                  session={session}
+                  profile={profile}
+                />
+              </Suspense>
+            </div>
+
+            {/* Sidebar Space - Now housing the Exception Reporting Form */}
+            <div className="flex flex-col lg:col-span-4 xl:col-span-3 lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300">
+               <AttendanceExceptionForm 
+                userEmail={profile?.email || ""}
+                onSuccess={() => setRefreshKey(prev => prev + 1)}
+               />
+               
+               {/* Decorative card for remaining insights */}
+               <div className="bg-white/40 backdrop-blur-sm border border-slate-100 rounded-[2.5rem] p-8 flex flex-col items-center text-center gap-4 opacity-60">
+                 <p className="font-black text-slate-400 uppercase tracking-[0.3em] text-[8px]">Wisdom Analytics</p>
+                 <p className="text-slate-300 font-bold text-[10px] leading-relaxed">Additional patterns and insights will appear here as your data grows.</p>
+               </div>
+            </div>
           </div>
-          <Suspense fallback={<div className="p-20 text-center font-black text-slate-200 uppercase tracking-widest">Loading Records...</div>}>
-            <AttendanceTracing
-              isAdmin={profile?.role === 1}
-              forceUserView={true}
-              session={session}
-              profile={profile}
-            />
-          </Suspense>
         </div>
       </div>
     </>

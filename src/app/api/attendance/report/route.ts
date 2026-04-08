@@ -87,16 +87,17 @@ export async function GET(req: NextRequest) {
 
     // Pre-populate hardware assigned_machines from mappings
     mappingsList.forEach(m => {
-      if (!matrix[m.user_email]) {
-        matrix[m.user_email] = {
-          email: m.user_email,
+      const email = m.user_email.toLowerCase();
+      if (!matrix[email]) {
+        matrix[email] = {
+          email: email,
           full_name: profileMap[m.user_email] || m.user_email.split("@")[0],
           assigned_machines: [],
           dates: {}
         };
       }
-      if (!matrix[m.user_email].assigned_machines.includes(m.machine_id)) {
-        matrix[m.user_email].assigned_machines.push(m.machine_id);
+      if (!matrix[email].assigned_machines.includes(m.machine_id)) {
+        matrix[email].assigned_machines.push(m.machine_id);
       }
     });
 
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
           m => m.machine_id === machine.id && String(m.zk_user_id) === String(log.zk_user_id)
         );
         if (!mapping) return;
-        const email = mapping.user_email;
+        const email = mapping.user_email.toLowerCase();
         if (!matrix[email]) return;
         const date = new Date(log.check_time).toISOString().split('T')[0];
         const sessionName = machine.description || log.device_sn;
@@ -147,7 +148,7 @@ export async function GET(req: NextRequest) {
     const harinamVirtualMachine = {
       id: "harinam_virtual",
       serial_number: "VIRTUAL_HARINAM",
-      description: "Hari Nam",
+      description: "Harinam",
       is_manual: true,
       p_start: "07:00:00",
       p_end: "09:00:00"
@@ -156,11 +157,11 @@ export async function GET(req: NextRequest) {
     machinesList.push(harinamVirtualMachine);
 
     (harinamDataList || []).forEach((record: any) => {
-      const email = record.user_email;
+      const email = record.user_email.toLowerCase();
       if (!matrix[email]) return;
       const date = record.date;
       if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
-      matrix[email].dates[date]["Hari Nam"] = [{
+      matrix[email].dates[date]["Harinam"] = [{
         is_manual: true,
         ...record
       }];
@@ -171,16 +172,65 @@ export async function GET(req: NextRequest) {
           user.assigned_machines.push("harinam_virtual");
        }
     });
-    // --- END HARINAM ---
+    // --- ATTENDANCE EXCEPTIONS INTEGRATION ---
+    const { data: exceptionsList, error: exceptionsError } = await supabase
+      .from("attendance_exceptions")
+      .select("*")
+      .gte("date", startDate)
+      .lte("date", endDate);
+
+    if (exceptionsError) throw exceptionsError;
+
+    (exceptionsList || []).forEach((ex: any) => {
+      const email = ex.user_email.toLowerCase();
+      if (!matrix[email] || !ex.date) return;
+      const date = ex.date;
+      if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
+
+      const sessionsToApplyRaw =
+        !ex.applied_sessions ||
+        ex.applied_sessions.length === 0 ||
+        ex.applied_sessions.includes("All")
+          ? machinesList.map((m: any) => m.description || m.serial_number)
+          : ex.applied_sessions;
+
+      sessionsToApplyRaw.forEach((sName: string) => {
+        if (!sName) return;
+
+        // Matrix keys must match what the UI looks up:
+        // UI reads `user.dates[date][activeMachine.description + "_exception"]`.
+        // Frontend submits session labels like "BC Class", "SB Class", etc.
+        // The only special normalization needed is "Hari Nam" -> "Harinam"
+        // (virtual machine description is "Harinam").
+        const mappedName =
+          sName === "Hari Nam" ? "Harinam" : (sName === "Harinam" ? "Harinam" : sName);
+
+        if (!matrix[email].dates[date][mappedName]) {
+          matrix[email].dates[date][mappedName] = [];
+        }
+        // Store exception as a separate key to survive JSON stringification
+        matrix[email].dates[date][mappedName + "_exception"] = {
+          reason: ex.reason_type,
+          comment: ex.comment,
+        };
+      });
+    });
+    // --- END EXCEPTIONS ---
 
     // 6. Compute status per session per day using the EARLIEST punch only
     Object.values(matrix).forEach((user: any) => {
       Object.values(user.dates).forEach((dateSessions: any) => {
         Object.entries(dateSessions).forEach(([sessionName, sessionLogs]: [string, any]) => {
-          if (!sessionLogs || sessionLogs.length === 0) return;
+          // `dateSessions` can contain both:
+          // 1) real session logs arrays (for status calculation)
+          // 2) *_exception objects (for display only)
+          // Ensure we only compute status for non-empty arrays.
+          if (!Array.isArray(sessionLogs) || sessionLogs.length === 0) return;
 
           // Skip status calculation for manual sessions
-          if (sessionLogs[0].is_manual) return;
+          const firstLog = sessionLogs[0];
+          if (!firstLog) return;
+          if (firstLog?.is_manual) return;
 
           const machine = machinesList.find(m => (m.description || m.serial_number) === sessionName);
           if (!machine) return;
@@ -198,11 +248,13 @@ export async function GET(req: NextRequest) {
             status = "late";
           }
 
-          dateSessions[sessionName] = sessionLogs.map((log: any) => ({
+          const processedLogs: any = sessionLogs.map((log: any) => ({
             ...log,
             computed_status: status,
             is_earliest: log === earliest
           }));
+          
+          dateSessions[sessionName] = processedLogs;
         });
       });
     });
