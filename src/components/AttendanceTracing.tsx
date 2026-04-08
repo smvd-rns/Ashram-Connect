@@ -290,9 +290,9 @@ export default function AttendanceTracing({
     return { start: pivot, end: pivot };
   };
 
+  // Heavy report fetch should react to timeline/view filters.
   useEffect(() => {
     fetchReport();
-    fetchMachines();
   }, [
     viewMode,
     currentPivotDate,
@@ -303,6 +303,15 @@ export default function AttendanceTracing({
     historyPivot,
     session,
   ]);
+
+  // Machine config is relatively static; fetch only when session changes
+  // or when admin opens the config view, instead of every date/range tweak.
+  useEffect(() => {
+    if (!session) return;
+    if (viewMode === "config" || machines.length === 0) {
+      fetchMachines();
+    }
+  }, [session, viewMode]);
 
   const fetchMachines = async () => {
     if (!session) return;

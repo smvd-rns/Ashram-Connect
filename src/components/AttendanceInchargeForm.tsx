@@ -24,18 +24,15 @@ export default function AttendanceInchargeForm({
   const [markType, setMarkType] = useState<HarinamType>("h7am");
   const [customMins, setCustomMins] = useState(15);
 
-  const loadUsers = async (targetDate: string) => {
+  const loadUsers = async () => {
     if (!session?.access_token) return;
     setLoadingUsers(true);
     try {
-      const res = await fetch(
-        `/api/attendance/report?startDate=${targetDate}&endDate=${targetDate}`,
-        {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        },
-      );
+      const res = await fetch("/api/attendance/users", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
       const data = await res.json();
-      const list = (data?.report || [])
+      const list = (data?.users || [])
         .filter((u: any) => !!u?.email)
         .sort((a: any, b: any) =>
           (a.full_name || "").localeCompare(b.full_name || ""),
@@ -50,8 +47,8 @@ export default function AttendanceInchargeForm({
   };
 
   useEffect(() => {
-    loadUsers(date);
-  }, [date, session?.access_token]);
+    loadUsers();
+  }, [session?.access_token]);
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();

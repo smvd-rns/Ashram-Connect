@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
+const BCDB_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const bcdbCheckCache = new Map<string, { isBcdb: boolean; at: number }>();
+
 export function useProfile(session: any) {
   const [profile, setProfile] = useState<any>(null);
   const [isBcdb, setIsBcdb] = useState(false);
@@ -22,10 +25,20 @@ export function useProfile(session: any) {
           return;
         }
 
+        const normalizedEmail = email.toLowerCase().trim();
+        const cached = bcdbCheckCache.get(normalizedEmail);
+        const now = Date.now();
+        if (cached && now - cached.at < BCDB_CACHE_TTL_MS) {
+          setIsBcdb(cached.isBcdb);
+          return;
+        }
+
         try {
-          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(email)}`);
+          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}`);
           const data = await res.json();
-          setIsBcdb(!!data.isBcdb);
+          const result = !!data.isBcdb;
+          setIsBcdb(result);
+          bcdbCheckCache.set(normalizedEmail, { isBcdb: result, at: now });
         } catch (err) {
           console.error("BCDB Check API Error:", err);
           setIsBcdb(false);

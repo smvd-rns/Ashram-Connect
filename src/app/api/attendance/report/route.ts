@@ -31,6 +31,24 @@ export async function GET(req: NextRequest) {
     if (mappingsError) throw mappingsError;
     const mappingsList = mappings || [];
 
+    // Precompute lookup maps to avoid repeated O(n) scans per log.
+    const machinesBySerial = new Map<string, any[]>();
+    (machinesList || []).forEach((machine: any) => {
+      const serial = machine?.serial_number;
+      if (!serial) return;
+      if (!machinesBySerial.has(serial)) machinesBySerial.set(serial, []);
+      machinesBySerial.get(serial)!.push(machine);
+    });
+
+    const mappingByMachineAndZk = new Map<string, any>();
+    (mappingsList || []).forEach((m: any) => {
+      const key = `${m.machine_id}__${String(m.zk_user_id)}`;
+      // Keep first match to preserve previous find() behavior.
+      if (!mappingByMachineAndZk.has(key)) {
+        mappingByMachineAndZk.set(key, m);
+      }
+    });
+
     // 3. Fetch BCDB users (Only temple Brahmacharis should have access to Harinam)
     const { data: bcdbUsers, error: bcdbError } = await supabase
       .from("bcdb")
@@ -103,11 +121,10 @@ export async function GET(req: NextRequest) {
 
     // Populate logs into matrix
     logsList.forEach(log => {
-      const matchingMachines = machinesList.filter(mac => mac.serial_number === log.device_sn);
+      const matchingMachines = machinesBySerial.get(log.device_sn) || [];
       matchingMachines.forEach(machine => {
-        const mapping = mappingsList.find(
-          m => m.machine_id === machine.id && String(m.zk_user_id) === String(log.zk_user_id)
-        );
+        const mappingKey = `${machine.id}__${String(log.zk_user_id)}`;
+        const mapping = mappingByMachineAndZk.get(mappingKey);
         if (!mapping) return;
         const email = mapping.user_email.toLowerCase();
         if (!matrix[email]) return;
