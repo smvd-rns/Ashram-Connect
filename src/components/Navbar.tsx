@@ -13,6 +13,8 @@ export default function Navbar() {
   const [session, setSession] = useState<any>(null);
   const { profile, isBcdb, refreshProfile } = useProfile(session);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const role = Number(profile?.role);
+  const canOpenAttendance = isBcdb || role === 1 || role === 3;
 
   // New imports for mobile bar
   const HomeIcon = ({ active }: { active?: boolean }) => (
@@ -95,7 +97,7 @@ export default function Navbar() {
             <span className="text-[10px] font-black uppercase tracking-widest">Brahmachari Class</span>
           </NextLink>
           
-          {isBcdb && (
+          {canOpenAttendance && (
             <NextLink 
               href="/attendance" 
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isAttendance ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white'}`}
@@ -107,7 +109,7 @@ export default function Navbar() {
             </NextLink>
           )}
 
-          {profile?.role === 1 && (
+          {role === 1 && (
             <NextLink 
               href="/admin" 
               className={`text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all border flex items-center gap-2 ${pathname.startsWith('/admin') ? 'bg-devo-600 text-white border-devo-600' : 'text-devo-700 hover:text-white hover:bg-devo-600 border-devo-100/50'}`}
@@ -138,7 +140,7 @@ export default function Navbar() {
         </NextLink>
 
         <div className="flex items-center gap-2">
-          {profile?.role === 1 && (
+          {role === 1 && (
             <NextLink href="/admin" className={`p-2 active:scale-95 transition-all ${pathname.startsWith('/admin') ? 'text-devo-600' : 'text-slate-400 hover:text-devo-600'}`}>
               <Settings className="w-5 h-5" />
             </NextLink>
@@ -167,7 +169,7 @@ export default function Navbar() {
           <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>Brahmachari Class</span>
         </NextLink>
 
-        {isBcdb && (
+        {canOpenAttendance && (
           <NextLink href="/attendance" className="flex flex-col items-center gap-1 group flex-1">
             <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isAttendance ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
                <CalendarDays className="w-6 h-6" />

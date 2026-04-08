@@ -28,7 +28,9 @@ export default function PersonalAttendancePage() {
   }, []);
 
   const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
-  const isAttendanceIncharge = profile?.role === 3;
+  const role = Number(profile?.role);
+  const isAttendanceIncharge = role === 3;
+  const isSuperAdmin = role === 1;
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -59,7 +61,7 @@ export default function PersonalAttendancePage() {
     );
   }
 
-  if (!isBcdb && !isAttendanceIncharge) {
+  if (!isBcdb && !isAttendanceIncharge && !isSuperAdmin) {
     return (
       <>
         <Navbar />
@@ -122,7 +124,7 @@ export default function PersonalAttendancePage() {
               }>
                 <AttendanceTracing
                   key={refreshKey}
-                  isAdmin={profile?.role === 1}
+                  isAdmin={isSuperAdmin}
                   forceUserView={true}
                   session={session}
                   profile={profile}
