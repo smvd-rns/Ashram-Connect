@@ -28,6 +28,7 @@ export default function PersonalAttendancePage() {
   }, []);
 
   const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
+  const isAttendanceIncharge = profile?.role === 3;
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -58,7 +59,7 @@ export default function PersonalAttendancePage() {
     );
   }
 
-  if (!isBcdb) {
+  if (!isBcdb && !isAttendanceIncharge) {
     return (
       <>
         <Navbar />
@@ -84,6 +85,22 @@ export default function PersonalAttendancePage() {
       <Navbar />
       <div className="min-h-screen bg-slate-50 pt-24 pb-20 overflow-x-hidden">
         <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-12">
+          {isAttendanceIncharge && !isBcdb ? (
+            <div className="max-w-xl mx-auto">
+              <div className="mb-6 text-center">
+                <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter mb-2 font-outfit uppercase">
+                  Attendance Incharge
+                </h1>
+                <p className="text-slate-500 font-bold text-xs uppercase tracking-[0.2em]">
+                  Harinam bulk marking access
+                </p>
+              </div>
+              <AttendanceInchargeForm
+                session={session}
+                onSuccess={() => setRefreshKey((prev) => prev + 1)}
+              />
+            </div>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
             {/* Main Attendance Section - Left side */}
             <div className="col-span-1 lg:col-span-8 xl:col-span-9 space-y-8 lg:space-y-10">
@@ -120,7 +137,7 @@ export default function PersonalAttendancePage() {
                 onSuccess={() => setRefreshKey(prev => prev + 1)}
               />
 
-              {profile?.role === 3 && (
+              {isAttendanceIncharge && (
                 <AttendanceInchargeForm
                   session={session}
                   onSuccess={() => setRefreshKey((prev) => prev + 1)}
@@ -134,6 +151,7 @@ export default function PersonalAttendancePage() {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </>
