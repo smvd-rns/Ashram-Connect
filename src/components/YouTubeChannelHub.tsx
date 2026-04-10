@@ -460,11 +460,12 @@ export default function YouTubeChannelHub() {
   const handleShare = async () => {
     if (!activeVideoId) return;
     
-    // Check if we are in a secure context or navigator.share exists
-    if (navigator.share) {
-      const shareUrl = window.location.href;
-      const shareTitle = activeVideo?.title || "Spiritual Lecture";
+    // Direct YouTube link for sharing
+    const shareUrl = `https://www.youtube.com/watch?v=${activeVideoId}`;
+    const shareTitle = activeVideo?.title || "Spiritual Lecture";
 
+    // Try native share first
+    if (navigator.share) {
       try {
         await navigator.share({
           title: shareTitle,
@@ -1060,13 +1061,7 @@ export default function YouTubeChannelHub() {
                             <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
                               <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
                               
-                              {/* Favorite Heart Toggle */}
-                              <div 
-                                onClick={(e) => toggleFavorite(e, vid.id)}
-                                className="absolute top-2 left-2 z-30 p-2 rounded-xl bg-black/20 backdrop-blur-md border border-white/20 hover:bg-white hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                              >
-                                <Heart className={`w-3.5 h-3.5 ${isFav ? "fill-red-500 text-red-500" : "text-white"}`} />
-                              </div>
+                              {/* Thumbnail Overlay Indicators */}
 
                               {vid.type === "playlist" && (
                                 <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
@@ -1131,13 +1126,7 @@ export default function YouTubeChannelHub() {
                                  <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 shadow-sm">
                                    <Image src={item.thumbnail} alt={item.title} fill className="object-cover" unoptimized />
                                    
-                                   {/* Heart Toggle */}
-                                   <div 
-                                     onClick={(e) => { e.stopPropagation(); toggleFavorite(e, item.id); }}
-                                     className="absolute top-1 left-1 z-30 p-1.5 rounded-lg bg-black/40 backdrop-blur-md border border-white/20 hover:bg-white hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                                   >
-                                     <Heart className={`w-2.5 h-2.5 ${favorites.includes(item.id) ? "fill-red-500 text-red-500" : "text-white"}`} />
-                                   </div>
+                                   {/* Shared Attributes */}
                                  </div>
                                  <div className="flex-1 min-w-0 space-y-1">
                                    <p className="font-outfit font-black text-[13px] leading-tight text-slate-700 line-clamp-2 group-hover:text-devo-600 transition-colors">
@@ -1212,7 +1201,7 @@ export default function YouTubeChannelHub() {
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         title={activeVideo?.title || "Spiritual Lecture"}
-        url={typeof window !== "undefined" ? window.location.href : ""}
+        url={activeVideoId ? `https://www.youtube.com/watch?v=${activeVideoId}` : ""}
       />
     </div>
   );
