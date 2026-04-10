@@ -37,20 +37,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid subscription object" }, { status: 400 });
     }
 
-    //Upsert the subscription for this user and endpoint/token
-    const conflictConstraint = provider === 'fcm' 
-      ? 'user_id, (subscription->>\'token\')' 
-      : 'user_id, (subscription->>\'endpoint\')';
+    const subscriptionKey = provider === 'fcm' ? subscription.token : subscription.endpoint;
 
+    //Upsert the subscription for this user and standardized key
     const { error: dbError } = await supabase
       .from("push_subscriptions")
       .upsert({
         user_id: user.id,
         subscription,
+        subscription_key: subscriptionKey,
         provider: provider || 'web-push',
         device_type: device_type || 'unknown',
         updated_at: new Date().toISOString()
-      }, { onConflict: conflictConstraint } as any);
+      }, { onConflict: 'user_id, subscription_key' } as any);
 
     if (dbError) throw dbError;
 
@@ -81,7 +80,7 @@ export async function DELETE(req: NextRequest) {
     const { error: dbError } = await supabase
       .from("push_subscriptions")
       .delete()
-      .eq("subscription->>endpoint", endpoint);
+      .eq("subscription_key", endpoint);
 
     if (dbError) throw dbError;
 
