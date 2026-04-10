@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -13,6 +13,7 @@ export default function Navbar() {
   const [session, setSession] = useState<any>(null);
   const { profile, isBcdb, refreshProfile } = useProfile(session);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const role = Number(profile?.role);
   const canOpenAttendance = isBcdb || role === 1 || role === 3;
 
@@ -100,12 +101,24 @@ export default function Navbar() {
           {canOpenAttendance && (
             <NextLink 
               href="/attendance" 
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isAttendance ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white'}`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isAttendance ? 'bg-orange-950 text-white border-orange-950 shadow-orange-100' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-white hover:border-devo-200'}`}
             >
               <div className="flex items-center justify-center relative">
                  <CalendarDays className="w-5 h-5" />
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest">My Attendance</span>
+            </NextLink>
+          )}
+
+          {isBcdb && (
+            <NextLink 
+              href="/policy-manual" 
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${pathname === "/policy-manual" ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white'}`}
+            >
+              <div className="flex items-center justify-center relative">
+                 <BookOpen className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest">Policy Manual</span>
             </NextLink>
           )}
 
@@ -166,7 +179,7 @@ export default function Navbar() {
           <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isClass ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
              <Youtube className="w-6 h-6" active={isClass} />
           </div>
-          <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>Brahmachari Class</span>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>BC Class</span>
         </NextLink>
 
         {canOpenAttendance && (
@@ -178,7 +191,83 @@ export default function Navbar() {
           </NextLink>
         )}
 
+        <button 
+          onClick={() => setShowMoreMenu(!showMoreMenu)}
+          className="flex flex-col items-center gap-1 group flex-1"
+        >
+          <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${showMoreMenu ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>
+             {showMoreMenu ? <X className="w-6 h-6" /> : <MoreHorizontal className="w-6 h-6" />}
+          </div>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${showMoreMenu ? 'text-indigo-600' : 'text-slate-400'}`}>{showMoreMenu ? 'Close' : 'More'}</span>
+        </button>
       </nav>
+
+      {/* ─── MOBILE MORE MENU OVERLAY ──────────────────────── */}
+      {showMoreMenu && (
+        <div className="fixed inset-0 z-[1000] md:hidden animate-in fade-in duration-300">
+          <div 
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => setShowMoreMenu(false)}
+          />
+          <div className="absolute bottom-[84px] left-4 right-4 bg-white/95 backdrop-blur-3xl rounded-[2rem] border border-slate-200/50 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-500">
+            <div className="flex flex-col py-2">
+              {isBcdb && (
+                <NextLink 
+                  href="/policy-manual" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/policy-manual' ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}
+                >
+                  <BookOpen className={`w-4 h-4 ${pathname === '/policy-manual' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/policy-manual' ? 'text-indigo-900' : 'text-slate-600'}`}>Policy Manual</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-indigo-500 ${pathname === '/policy-manual' ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
+
+              <button 
+                onClick={() => { setShowProfileModal(true); setShowMoreMenu(false); }}
+                className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50 transition-all text-left"
+              >
+                <User className="w-4 h-4 text-slate-400" />
+                <span className="text-[11px] font-black uppercase tracking-widest flex-1 text-slate-600">My Profile</span>
+              </button>
+
+              {role === 1 && (
+                <NextLink 
+                  href="/admin" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname.startsWith('/admin') ? 'bg-devo-50/50' : 'hover:bg-slate-50'}`}
+                >
+                  <Shield className={`w-4 h-4 ${pathname.startsWith('/admin') ? 'text-devo-600' : 'text-slate-400'}`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname.startsWith('/admin') ? 'text-devo-950' : 'text-slate-600'}`}>Admin Panel</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-devo-500 ${pathname.startsWith('/admin') ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
+
+              <div className="my-2 mx-4 border-t border-slate-100" />
+
+              <button 
+                onClick={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}
+                className="flex items-center gap-4 px-6 py-3.5 hover:bg-red-50 transition-all text-left group"
+              >
+                <LogOut className="w-4 h-4 text-slate-300 group-hover:text-red-500 transition-colors" />
+                <span className="text-[11px] font-black uppercase tracking-widest flex-1 text-slate-400 group-hover:text-red-600 transition-colors">Logout Session</span>
+              </button>
+            </div>
+            
+            <div className="bg-slate-50/80 px-6 py-4 border-t border-slate-200/50 flex items-center justify-between">
+               <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-devo-700 font-black text-[10px] border border-slate-200 shadow-sm">
+                    {getInitials()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tighter leading-none">{profile?.full_name || 'Member'}</div>
+                    <div className="text-[8px] font-bold text-slate-400 truncate uppercase mt-1 tracking-tight">{session?.user?.email}</div>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProfileModal && (
         <ProfileEdit 
