@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -149,6 +149,18 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
+                    {(isBcdb || role === 1 || role === 5) && (
+                      <NextLink 
+                        href="/travel-desk" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/travel-desk' ? 'bg-sky-50 text-sky-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                      >
+                        <Plane className="w-4 h-4" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Travel Desk</span>
+                        <div className={`w-1 h-1 rounded-full bg-sky-500 ${pathname === '/travel-desk' ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
+
                     {role === 1 && (
                       <NextLink 
                         href="/admin" 
@@ -268,6 +280,18 @@ export default function Navbar() {
                   <Users className={`w-4 h-4 ${pathname === '/directory' ? 'text-emerald-600' : 'text-slate-400'}`} />
                   <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/directory' ? 'text-emerald-900' : 'text-slate-600'}`}>Devotee Directory</span>
                   <div className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${pathname === '/directory' ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
+
+              {(isBcdb || role === 1 || role === 5) && (
+                <NextLink 
+                  href="/travel-desk" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/travel-desk' ? 'bg-sky-50/50' : 'hover:bg-slate-50'}`}
+                >
+                  <Plane className={`w-4 h-4 ${pathname === '/travel-desk' ? 'text-sky-600' : 'text-slate-400'}`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/travel-desk' ? 'text-sky-900' : 'text-slate-600'}`}>Travel Desk</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-sky-500 ${pathname === '/travel-desk' ? 'opacity-100' : 'opacity-0'}`} />
                 </NextLink>
               )}
 

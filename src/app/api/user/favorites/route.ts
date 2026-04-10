@@ -12,11 +12,20 @@ export async function GET(request: NextRequest) {
     }
 
     const token = authHeader.split(" ")[1];
-    // VERIFY: We still use the standard client to get/verify the user from their token
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    // VERIFY with a shorter timeout to prevent 10s hangs
+    const { data: { user }, error: authError } = await Promise.race([
+      supabase.auth.getUser(token),
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Supabase Connection Timeout")), 5000))
+    ]).catch(err => ({ data: { user: null }, error: err }));
     
     if (authError || !user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      console.error("Auth Error/Timeout:", authError);
+      return NextResponse.json({ 
+        error: authError?.message === "Supabase Connection Timeout" 
+          ? "Database connection timed out. Please check your internet or Supabase project status." 
+          : "Invalid session" 
+      }, { status: authError?.message === "Supabase Connection Timeout" ? 504 : 401 });
     }
 
     // BYPASS RLS: Using supabaseAdmin (Service Role) because RLS auth.uid() 
