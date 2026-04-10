@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -14,6 +14,7 @@ export default function Navbar() {
   const { profile, isBcdb, refreshProfile } = useProfile(session);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showDesktopMore, setShowDesktopMore] = useState(false);
   const role = Number(profile?.role);
   const canOpenAttendance = isBcdb || role === 1 || role === 3;
 
@@ -95,7 +96,7 @@ export default function Navbar() {
             <div className="flex items-center justify-center relative">
                <Youtube className="w-5 h-5" active={isClass} />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Brahmachari Class</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-inherit">BC Class</span>
           </NextLink>
           
           {canOpenAttendance && (
@@ -106,38 +107,73 @@ export default function Navbar() {
               <div className="flex items-center justify-center relative">
                  <CalendarDays className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest">My Attendance</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-inherit">My Attendance</span>
             </NextLink>
           )}
 
-          {isBcdb && (
-            <NextLink 
-              href="/policy-manual" 
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${pathname === "/policy-manual" ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white'}`}
-            >
-              <div className="flex items-center justify-center relative">
-                 <BookOpen className="w-5 h-5" />
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-widest">Policy Manual</span>
-            </NextLink>
-          )}
+          {/* Desktop "More" Dropdown */}
+          <div className="relative">
+             <button 
+               onClick={() => setShowDesktopMore(!showDesktopMore)}
+               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all shadow-sm ${showDesktopMore ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-white'}`}
+             >
+                <MoreHorizontal className="w-5 h-5" />
+                <span className="text-[10px] font-black uppercase tracking-widest">More</span>
+             </button>
 
-          {role === 1 && (
-            <NextLink 
-              href="/admin" 
-              className={`text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all border flex items-center gap-2 ${pathname.startsWith('/admin') ? 'bg-devo-600 text-white border-devo-600' : 'text-devo-700 hover:text-white hover:bg-devo-600 border-devo-100/50'}`}
-            >
-              <Settings className="w-4 h-4" /> <span>Admin Panel</span>
-            </NextLink>
-          )}
+             {showDesktopMore && (
+               <>
+                 <div className="fixed inset-0 z-10" onClick={() => setShowDesktopMore(false)} />
+                 <div className="absolute top-full right-0 mt-3 w-64 bg-white/95 backdrop-blur-3xl rounded-3xl border border-slate-200/50 shadow-2xl p-2 z-20 animate-in zoom-in-95 fade-in duration-200">
+                    {isBcdb && (
+                      <NextLink 
+                        href="/policy-manual" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/policy-manual' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                      >
+                        <BookOpen className="w-4 h-4" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Policy Manual</span>
+                        <div className={`w-1 h-1 rounded-full bg-indigo-500 ${pathname === '/policy-manual' ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
 
-          <button 
-            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}
-            className="p-3 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-            title="Logout"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+                    {isBcdb && (
+                      <NextLink 
+                        href="/directory" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/directory' ? 'bg-emerald-50 text-emerald-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                      >
+                        <Users className="w-4 h-4" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Devotee Directory</span>
+                        <div className={`w-1 h-1 rounded-full bg-emerald-500 ${pathname === '/directory' ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
+
+                    {role === 1 && (
+                      <NextLink 
+                        href="/admin" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname.startsWith('/admin') ? 'bg-devo-50 text-devo-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Admin Panel</span>
+                        <div className={`w-1 h-1 rounded-full bg-devo-500 ${pathname.startsWith('/admin') ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
+
+                    <div className="my-2 border-t border-slate-100" />
+                    
+                    <button 
+                      onClick={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-all text-left group"
+                    >
+                      <LogOut className="w-4 h-4 transition-colors" />
+                      <span className="text-[10px] font-black uppercase tracking-widest flex-1">Logout Session</span>
+                    </button>
+                 </div>
+               </>
+             )}
+          </div>
         </div>
       </nav>
 
@@ -220,6 +256,18 @@ export default function Navbar() {
                   <BookOpen className={`w-4 h-4 ${pathname === '/policy-manual' ? 'text-indigo-600' : 'text-slate-400'}`} />
                   <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/policy-manual' ? 'text-indigo-900' : 'text-slate-600'}`}>Policy Manual</span>
                   <div className={`w-1.5 h-1.5 rounded-full bg-indigo-500 ${pathname === '/policy-manual' ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
+
+              {isBcdb && (
+                <NextLink 
+                  href="/directory" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/directory' ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}`}
+                >
+                  <Users className={`w-4 h-4 ${pathname === '/directory' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/directory' ? 'text-emerald-900' : 'text-slate-600'}`}>Devotee Directory</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${pathname === '/directory' ? 'opacity-100' : 'opacity-0'}`} />
                 </NextLink>
               )}
 
