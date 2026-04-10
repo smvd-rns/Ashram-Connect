@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { safeQuery } from "@/lib/resilient-db";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,15 +15,15 @@ export async function GET(req: NextRequest) {
     const normalizedEmail = email?.toLowerCase().trim() || "";
     if (!normalizedEmail) return NextResponse.json({ isBcdb: false });
 
-    // Race the query against a 5-second timeout
-    const { count, error } = await Promise.race([
-      supabase
-        .from("bcdb")
-        .select("*", { count: "exact", head: true })
-        .or(`email_id.ilike.${normalizedEmail},email_address.ilike.${normalizedEmail}`)
-        .eq("is_deleted", false),
-      new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Supabase Connection Timeout")), 5000))
-    ]).catch(err => ({ count: null, error: err }));
+    // Perform a resilient query with automatic retries for timeouts
+    const { count, error } = await safeQuery(() => 
+        supabase
+            .from("bcdb")
+            .select("*", { count: "exact", head: true })
+            .or(`email_id.ilike.${normalizedEmail},email_address.ilike.${normalizedEmail}`)
+            .eq("is_deleted", false),
+        "BCDB Email Check"
+    ).catch(err => ({ count: null, error: err }));
 
     if (error) {
       if (error.message === "Supabase Connection Timeout") {

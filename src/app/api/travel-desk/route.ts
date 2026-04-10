@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
+import { safeAuth, safeQuery } from "@/lib/resilient-db";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,15 +59,18 @@ export async function GET(req: NextRequest) {
     if (!authHeader) return NextResponse.json({ error: "Auth required" }, { status: 401 });
 
     const token = authHeader.split(" ")[1];
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Travel Desk GET Auth");
     if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
     // Fetch Role
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const { data: profile } = await safeQuery(() => 
+        supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single(),
+        "Travel Desk GET Profile"
+    );
 
     let dbQuery = supabase.from("travel_submissions").select("*").eq("is_deleted", false);
 
@@ -75,7 +79,10 @@ export async function GET(req: NextRequest) {
       dbQuery = dbQuery.or(`user_id.eq.${user.id},email_id.ilike.${user.email}`);
     }
 
-    const { data, error } = await dbQuery.order("created_at", { ascending: false });
+    const { data, error } = await safeQuery(() => 
+        dbQuery.order("created_at", { ascending: false }),
+        "Travel Desk GET Submissions"
+    );
 
     if (error) throw error;
 
@@ -93,10 +100,11 @@ export async function POST(req: NextRequest) {
     if (!authHeader) return NextResponse.json({ error: "Auth required" }, { status: 401 });
 
     const token = authHeader.split(" ")[1];
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Travel Desk POST Auth");
     if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
     const body = await req.json();
+    // ... validation logic stays same ...
     const { 
       email_id, 
       devotee_name, 
@@ -113,22 +121,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from("travel_submissions")
-      .insert([{
-        user_id: user.id,
-        email_id,
-        devotee_name,
-        departure_date,
-        return_date,
-        places_of_travel,
-        purpose_of_travel,
-        accompanying_bcari,
-        counselor_email,
-        status: 'Pending'
-      }])
-      .select()
-      .single();
+    const { data, error } = await safeQuery(() => 
+        supabase
+            .from("travel_submissions")
+            .insert([{
+                user_id: user.id,
+                email_id,
+                devotee_name,
+                departure_date,
+                return_date,
+                places_of_travel,
+                purpose_of_travel,
+                accompanying_bcari,
+                counselor_email,
+                status: 'Pending'
+            }])
+            .select()
+            .single(),
+        "Travel Desk POST Submission"
+    );
 
     if (error) throw error;
 
@@ -164,22 +175,28 @@ export async function PATCH(req: NextRequest) {
       if (!authHeader) return NextResponse.json({ error: "Auth required" }, { status: 401 });
   
       const token = authHeader.split(" ")[1];
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Travel Desk PATCH Auth");
       if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   
       // Check if user is Manager (Role 5) or Super Admin (Role 1)
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+      const { data: profile } = await safeQuery(() => 
+        supabase.from("profiles").select("role").eq("id", user.id).single(),
+        "Travel Desk PATCH Profile"
+      );
       if (profile?.role !== 1 && profile?.role !== 5) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   
       const body = await req.json();
       const { id, status } = body;
   
-      const { data, error } = await supabase
-        .from("travel_submissions")
-        .update({ status })
-        .eq("id", id)
-        .select()
-        .single();
+      const { data, error } = await safeQuery(() => 
+        supabase
+            .from("travel_submissions")
+            .update({ status })
+            .eq("id", id)
+            .select()
+            .single(),
+        "Travel Desk PATCH Update"
+      );
   
       if (error) throw error;
 

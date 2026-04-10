@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { safeAuth, safeQuery } from "@/lib/resilient-db";
 
 // Helper to check for Super Admin role
 async function checkSuperAdmin(token: string) {
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Check Admin User");
   if (authError || !user) return false;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const { data: profile } = await safeQuery(() => 
+    supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single(),
+    "Check Admin Role"
+  );
 
   return profile?.role === 1;
 }
@@ -28,10 +32,13 @@ export async function GET(request: Request) {
     }
 
     // List all user profiles
-    const { data: profiles, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data: profiles, error } = await safeQuery(() => 
+        supabase
+            .from("profiles")
+            .select("*")
+            .order("created_at", { ascending: false }),
+        "List User Profiles"
+    );
 
     if (error) throw error;
 
