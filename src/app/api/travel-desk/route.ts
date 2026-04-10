@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+import admin from "@/lib/firebase-admin";
+
 /**
  * Helper: Send Push Notification to a user or group of users
  */
@@ -16,35 +18,56 @@ async function sendPushToUsers(userIds: string[], payload: any) {
     const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
 
-    if (!publicKey || !privateKey) {
-      console.warn("VAPID Keys missing. Skipping push.");
-      return;
-    }
-
-    // Configure Web Push
-    webpush.setVapidDetails(
-      'mailto:shyam@ashramconnect.com',
-      publicKey,
-      privateKey
-    );
-
+    // Fetch all subscriptions for these users (Web and FCM)
     const { data: subs, error } = await supabase
       .from("push_subscriptions")
-      .select("subscription")
+      .select("subscription, provider")
       .in("user_id", userIds);
 
     if (error || !subs) return;
 
-    const pushPromises = subs.map(s => 
-      webpush.sendNotification(s.subscription, JSON.stringify(payload))
-        .catch(err => {
-          console.error("Push delivery failed for subscription:", err.endpoint);
-          // If 410 Gone, we should delete the subscription
-          if (err.statusCode === 410) {
-            supabase.from("push_subscriptions").delete().eq("subscription->>endpoint", err.endpoint);
-          }
-        })
-    );
+    const pushPromises = subs.map(async (s) => {
+      // CHANNEL 1: Web Push (Browsers)
+      if (!s.provider || s.provider === 'web-push') {
+        if (!publicKey || !privateKey) return;
+        
+        webpush.setVapidDetails('mailto:shyam@ashramconnect.com', publicKey, privateKey);
+        
+        return webpush.sendNotification(s.subscription, JSON.stringify(payload))
+          .catch(err => {
+            if (err.statusCode === 410) {
+              supabase.from("push_subscriptions").delete().eq("subscription->>endpoint", err.endpoint);
+            }
+          });
+      }
+
+      // CHANNEL 2: Firebase FCM (Mobile App)
+      if (s.provider === 'fcm' && s.subscription?.token) {
+        try {
+          const message = {
+            token: s.subscription.token,
+            notification: {
+              title: payload.title,
+              body: payload.body,
+            },
+            data: {
+              url: payload.url || '/',
+              icon: payload.icon || '/favicon.ico'
+            },
+            android: {
+              priority: 'high' as const,
+              notification: {
+                clickAction: 'FLUTTER_NOTIFICATION_CLICK', // Common for wrappers
+                channelId: 'default'
+              }
+            }
+          };
+          return admin.messaging().send(message);
+        } catch (fcmErr) {
+          console.error("FCM delivery failed:", fcmErr);
+        }
+      }
+    });
 
     await Promise.allSettled(pushPromises);
   } catch (err) {

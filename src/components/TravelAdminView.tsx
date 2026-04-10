@@ -56,6 +56,33 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
     setPushEnabled(!!subscription);
   }, []);
 
+  // Register FCM Token from Native Bridge
+  useEffect(() => {
+    (window as any).registerFcmToken = async (fcmToken: string) => {
+      console.log("FCM Token received from native bridge:", fcmToken);
+      try {
+        const res = await fetch('/api/notifications/subscribe', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ 
+              subscription: { token: fcmToken },
+              provider: 'fcm',
+              device_type: 'mobile' 
+          })
+        });
+        if (res.ok) {
+          setPushEnabled(true);
+          console.log("FCM token registered successfully.");
+        }
+      } catch (err) {
+        console.error("FCM registration failed:", err);
+      }
+    };
+  }, [session.access_token]);
+
   const subscribeUser = async () => {
     setIsSubscribing(true);
     try {
