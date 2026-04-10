@@ -9,7 +9,8 @@ import {
   UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo, 
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
   Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck, 
-  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft, RotateCcw
+  Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft, RotateCcw,
+  BookOpen
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -18,8 +19,9 @@ import AuthUI from "./AuthUI";
 import { useProfile } from "@/hooks/useProfile";
 import AttendanceTracing from "./AttendanceTracing";
 import BCDBManager from "./BCDBManager";
+import AdminPolicyManager from "./AdminPolicyManager";
 
-type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing" | "bcdb";
+type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing" | "bcdb" | "policies";
 
 export default function AdminPanel() {
   const searchParams = useSearchParams();
@@ -975,6 +977,28 @@ export default function AdminPanel() {
                       <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Access the Ashram Connect directory, manage personnel records, and handle master imports.</p>
                     </div>
                     <div className="flex items-center gap-2 text-indigo-900 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
+                      Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              {/* Policy Manual Card */}
+              {isSuperAdmin && (
+                <button 
+                  onClick={() => navigateToView("policies")}
+                  className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
+                  <div className="relative z-10 w-12 h-12 sm:w-16 sm:h-16 bg-indigo-700 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:-rotate-6 transition-transform shrink-0">
+                    <BookOpen className="w-6 h-6 sm:w-8 sm:h-8" />
+                  </div>
+                  <div className="relative z-10 sm:mt-4 flex-1 min-w-0">
+                    <div>
+                      <h3 className="text-lg sm:text-2xl font-black text-devo-950 uppercase tracking-tight sm:normal-case">Policy Manual</h3>
+                      <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Upload official Ashram guidelines and PDFs for restricted member access.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-indigo-700 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
                       Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
                     </div>
                   </div>
@@ -2531,6 +2555,18 @@ export default function AdminPanel() {
                </button>
              </div>
              <BCDBManager session={session} isAdmin={isSuperAdmin} />
+          </div>
+        )}
+
+        {/* VIEW: Policy Manual Admin */}
+        {activeView === "policies" && (
+          <div className="space-y-6 sm:space-y-10 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
+             <div className="px-1">
+               <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-xs hover:gap-3 transition-all bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
+                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
+               </button>
+             </div>
+             <AdminPolicyManager />
           </div>
         )}
       </div>
