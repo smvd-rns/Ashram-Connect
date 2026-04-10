@@ -51,6 +51,7 @@ export default function YouTubeChannelHub() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoriteVideos, setFavoriteVideos] = useState<VideoItem[]>([]);
   const [loadingFavorites, setLoadingFavorites] = useState(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -58,6 +59,11 @@ export default function YouTubeChannelHub() {
 
   const [contentCache, setContentCache] = useState<Record<string, any>>({});
   const [logoCache, setLogoCache] = useState<Record<string, string>>({});
+
+  const notify = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadMoreLoading, setLoadMoreLoading] = useState(false);
@@ -131,8 +137,16 @@ export default function YouTubeChannelHub() {
       
       if (matched && matched.channel_id !== activeChannel?.channel_id) {
         setActiveChannel(matched);
+        setActiveVideoId(null);
         // Reset to videos if no explicit tab is in URL (prevents sticking to favorites/playlists from prev channel)
         if (!urlTab) setActiveTab("videos");
+
+        // Scroll to player on channel change
+        setTimeout(() => {
+          if (playerRef.current) {
+            playerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 100);
       }
       
       if (urlTab && urlTab !== activeTab) {
@@ -204,13 +218,16 @@ export default function YouTubeChannelHub() {
           // If we have the video in current list, add to favoriteVideos
           const vid = videos.find((v: any) => v.id === videoId) || globalResults.find((v: any) => v.id === videoId) || fetchedVideoMetadata[videoId];
           if (vid) setFavoriteVideos(prev => [vid, ...prev]);
+          notify("Added to Spiritual Favorites!");
         } else {
           setFavorites(prev => prev.filter(id => id !== videoId));
           setFavoriteVideos(prev => prev.filter(v => v.id !== videoId));
+          notify("Removed from Favorites");
         }
       }
     } catch (err) {
       console.error("Failed to toggle favorite:", err);
+      notify("Failed to update favorites", "error");
     }
   };
 
@@ -433,6 +450,41 @@ export default function YouTubeChannelHub() {
     
     if (playerRef.current) {
       playerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const handleShare = async () => {
+    if (!activeVideoId) return;
+    
+    const shareUrl = window.location.href;
+    const shareTitle = activeVideo?.title || "Spiritual Lecture";
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: `Check out this lecture: ${shareTitle}`,
+          url: shareUrl,
+        });
+        notify("Shared successfully!");
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.error("Share failed:", err);
+          // Fallback to clipboard on error
+          copyToClipboard(shareUrl);
+        }
+      }
+    } else {
+      copyToClipboard(shareUrl);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("Link copied to clipboard!");
+    } catch (err) {
+      notify("Failed to copy link", "error");
     }
   };
 
@@ -660,7 +712,9 @@ export default function YouTubeChannelHub() {
                   </div>
                 ))
               ) : (
-                channels.map((channel, i) => (
+                channels
+                  .filter(c => selectedChannelIds.length === 0 || selectedChannelIds.includes(c.channel_id))
+                  .map((channel, i) => (
                   <button 
                     key={channel.id}
                     onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
@@ -817,51 +871,53 @@ export default function YouTubeChannelHub() {
         </div>
 
         <div className="pt-24 px-4 sm:px-10 pb-20 grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 space-y-6">
-            {!activePlaylistId ? (
-              <div className="flex bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px]">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setActivePlaylistId(null);
-                      }}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
-                        activeTab === tab.id ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5 sm:w-4 h-4" />
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex items-center justify-between bg-devo-950 p-4 rounded-2xl shadow-lg sticky top-20 z-40">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="p-2 bg-white/10 rounded-lg">
-                    <Layers className="w-4 h-4 text-white" />
-                  </div>
-                  <h3 className="text-white font-outfit font-black text-sm truncate uppercase tracking-widest">
-                    {activePlaylistName}
-                  </h3>
+          <div className="lg:col-span-8 flex flex-col gap-6">
+            <div className="order-3 lg:order-1">
+              {!activePlaylistId ? (
+                <div className="flex bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px]">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setActivePlaylistId(null);
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
+                          activeTab === tab.id ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 sm:w-4 h-4" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <button
-                  onClick={() => {
-                    setActivePlaylistId(null);
-                    setActivePlaylistName(null);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                >
-                  <X className="w-3.5 h-3.5" /> Back to Channel
-                </button>
-              </div>
-            )}
+              ) : (
+                <div className="flex items-center justify-between bg-devo-950 p-4 rounded-2xl shadow-lg sticky top-20 z-40">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <Layers className="w-4 h-4 text-white" />
+                    </div>
+                    <h3 className="text-white font-outfit font-black text-sm truncate uppercase tracking-widest">
+                      {activePlaylistName}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActivePlaylistId(null);
+                      setActivePlaylistName(null);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    <X className="w-3.5 h-3.5" /> Back to Channel
+                  </button>
+                </div>
+              )}
+            </div>
 
-            <div ref={playerRef} className="scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
+            <div ref={playerRef} className="order-1 lg:order-2 scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
               {activeVideoId ? (
                 <OptimizedVideoPlayer 
                   key={activeVideoId}
@@ -884,7 +940,7 @@ export default function YouTubeChannelHub() {
             </div>
 
             {activeVideo && (
-              <div className="bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+              <div className="order-2 lg:order-3 bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                   <div className="space-y-3 flex-1">
                     <h2 className="text-xl sm:text-2xl font-outfit font-black text-devo-950 tracking-tight leading-tight">
@@ -919,7 +975,11 @@ export default function YouTubeChannelHub() {
                     >
                       <Heart className={`w-5 h-5 ${activeVideoId && favorites.includes(activeVideoId) ? "fill-red-600" : "group-hover:text-red-500"}`} />
                     </button>
-                    <button className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all">
+                    <button 
+                      onClick={handleShare}
+                      className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all active:scale-95"
+                      title="Share this lecture"
+                    >
                       <Share2 className="w-5 h-5 text-slate-400" />
                     </button>
                   </div>
@@ -1114,6 +1174,34 @@ export default function YouTubeChannelHub() {
           </div>
         </div>
       </main>
+
+      {/* Premium Notification Toast */}
+      {notification && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-8 duration-500">
+          <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3 min-w-[280px] ${
+            notification.type === 'success' 
+            ? "bg-slate-900/90 text-white border-white/20" 
+            : "bg-red-600/90 text-white border-red-400"
+          }`}>
+            {notification.type === 'success' ? (
+              <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+                <CheckCircle2 className="w-5 h-5 text-green-400" />
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-white" />
+              </div>
+            )}
+            <div className="flex flex-col">
+              <span className="text-xs font-black uppercase tracking-[0.2em]">{notification.type === 'success' ? 'Success' : 'Attention'}</span>
+              <span className="text-[11px] font-bold text-white/80">{notification.message}</span>
+            </div>
+            <button onClick={() => setNotification(null)} className="ml-auto p-1 hover:bg-white/10 rounded-lg transition-colors">
+              <X className="w-4 h-4 text-white/40" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -997,9 +997,9 @@ export default function AttendanceTracing({
             <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] sm:rounded-[4rem] border border-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] overflow-hidden w-full transition-all duration-700">
               <div className="p-3 sm:p-4 flex flex-col bg-slate-50/20">
                 {/* Single Row Compact Header */}
-                <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 w-full pb-2">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 w-full pb-2">
                   {/* Filter & Date Controls */}
-                  <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                  <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
                     {/* Time Range */}
                     <div className="flex items-center p-1 bg-slate-100/50 rounded-xl sm:rounded-2xl border border-slate-200/50 shadow-inner w-full sm:w-auto overflow-x-auto no-scrollbar">
                       {(["day", "week", "month", "custom"] as const).map(
@@ -1078,7 +1078,7 @@ export default function AttendanceTracing({
 
                   {/* 3. Session & Export Actions (14px) */}
                   {activeMachine && (
-                    <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0 xl:ml-auto pr-1">
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-2 lg:mt-0 lg:ml-auto pr-1">
                       <div className="relative flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm transition-all hover:bg-white hover:shadow-md group/session">
                         <Monitor className="w-4 h-4 text-indigo-600 group-hover/session:rotate-6 transition-transform flex-shrink-0" />
                         <div className="leading-tight text-center sm:text-left flex-1 sm:flex-none">
@@ -1248,8 +1248,8 @@ export default function AttendanceTracing({
                                             );
                                           }}
                                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-black text-[9px] sm:text-[10px] border transition-all duration-200 select-none tracking-tight ${isActive
-                                              ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200/50 scale-[1.02]"
-                                              : "bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 hover:shadow-sm"
+                                            ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200/50 scale-[1.02]"
+                                            : "bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 hover:shadow-sm"
                                             }`}
                                         >
                                           {isActive && (
@@ -1359,7 +1359,7 @@ export default function AttendanceTracing({
                     <table
                       className="text-left border-separate border-spacing-0"
                       style={{
-                        minWidth: `${140 + getDateColumns().length * 45}px`,
+                        minWidth: `${120 + getDateColumns().length * 40}px`,
                       }}
                     >
                       <thead>
@@ -1421,7 +1421,7 @@ export default function AttendanceTracing({
                               className={`transition-colors group ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50/40"} hover:bg-indigo-50/30`}
                             >
                               <td
-                                className={`px-4 sm:px-6 py-2 sticky left-0 z-[100] border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-indigo-50`}
+                                className={`px-2 sm:px-4 py-2 sticky left-0 z-[100] border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-indigo-50`}
                               >
                                 <div className="font-black text-slate-800 text-sm sm:text-[15px] tracking-tighter leading-none mb-1 truncate max-w-[150px]">
                                   {user.full_name}
@@ -1514,10 +1514,10 @@ export default function AttendanceTracing({
                                         <div className="flex flex-col items-center justify-center gap-0.5">
                                           <div
                                             className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-lg flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-110 shadow-sm ${status === "present"
-                                                ? "bg-emerald-500 text-white shadow-emerald-200"
-                                                : status === "late"
-                                                  ? "bg-amber-400 text-white shadow-amber-200"
-                                                  : "bg-rose-400 text-white"
+                                              ? "bg-emerald-500 text-white shadow-emerald-200"
+                                              : status === "late"
+                                                ? "bg-amber-400 text-white shadow-amber-200"
+                                                : "bg-rose-400 text-white"
                                               }`}
                                           >
                                             {status === "present"
@@ -2173,7 +2173,7 @@ export default function AttendanceTracing({
                             Practice Trends
                           </h4>
                         </div>
-                        <div className="h-[200px] sm:h-[300px] w-full min-w-0">
+                        <div className="h-[250px] sm:h-[300px] w-full min-w-0">
                           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <AreaChart
                               data={activityData}

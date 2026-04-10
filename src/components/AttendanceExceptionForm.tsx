@@ -71,7 +71,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
       </div>
       
       <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Start Date</label>
             <input
@@ -104,7 +104,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
                   setUseDateRange(true);
                   setReportingEnd(reportingStart);
                 }}
-                className="w-full text-left text-[10px] font-black uppercase tracking-widest px-1 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:text-slate-700 hover:border-slate-200 transition-all"
+                className="w-full text-left text-[10px] font-black uppercase tracking-widest px-1 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:text-slate-700 hover:border-slate-200 transition-all"
               >
                 Use date range
               </button>
