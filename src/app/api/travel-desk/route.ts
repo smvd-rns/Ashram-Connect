@@ -2,13 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 
-// Configure Web Push with VAPID keys
-webpush.setVapidDetails(
-  'mailto:shyam@ashramconnect.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -19,6 +12,21 @@ const supabase = createClient(
  */
 async function sendPushToUsers(userIds: string[], payload: any) {
   try {
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+
+    if (!publicKey || !privateKey) {
+      console.warn("VAPID Keys missing. Skipping push.");
+      return;
+    }
+
+    // Configure Web Push
+    webpush.setVapidDetails(
+      'mailto:shyam@ashramconnect.com',
+      publicKey,
+      privateKey
+    );
+
     const { data: subs, error } = await supabase
       .from("push_subscriptions")
       .select("subscription")
