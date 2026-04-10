@@ -40,13 +40,16 @@ CREATE POLICY manager_all_travel ON travel_submissions
         )
     );
 
--- POLICY: USER ACCESS (Self)
--- BCDB members can insert and view their own data
+-- POLICY: USER ACCESS (Self - Dual Lookup)
+-- BCDB members can view data matching their user_id OR their email
 DROP POLICY IF EXISTS user_own_travel ON travel_submissions;
 CREATE POLICY user_own_travel ON travel_submissions
     FOR ALL
     TO authenticated
-    USING (user_id = auth.uid())
+    USING (
+        user_id = auth.uid() OR 
+        email_id = (SELECT email FROM profiles WHERE id = auth.uid())
+    )
     WITH CHECK (user_id = auth.uid());
 
 -- TRIGGER: updated_at

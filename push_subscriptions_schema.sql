@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 -- Enable RLS
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 
+-- Clean up existing policies to avoid "already exists" errors
+DROP POLICY IF EXISTS "Users can view their own subscriptions" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Users can insert their own subscriptions" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Users can delete their own subscriptions" ON public.push_subscriptions;
+
 -- Policy: Users can only see their own subscriptions
 CREATE POLICY "Users can view their own subscriptions"
     ON public.push_subscriptions FOR SELECT
@@ -29,5 +34,15 @@ CREATE POLICY "Users can delete their own subscriptions"
 -- Index for faster lookups by user_id
 CREATE INDEX IF NOT EXISTS push_subscriptions_user_id_idx ON public.push_subscriptions(user_id);
 
--- Add real-time support (optional but good for debugging)
-ALTER PUBLICATION supabase_realtime ADD TABLE push_subscriptions;
+-- Add real-time support (Safe check to avoid errors if already present)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND schemaname = 'public' 
+        AND tablename = 'push_subscriptions'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.push_subscriptions;
+    END IF;
+END $$;
