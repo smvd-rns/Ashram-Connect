@@ -13,15 +13,22 @@ export function useProfile(session: any) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isTimeout, setIsTimeout] = useState(false);
+  const [lastCheckedId, setLastCheckedId] = useState<string | null>(null);
 
   const fetchProfile = useCallback(async (userId: string) => {
+    if (userId === lastCheckedId) {
+       setLoading(false);
+       return;
+    }
+
     setLoading(true);
+    setLastCheckedId(userId);
     try {
       const checkBcdb = async (email: string, role?: number) => {
         if (!email) return;
 
         // Admin override
-        if (role === 1) {
+        if (role === 1 || role === 5) {
           setIsBcdb(true);
           return;
         }
@@ -36,7 +43,9 @@ export function useProfile(session: any) {
 
         try {
           setIsTimeout(false);
-          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}`);
+          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}`, {
+             signal: AbortSignal.timeout(10000) // Hard browser timeout
+          });
           
           if (res.status === 504) {
              console.warn("BCDB Check Timed Out");
@@ -122,7 +131,7 @@ export function useProfile(session: any) {
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.email]);
+  }, [session?.user?.id, lastCheckedId]);
 
   useEffect(() => {
     if (session?.user?.id) {

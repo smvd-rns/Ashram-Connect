@@ -28,7 +28,7 @@ export default function PortalPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loadingAuth || (session && loadingProfile)) {
+  if (loadingAuth) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <Loader2 className="w-12 h-12 animate-spin text-devo-600" />
