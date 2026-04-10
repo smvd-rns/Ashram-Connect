@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     if (machineId) query = query.eq("machine_id", machineId);
 
-    const { data: mappings, error } = await safeQuery(() => query, "Fetch Attendance Mappings");
+    const { data: mappings, error } = await safeQuery<any>(() => query, "Fetch Attendance Mappings");
     if (error) throw error;
 
     return NextResponse.json({ mappings });
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       const { machine_id, zk_user_id, user_email } = data;
 
       // Check if this user email OR this machine user ID is already mapped for this specific machine
-      const { data: existing, error: checkError } = await safeQuery(() => 
+      const { data: existing, error: checkError } = await safeQuery<any>(() => 
         supabase
             .from("attendance_user_mapping")
             .select("user_email, zk_user_id")
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const { data: newMapping, error } = await safeQuery(() => 
+      const { data: newMapping, error } = await safeQuery<any>(() => 
         supabase
             .from("attendance_user_mapping")
             .insert([{ machine_id, zk_user_id, user_email }])
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     // BULK ADDITION (XLSX Upload)
     if (action === "bulk_add_mapping") {
-      const { data: newMappings, error } = await safeQuery(() => 
+      const { data: newMappings, error } = await safeQuery<any>(() => 
         supabase
             .from("attendance_user_mapping")
             .upsert(data, { onConflict: "machine_id, zk_user_id" }),
@@ -99,7 +99,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-    const { error } = await safeQuery(() => 
+    const { error } = await safeQuery<any>(() => 
         supabase.from("attendance_user_mapping").delete().eq("id", id),
         "Delete Mapping"
     );
