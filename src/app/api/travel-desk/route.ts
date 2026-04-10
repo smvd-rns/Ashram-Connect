@@ -1,10 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import webpush from "web-push";
+
+// Configure Web Push with VAPID keys
+webpush.setVapidDetails(
+  'mailto:shyam@ashramconnect.com',
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+  process.env.VAPID_PRIVATE_KEY!
+);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+/**
+ * Helper: Send Push Notification to a user or group of users
+ */
+async function sendPushToUsers(userIds: string[], payload: any) {
+  try {
+    const { data: subs, error } = await supabase
+      .from("push_subscriptions")
+      .select("subscription")
+      .in("user_id", userIds);
+
+    if (error || !subs) return;
+
+    const pushPromises = subs.map(s => 
+      webpush.sendNotification(s.subscription, JSON.stringify(payload))
+        .catch(err => {
+          console.error("Push delivery failed for subscription:", err.endpoint);
+          // If 410 Gone, we should delete the subscription
+          if (err.statusCode === 410) {
+            supabase.from("push_subscriptions").delete().eq("subscription->>endpoint", err.endpoint);
+          }
+        })
+    );
+
+    await Promise.allSettled(pushPromises);
+  } catch (err) {
+    console.error("Push helper error:", err);
+  }
+}
 
 // GET: Fetch submissions (Manager only)
 export async function GET(req: NextRequest) {
@@ -16,7 +53,7 @@ export async function GET(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
-    // Fetch Submissions
+    // Fetch Role
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -87,6 +124,24 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error;
 
+    // BACKGROUND TASK: Notify All Managers (Role 5) and Super Admins (Role 1)
+    (async () => {
+        const { data: managers } = await supabase
+            .from("profiles")
+            .select("id")
+            .in("role", [1, 5]);
+        
+        if (managers && managers.length > 0) {
+            const managerIds = managers.map(m => m.id);
+            await sendPushToUsers(managerIds, {
+                title: "New Travel Request!",
+                body: `${devotee_name} has logged a new movement to ${places_of_travel}.`,
+                url: "/travel-desk",
+                icon: "/favicon.ico"
+            });
+        }
+    })();
+
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error("Travel Desk POST Error:", error.message);
@@ -119,8 +174,20 @@ export async function PATCH(req: NextRequest) {
         .single();
   
       if (error) throw error;
+
+      // BACKGROUND TASK: Notify the Devotee about the status change
+      (async () => {
+        await sendPushToUsers([data.user_id], {
+            title: "Travel Request Update",
+            body: `Your travel request to ${data.places_of_travel} has been marked as ${status}.`,
+            url: "/travel-desk",
+            icon: "/favicon.ico"
+        });
+      })();
+
       return NextResponse.json({ data });
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-  }
+}
+

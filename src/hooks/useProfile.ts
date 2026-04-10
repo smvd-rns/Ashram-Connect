@@ -12,6 +12,7 @@ export function useProfile(session: any) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isTimeout, setIsTimeout] = useState(false);
 
   const fetchProfile = useCallback(async (userId: string) => {
     setLoading(true);
@@ -34,7 +35,16 @@ export function useProfile(session: any) {
         }
 
         try {
+          setIsTimeout(false);
           const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}`);
+          
+          if (res.status === 504) {
+             console.warn("BCDB Check Timed Out");
+             setIsTimeout(true);
+             setIsBcdb(false);
+             return;
+          }
+
           const data = await res.json();
           const result = !!data.isBcdb;
           setIsBcdb(result);
@@ -122,5 +132,12 @@ export function useProfile(session: any) {
     }
   }, [session?.user?.id, fetchProfile]);
 
-  return { profile, isBcdb, loading, error, refreshProfile: () => session?.user?.id && fetchProfile(session.user.id) };
+  return { 
+    profile, 
+    isBcdb, 
+    loading, 
+    error, 
+    isTimeout,
+    refreshProfile: () => session?.user?.id && fetchProfile(session.user.id) 
+  };
 }
