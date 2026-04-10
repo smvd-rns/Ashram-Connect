@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS travel_submissions (
 -- Enable RLS
 ALTER TABLE travel_submissions ENABLE ROW LEVEL SECURITY;
 
--- POLICY: MANAGER ACCESS (Role 5)
--- Full visibility for the Travel Desk manager
+-- POLICY: MANAGER & ADMIN ACCESS (Role 1 & 5)
+-- Full visibility for the Travel Desk manager and Super Admins
 DROP POLICY IF EXISTS manager_all_travel ON travel_submissions;
 CREATE POLICY manager_all_travel ON travel_submissions
     FOR ALL
@@ -29,14 +29,14 @@ CREATE POLICY manager_all_travel ON travel_submissions
         EXISTS (
             SELECT 1 FROM profiles 
             WHERE profiles.id = auth.uid() 
-            AND profiles.role = 5
+            AND profiles.role IN (1, 5)
         )
     )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM profiles 
             WHERE profiles.id = auth.uid() 
-            AND profiles.role = 5
+            AND profiles.role IN (1, 5)
         )
     );
 

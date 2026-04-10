@@ -33,6 +33,68 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'All' | 'Pending' | 'Processed'>('All');
   const [searchQuery, setSearchQuery] = useState("");
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState(false);
+
+  // Helper: Convert VAPID key
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const checkSubscription = useCallback(async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    setPushEnabled(!!subscription);
+  }, []);
+
+  const subscribeUser = async () => {
+    setIsSubscribing(true);
+    try {
+      if (!('serviceWorker' in navigator)) {
+        alert("Your browser doesn't support background notifications.");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicVapidKey) throw new Error("VAPID public key not found");
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+      });
+
+      await fetch('/api/notifications/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ 
+            subscription,
+            device_type: window.innerWidth < 768 ? 'mobile' : 'desktop' 
+        })
+      });
+
+      setPushEnabled(true);
+    } catch (err: any) {
+      console.error("Subscription failed:", err);
+      alert("Please allow notifications in your browser settings to enable push alerts.");
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
 
   const fetchSubmissions = useCallback(async () => {
     try {
@@ -50,11 +112,7 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
 
   useEffect(() => {
     fetchSubmissions();
-
-    // Browser Notification Permission
-    if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission();
-    }
+    checkSubscription();
 
     // Realtime Subscription
     const channel = supabase
@@ -119,52 +177,59 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 animate-in fade-in duration-700">
       
       {/* Manager Header */}
-      <div className="mb-10 bg-slate-900 rounded-[2rem] p-8 sm:p-12 text-white relative overflow-hidden shadow-2xl border border-white/5">
+      <div className="mb-6 sm:mb-10 bg-slate-900 rounded-[1.5rem] sm:rounded-[2.5rem] p-6 sm:p-12 text-white relative overflow-hidden shadow-2xl border border-white/5">
          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-emerald-500/10 rounded-full -mr-[200px] -mt-[200px] blur-[100px]" />
-         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="space-y-2 text-center md:text-left">
-               <div className="flex items-center justify-center md:justify-start gap-3">
-                  <div className="w-10 h-10 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/10">
-                    <Plane className="w-5 h-5 text-emerald-400" />
+         <div className="relative z-10 flex flex-col sm:flex-row justify-between items-center sm:items-end md:items-center gap-6">
+            <div className="space-y-1 sm:space-y-2 text-center sm:text-left">
+               <div className="flex items-center justify-center sm:justify-start gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/10">
+                    <Plane className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-300 opacity-60">Manager Dashboard</span>
+                  <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.4em] text-emerald-300 opacity-60">Manager Dashboard</span>
                </div>
                <h1 className="text-3xl sm:text-5xl font-black tracking-tighter font-outfit leading-none mt-2">Travel <span className="text-emerald-400">Desk</span></h1>
-               <p className="text-slate-400 font-bold text-sm max-w-lg mt-2 opacity-70">Review and manage movement logs for all devotees.</p>
+               <p className="text-slate-400 font-bold text-xs sm:text-sm max-w-lg mt-2 opacity-70">Review and manage movement logs for all devotees.</p>
             </div>
             
-            <div className="flex items-center gap-4">
-               <div className="bg-white/5 backdrop-blur-xl px-6 py-4 rounded-2xl border border-white/10 text-center">
-                  <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest leading-none">Pending</div>
-                  <div className="text-2xl font-black text-white mt-1 leading-none">
+            <div className="flex items-center gap-3 sm:gap-4">
+               <button 
+                  onClick={subscribeUser}
+                  disabled={pushEnabled || isSubscribing}
+                  className={`flex flex-col items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl border transition-all ${pushEnabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+               >
+                  <Bell className={`w-4 h-4 sm:w-5 h-5 ${pushEnabled ? 'fill-emerald-400' : ''}`} />
+                  <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest leading-none">
+                     {isSubscribing ? 'Syncing...' : pushEnabled ? 'Push Active' : 'Enable Push'}
+                  </span>
+               </button>
+               <div className="bg-white/5 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-white/10 text-center">
+                  <div className="text-[8px] sm:text-[10px] font-black text-emerald-400 uppercase tracking-widest leading-none">Pending</div>
+                  <div className="text-xl sm:text-2xl font-black text-white mt-1 leading-none">
                     {submissions.filter(s => s.status === 'Pending').length}
                   </div>
-               </div>
-               <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center border border-emerald-500/20 group cursor-pointer hover:bg-emerald-500/30 transition-all">
-                  <Bell className="w-6 h-6 text-emerald-400 animate-swing" />
                </div>
             </div>
          </div>
       </div>
 
       {/* Controls */}
-      <div className="mb-8 flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+      <div className="mb-6 sm:mb-8 flex flex-col lg:flex-row gap-4 lg:items-center">
          <div className="relative flex-1 group">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+            <Search className="absolute left-5 sm:left-6 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 h-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
             <input 
               type="text" 
-              placeholder="Search by devotee name or email..."
+              placeholder="Search devotee or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-16 pr-6 py-5 bg-white border-2 border-slate-100 rounded-[1.5rem] sm:rounded-2xl text-slate-900 font-bold text-sm outline-none focus:border-emerald-500 transition-all shadow-xl shadow-slate-100/50"
+              className="w-full pl-12 sm:pl-16 pr-6 py-4 sm:py-5 bg-white border-2 border-slate-100 rounded-[1.2rem] sm:rounded-2xl text-slate-900 font-bold text-xs sm:text-sm outline-none focus:border-emerald-500 transition-all shadow-xl shadow-slate-100/50"
             />
          </div>
-         <div className="flex bg-white p-1.5 rounded-[1.5rem] border-2 border-slate-100 shadow-lg">
+         <div className="flex bg-white p-1 rounded-2xl border-2 border-slate-100 shadow-lg overflow-x-auto no-scrollbar">
             {(['All', 'Pending', 'Processed'] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setFilter(m)}
-                className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filter === m ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all whitespace-nowrap ${filter === m ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 {m}
               </button>
@@ -186,23 +251,23 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
            {filtered.map((s) => (
-             <div 
+            <div 
                key={s.id}
-               className="group bg-white border-2 border-slate-100 rounded-[2.5rem] p-6 sm:p-8 hover:border-emerald-200 transition-all shadow-sm hover:shadow-2xl hover:shadow-emerald-500/5"
+               className="group bg-white border-2 border-slate-100 rounded-[2rem] sm:rounded-[2.5rem] p-5 sm:p-8 hover:border-emerald-200 transition-all shadow-sm hover:shadow-2xl hover:shadow-emerald-500/5"
              >
-                <div className="flex justify-between items-start mb-6">
-                   <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-emerald-50 group-hover:border-emerald-100 transition-colors">
-                         <User className="w-6 h-6 text-slate-400 group-hover:text-emerald-500" />
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
+                   <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-50 rounded-xl sm:rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-emerald-50 group-hover:border-emerald-100 transition-colors shrink-0">
+                         <User className="w-5 h-5 sm:w-6 h-6 text-slate-400 group-hover:text-emerald-500" />
                       </div>
                       <div className="min-w-0">
-                         <h3 className="text-lg font-black text-slate-900 tracking-tight font-outfit uppercase truncate leading-none mb-1">
+                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight font-outfit uppercase truncate leading-none mb-1">
                             {s.devotee_name}
                          </h3>
-                         <p className="text-[10px] font-bold text-slate-400 uppercase truncate">{s.email_id}</p>
+                         <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase truncate">{s.email_id}</p>
                       </div>
                    </div>
-                   <div className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${s.status === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                   <div className={`px-3 sm:px-4 py-1.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border self-end sm:self-center ${s.status === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
                       {s.status}
                    </div>
                 </div>
