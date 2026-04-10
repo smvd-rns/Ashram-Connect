@@ -7,8 +7,8 @@ async function checkSuperAdmin(token: string) {
   const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Check Admin User");
   if (authError || !user) return false;
 
-  const { data: profile } = await safeQuery(() => 
-    supabase
+  const { data: profile } = await safeQuery(async () => 
+    await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
@@ -32,8 +32,8 @@ export async function GET(request: Request) {
     }
 
     // List all user profiles
-    const { data: profiles, error } = await safeQuery(() => 
-        supabase
+    const { data: profiles, error } = await safeQuery(async () => 
+        await supabase
             .from("profiles")
             .select("*")
             .order("created_at", { ascending: false }),

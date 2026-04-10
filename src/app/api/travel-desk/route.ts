@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
     if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
     // Fetch Role
-    const { data: profile } = await safeQuery(() => 
-        supabase
+    const { data: profile } = await safeQuery(async () => 
+        await supabase
             .from("profiles")
             .select("role")
             .eq("id", user.id)
@@ -79,8 +79,8 @@ export async function GET(req: NextRequest) {
       dbQuery = dbQuery.or(`user_id.eq.${user.id},email_id.ilike.${user.email}`);
     }
 
-    const { data, error } = await safeQuery(() => 
-        dbQuery.order("created_at", { ascending: false }),
+    const { data, error } = await safeQuery(async () => 
+        await dbQuery.order("created_at", { ascending: false }),
         "Travel Desk GET Submissions"
     );
 
@@ -121,8 +121,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 });
     }
 
-    const { data, error } = await safeQuery(() => 
-        supabase
+    const { data, error } = await safeQuery(async () => 
+        await supabase
             .from("travel_submissions")
             .insert([{
                 user_id: user.id,
@@ -179,8 +179,8 @@ export async function PATCH(req: NextRequest) {
       if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   
       // Check if user is Manager (Role 5) or Super Admin (Role 1)
-      const { data: profile } = await safeQuery(() => 
-        supabase.from("profiles").select("role").eq("id", user.id).single(),
+      const { data: profile } = await safeQuery(async () => 
+        await supabase.from("profiles").select("role").eq("id", user.id).single(),
         "Travel Desk PATCH Profile"
       );
       if (profile?.role !== 1 && profile?.role !== 5) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -188,8 +188,8 @@ export async function PATCH(req: NextRequest) {
       const body = await req.json();
       const { id, status } = body;
   
-      const { data, error } = await safeQuery(() => 
-        supabase
+      const { data, error } = await safeQuery(async () => 
+        await supabase
             .from("travel_submissions")
             .update({ status })
             .eq("id", id)

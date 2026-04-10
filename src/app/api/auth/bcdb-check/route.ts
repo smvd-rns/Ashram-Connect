@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
     if (!normalizedEmail) return NextResponse.json({ isBcdb: false });
 
     // Perform a resilient query with automatic retries for timeouts
-    const { count, error } = await safeQuery(() => 
-        supabase
+    const { count, error } = await safeQuery(async () => 
+        await supabase
             .from("bcdb")
             .select("*", { count: "exact", head: true })
             .or(`email_id.ilike.${normalizedEmail},email_address.ilike.${normalizedEmail}`)
