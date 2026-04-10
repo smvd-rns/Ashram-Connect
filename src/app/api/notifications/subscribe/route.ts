@@ -31,21 +31,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
-    const { subscription, device_type } = await req.json();
+    const { subscription, device_type, provider } = await req.json();
 
-    if (!subscription || !subscription.endpoint) {
+    if (!subscription || (!subscription.endpoint && !subscription.token)) {
       return NextResponse.json({ error: "Invalid subscription object" }, { status: 400 });
     }
 
-    //Upsert the subscription for this user and endpoint
+    //Upsert the subscription for this user and endpoint/token
+    const conflictConstraint = provider === 'fcm' 
+      ? 'user_id, (subscription->>\'token\')' 
+      : 'user_id, (subscription->>\'endpoint\')';
+
     const { error: dbError } = await supabase
       .from("push_subscriptions")
       .upsert({
         user_id: user.id,
         subscription,
+        provider: provider || 'web-push',
         device_type: device_type || 'unknown',
         updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id, subscription->>endpoint' } as any);
+      }, { onConflict: conflictConstraint } as any);
 
     if (dbError) throw dbError;
 
