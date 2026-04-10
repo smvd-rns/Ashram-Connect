@@ -102,14 +102,21 @@ export default function TravelForm({ session, profile }: TravelFormProps) {
   const subscribeUser = async () => {
     setIsSubscribing(true);
     try {
-      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-        alert("Push notifications require HTTPS to work securely. Please ensure you are on a secure connection.");
+      // If we are on mobile/native, we use the FCM bridge instead of Web Push
+      const isNative = typeof window !== 'undefined' && !!(window as any).registerFcmToken;
+
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        if (!isNative) {
+          alert("Your browser/device doesn't support background notifications. Try using Chrome or Edge.");
+        } else {
+            console.log("Native environment detected, skipping browser push check.");
+        }
         setIsSubscribing(false);
         return;
       }
 
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        alert("Your browser/device doesn't support background notifications. Try using Chrome or Edge.");
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        alert("Push notifications require HTTPS to work securely. Please ensure you are on a secure connection.");
         setIsSubscribing(false);
         return;
       }

@@ -36,7 +36,7 @@ async function sendPushToUsers(userIds: string[], payload: any) {
         return webpush.sendNotification(s.subscription, JSON.stringify(payload))
           .catch(err => {
             if (err.statusCode === 410) {
-              supabase.from("push_subscriptions").delete().eq("subscription->>endpoint", err.endpoint);
+              supabase.from("push_subscriptions").delete().eq("subscription_key", err.endpoint);
             }
           });
       }

@@ -3,10 +3,12 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     subscription JSONB NOT NULL,
+    subscription_key TEXT NOT NULL, -- Unique identifier (endpoint or token)
     provider TEXT DEFAULT 'web-push', -- 'web-push' or 'fcm'
     device_type TEXT, -- 'mobile', 'desktop', etc.
     created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, subscription_key)
 );
 
 -- Enable RLS
