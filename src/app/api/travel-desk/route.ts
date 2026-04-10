@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     // If NOT manager (Role 5) or Super Admin (Role 1), restrict to OWN data
     if (profile?.role !== 1 && profile?.role !== 5) {
-      dbQuery = dbQuery.eq("user_id", user.id);
+      dbQuery = dbQuery.or(`user_id.eq.${user.id},email_id.ilike.${user.email}`);
     }
 
     const { data, error } = await dbQuery.order("created_at", { ascending: false });

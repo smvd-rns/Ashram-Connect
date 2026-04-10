@@ -59,23 +59,36 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
   const subscribeUser = async () => {
     setIsSubscribing(true);
     try {
-      if (!('serviceWorker' in navigator)) {
-        alert("Your browser doesn't support background notifications.");
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        alert("Push notifications require HTTPS to work securely. Please ensure you are on a secure connection.");
+        setIsSubscribing(false);
         return;
       }
 
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert("Your browser/device doesn't support background notifications. Try using Chrome or Edge.");
+        setIsSubscribing(false);
+        return;
+      }
+
+      console.log("Registering Service Worker...");
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       await navigator.serviceWorker.ready;
+      console.log("Service Worker Ready.");
 
       const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!publicVapidKey) throw new Error("VAPID public key not found");
+      if (!publicVapidKey) {
+        throw new Error("VAPID public key is missing from environment. Please contact administrator.");
+      }
 
+      console.log("Requesting Push Subscription...");
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
       });
 
-      await fetch('/api/notifications/subscribe', {
+      console.log("Subscription obtained, sending to server...");
+      const res = await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,10 +100,20 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
         })
       });
 
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to save subscription on server");
+      }
+
       setPushEnabled(true);
+      alert("Success! Manager background notifications are now active on this device.");
     } catch (err: any) {
-      console.error("Subscription failed:", err);
-      alert("Please allow notifications in your browser settings to enable push alerts.");
+      console.error("Subscription critical failure:", err);
+      if (err.name === 'NotAllowedError') {
+          alert("Permission Denied: Please reset your browser notification permissions for this site and try again.");
+      } else {
+          alert(`Activation Failed: ${err.message || 'Unknown error'}`);
+      }
     } finally {
       setIsSubscribing(false);
     }
