@@ -38,7 +38,8 @@ export default function OptimizedVideoPlayer({
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
 
   // Fallback URL for standard iframe (Used if JS API fails or is blocked)
-  const fallbackUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
+  // vq=small (240p) ensures much faster loading on slower connections
+  const fallbackUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3&vq=small`;
 
   // 1. Load YouTube IFrame API Script (Globally once)
   useEffect(() => {
@@ -52,14 +53,14 @@ export default function OptimizedVideoPlayer({
 
     if (checkYT()) return;
 
-    // AUTO-FALLBACK: If the API doesn't load in 3.5 seconds, we use a standard iframe
+    // AUTO-FALLBACK: If the API doesn't load in 1.5 seconds, we use a standard iframe
     // This fixed the "Stuck on Initializing" issue on high-security laptops/ad-blockers
     const fallbackTimer = setTimeout(() => {
       if (!window.YT || !window.YT.Player) {
         console.warn("[YT-PLAYER] Using Standard Fallback (API slow/blocked)");
         setTimedOut(true);
       }
-    }, 3500);
+    }, 1500);
 
     if (!document.getElementById("youtube-api-script")) {
       const tag = document.createElement("script");

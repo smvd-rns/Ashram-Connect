@@ -11,6 +11,7 @@ import {
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import OptimizedVideoPlayer from "./OptimizedVideoPlayer";
 import { openExternal } from "@/lib/device";
+import ShareModal from "./ShareModal";
 
 interface VideoItem {
   id: string;
@@ -52,6 +53,7 @@ export default function YouTubeChannelHub() {
   const [favoriteVideos, setFavoriteVideos] = useState<VideoItem[]>([]);
   const [loadingFavorites, setLoadingFavorites] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -173,6 +175,7 @@ export default function YouTubeChannelHub() {
     // or just assume the API will handle the error if no token is sent.
     
     setLoadingFavorites(true);
+    setLoading(true);
     try {
       // We need the token for the API
       const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
@@ -190,6 +193,7 @@ export default function YouTubeChannelHub() {
       console.error("Failed to fetch favorites:", err);
     } finally {
       setLoadingFavorites(false);
+      setLoading(false);
     }
   }, []);
 
@@ -456,10 +460,11 @@ export default function YouTubeChannelHub() {
   const handleShare = async () => {
     if (!activeVideoId) return;
     
-    const shareUrl = window.location.href;
-    const shareTitle = activeVideo?.title || "Spiritual Lecture";
-
+    // Check if we are in a secure context or navigator.share exists
     if (navigator.share) {
+      const shareUrl = window.location.href;
+      const shareTitle = activeVideo?.title || "Spiritual Lecture";
+
       try {
         await navigator.share({
           title: shareTitle,
@@ -470,12 +475,12 @@ export default function YouTubeChannelHub() {
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.error("Share failed:", err);
-          // Fallback to clipboard on error
-          copyToClipboard(shareUrl);
+          setIsShareModalOpen(true);
         }
       }
     } else {
-      copyToClipboard(shareUrl);
+      // Fallback to custom share modal for mobile or insecure contexts
+      setIsShareModalOpen(true);
     }
   };
 
@@ -1202,6 +1207,13 @@ export default function YouTubeChannelHub() {
           </div>
         </div>
       )}
+      {/* Custom Share Fallback Modal */}
+      <ShareModal 
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        title={activeVideo?.title || "Spiritual Lecture"}
+        url={typeof window !== "undefined" ? window.location.href : ""}
+      />
     </div>
   );
 }
