@@ -14,10 +14,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: "Server configuration missing (Admin API)" }, { status: 500 });
+    }
+
     const token = authHeader.split(" ")[1];
     
     // 1. Verify Privilege
-    const { data: { user }, error: authError } = await safeAuth(() => supabaseAdmin.auth.getUser(token), "Broadcast Auth");
+    const { data: { user }, error: authError } = await safeAuth(() => supabaseAdmin!.auth.getUser(token), "Broadcast Auth");
     if (authError || !user) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }

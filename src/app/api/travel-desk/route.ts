@@ -11,6 +11,11 @@ export async function GET(req: NextRequest) {
     if (!authHeader) return NextResponse.json({ error: "Auth required" }, { status: 401 });
 
     const token = authHeader.split(" ")[1];
+    
+    if (!supabaseAdmin) {
+        return NextResponse.json({ error: "Server configuration missing (Admin API)" }, { status: 500 });
+    }
+
     const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Travel Desk GET Auth");
     if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
@@ -27,7 +32,7 @@ export async function GET(req: NextRequest) {
     const isManager = profile?.role === 1 || profile?.role === 5;
     
     // Use supabaseAdmin for managers to bypass RLS and see all data
-    let dbQuery = (isManager ? supabaseAdmin : supabase)
+    let dbQuery = (isManager ? supabaseAdmin! : supabase)
         .from("travel_submissions")
         .select("*")
         .eq("is_deleted", false);
@@ -128,9 +133,11 @@ export async function PATCH(req: NextRequest) {
       const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Travel Desk PATCH Auth");
       if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   
+      if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
+
       // Check if user is Manager (Role 5) or Super Admin (Role 1)
       const { data: profile } = await safeQuery(async () => 
-        await supabaseAdmin.from("profiles").select("role").eq("id", user.id).single(),
+        await supabaseAdmin!.from("profiles").select("role").eq("id", user.id).single(),
         "Travel Desk PATCH Profile"
       );
       if (profile?.role !== 1 && profile?.role !== 5) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
