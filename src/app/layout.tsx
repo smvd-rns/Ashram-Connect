@@ -3,6 +3,7 @@ import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import AuthGuard from "@/components/AuthGuard";
 import PolicyModal from "@/components/PolicyModal";
+import NotificationManager from "@/components/NotificationManager";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -26,6 +27,7 @@ export default function RootLayout({
           {/* Main Content Area */}
           <main className="w-full pt-0 md:pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
             <AuthGuard>
+              <NotificationManager />
               {children}
             </AuthGuard>
           </main>
