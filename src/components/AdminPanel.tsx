@@ -135,7 +135,6 @@ export default function AdminPanel() {
   // Broadcast State
   const [bcTitle, setBcTitle] = useState("");
   const [bcBody, setBcBody] = useState("");
-  const [bcUrl, setBcUrl] = useState("");
   const [bcTarget, setBcTarget] = useState<"all" | "bcdb" | "manual">("all");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userSearchTerm, setUserSearchTerm] = useState("");
@@ -629,7 +628,6 @@ export default function AdminPanel() {
         body: JSON.stringify({ 
           title: bcTitle, 
           body: bcBody, 
-          url: bcUrl,
           target: bcTarget,
           userIds: Array.from(selectedUserIds)
         })
@@ -639,7 +637,6 @@ export default function AdminPanel() {
         setSubmitMessage({ type: "success", text: "Broadcast initiated successfully! Users will receive it shortly." });
         setBcTitle("");
         setBcBody("");
-        setBcUrl("");
       } else {
         const err = await res.json();
         setSubmitMessage({ type: "error", text: err.error || "Broadcast failed" });
@@ -2681,17 +2678,6 @@ export default function AdminPanel() {
                       value={bcBody}
                       onChange={(e) => setBcBody(e.target.value)}
                       className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all font-bold resize-none"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Target URL (Optional)</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. /travel-desk"
-                      value={bcUrl}
-                      onChange={(e) => setBcUrl(e.target.value)}
-                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all font-bold"
                     />
                   </div>
 

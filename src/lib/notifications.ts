@@ -75,14 +75,13 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
             },
             data: {
               url: payload.url || '/notifications', // Default to history page
-              click_action: 'FLUTTER_NOTIFICATION_CLICK', // Legacy but helpful for some bridges
               icon: payload.icon || '/favicon.ico'
             },
             android: {
               priority: 'high' as const,
               notification: {
                 channelId: 'default',
-                clickAction: 'TOP_STORY_ACTIVITY'
+                sound: 'default'
               }
             },
             apns: {
