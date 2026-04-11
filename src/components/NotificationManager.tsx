@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Bell, X, Info, CheckCircle, ExternalLink, AlertCircle } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 /**
  * Global Notification Manager
@@ -14,6 +14,7 @@ import Link from "next/link";
  * 3. Proactive permission prompting
  */
 export default function NotificationManager({ session }: { session: any }) {
+  const router = useRouter();
   const { pushEnabled, isSyncing, permission, subscribe, checkStatus } = usePushNotifications(session);
   const [activeToast, setActiveToast] = useState<{ title: string; body: string; url?: string } | null>(null);
 
@@ -42,6 +43,21 @@ export default function NotificationManager({ session }: { session: any }) {
     };
   }, [session]);
 
+  // 2. AUTO-DISMISS TOAST
+  useEffect(() => {
+    if (activeToast) {
+      const timer = setTimeout(() => setActiveToast(null), 5500); // Slightly more than progress bar
+      return () => clearTimeout(timer);
+    }
+  }, [activeToast]);
+
+  const handleToastClick = (url: string) => {
+    setActiveToast(null);
+    if (url) {
+      router.push(url);
+    }
+  };
+
   if (!session) return null;
 
   return (
@@ -59,7 +75,7 @@ export default function NotificationManager({ session }: { session: any }) {
         <div className="fixed top-4 sm:top-20 right-4 left-4 sm:left-auto z-[9999] sm:w-[400px] animate-in slide-in-from-top-4 sm:slide-in-from-right-8 duration-500">
           <div className="bg-white/95 backdrop-blur-3xl border-2 border-purple-500/20 rounded-3xl shadow-[0_20px_50px_rgba(147,51,234,0.15)] p-5 sm:p-6 ring-1 ring-black/5 overflow-hidden">
             {/* Countdown Progress Bar */}
-            <div className="absolute bottom-0 left-0 h-1 bg-purple-500/20 w-full">
+            <div className="absolute bottom-0 left-0 h-1 bg-purple-500/20 w-full text-white">
                <div className="h-full bg-purple-500 animate-out fade-out slide-out-to-left fill-mode-forwards duration-[5000ms]" />
             </div>
 
@@ -78,16 +94,15 @@ export default function NotificationManager({ session }: { session: any }) {
                    <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">New Alert</span>
                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <h4 className="font-black font-outfit text-slate-900 truncate mt-1 text-sm sm:text-base">{activeToast.title}</h4>
+                <h4 className="font-black font-outfit text-slate-900 mt-1 text-sm sm:text-base">{activeToast.title}</h4>
                 <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1 line-clamp-2 leading-relaxed">{activeToast.body}</p>
                 {activeToast.url && (
-                  <Link 
-                    href={activeToast.url} 
-                    onClick={() => setActiveToast(null)}
+                  <button 
+                    onClick={() => handleToastClick(activeToast.url!)}
                     className="inline-flex items-center gap-2 mt-4 text-[10px] font-black text-purple-600 uppercase tracking-[0.2em] hover:gap-3 transition-all"
                   >
                     View Details <ExternalLink className="w-3 h-3" />
-                  </Link>
+                  </button>
                 )}
               </div>
             </div>
