@@ -170,6 +170,25 @@ export default function TravelForm({ session, profile }: TravelFormProps) {
     }
   };
 
+  const handleTestPush = async () => {
+    try {
+      const res = await fetch('/api/notifications/test', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert(`Test Triggered! Found ${result.details.total_found} devices. Successful: ${result.details.sent_successfully}, Failed: ${result.details.failed_delivery}. Check your device!`);
+      } else {
+        alert(`Test Failed: ${result.message || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      alert(`Error triggering test: ${err.message}`);
+    }
+  };
+
   const fetchHistory = useCallback(async () => {
     try {
       const res = await fetch("/api/travel-desk", {
@@ -272,16 +291,28 @@ export default function TravelForm({ session, profile }: TravelFormProps) {
          </div>
          
          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 sm:gap-4">
-            <button 
-                onClick={subscribeUser}
-                disabled={pushEnabled || isSubscribing}
-                className={`flex items-center gap-2 px-4 py-3 rounded-2xl border transition-all ${pushEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-400 hover:border-emerald-200 hover:text-emerald-500'}`}
-            >
-                <Bell className={`w-4 h-4 ${pushEnabled ? 'fill-emerald-500' : ''}`} />
-                <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
-                    {isSubscribing ? 'Syncing...' : pushEnabled ? 'Alerts On' : 'Enable Push'}
-                </span>
-            </button>
+            <div className="flex items-center gap-2">
+                <button 
+                    onClick={subscribeUser}
+                    disabled={pushEnabled || isSubscribing}
+                    className={`flex items-center gap-2 px-4 py-3 rounded-2xl border transition-all ${pushEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-white border-2 border-slate-100 text-slate-400 hover:border-emerald-200 hover:text-emerald-500'}`}
+                >
+                    <Bell className={`w-4 h-4 ${pushEnabled ? 'fill-emerald-500' : ''}`} />
+                    <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
+                        {isSubscribing ? 'Syncing...' : pushEnabled ? 'Alerts On' : 'Enable Push'}
+                    </span>
+                </button>
+
+                {pushEnabled && (
+                    <button 
+                        onClick={handleTestPush}
+                        className="p-3 bg-white border-2 border-slate-100 text-slate-400 hover:border-amber-200 hover:text-amber-500 rounded-2xl transition-all shadow-sm active:scale-90 group"
+                        title="Send Test Notification"
+                    >
+                        <Send className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                    </button>
+                )}
+            </div>
             {!isFormOpen && !success && (
               <button 
                 onClick={() => setIsFormOpen(true)}

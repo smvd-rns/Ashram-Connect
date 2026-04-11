@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Loader2 } from "lucide-react";
 import { useProfile } from "@/hooks/useProfile";
 import AccessDenied from "./AccessDenied";
+import NotificationManager from "./NotificationManager";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -87,5 +88,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <NotificationManager session={session} />
+      {children}
+    </>
+  );
 }
