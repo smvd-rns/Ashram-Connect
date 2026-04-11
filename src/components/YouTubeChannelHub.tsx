@@ -648,17 +648,15 @@ export default function YouTubeChannelHub() {
                            }}
                            className="group flex flex-col text-left"
                         >
-                           <div className="relative w-full aspect-video">
-                              {/* Playlist Stack Effect - confined to thumbnail area */}
-                              {isPlaylist && (
-                                <>
-                                  <div className="absolute -top-1.5 left-0 right-0 h-full bg-slate-200/80 rounded-3xl -z-10 translate-y-1 scale-x-[0.96] border border-slate-300/30" />
-                                  <div className="absolute -top-3 left-0 right-0 h-full bg-slate-300/60 rounded-3xl -z-20 translate-y-2 scale-x-[0.92] border border-slate-400/20" />
-                                </>
-                              )}
-
-                              <div className="relative h-full w-full rounded-3xl overflow-hidden shadow-sm group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-500 border border-slate-100 bg-slate-200">
-                                 <Image src={item.thumbnail} alt={item.title} fill className="object-cover group-hover:scale-110 transition-transform duration-1000" unoptimized />
+                           <div className="relative w-full pb-[56.25%] rounded-3xl overflow-hidden shadow-sm group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-500 border border-slate-100 bg-slate-200">
+                                 <Image 
+                                   src={item.thumbnail} 
+                                   alt={item.title} 
+                                   fill 
+                                   className="object-cover object-center group-hover:scale-110 transition-all duration-700 opacity-0 data-[loaded=true]:opacity-100" 
+                                   onLoadingComplete={(img) => img.setAttribute('data-loaded', 'true')}
+                                   unoptimized 
+                                 />
                                  
                                  {/* Overlay Icons */}
                                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">

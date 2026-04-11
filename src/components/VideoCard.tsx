@@ -108,17 +108,18 @@ export default function VideoCard({
       >
         {/* Play trigger area */}
         <div className="flex flex-col h-full" onClick={() => onPlay(lecture.youtube_id)}>
-          <div className="relative aspect-video overflow-hidden">
+          <div className="relative w-full pb-[56.25%] overflow-hidden bg-slate-100">
             <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors z-10" />
             <Image 
               src={thumbUrl} 
               alt={lecture.title}
               onError={handleThumbError}
               fill
-              className="object-cover group-hover:scale-105 transition-transform duration-500 bg-slate-100"
+              className="object-cover object-center group-hover:scale-105 transition-all duration-700 opacity-0 data-[loaded=true]:opacity-100"
+              onLoadingComplete={(img) => img.setAttribute('data-loaded', 'true')}
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               priority={false}
-              unoptimized // This tells Vercel NOT to optimize the image, keeping you in the free plan
+              unoptimized
             />
             <div className="absolute inset-0 flex items-center justify-center z-20 opacity-0 group-hover:opacity-100 transition-opacity">
               <div className="bg-devo-500/90 text-white rounded-full p-4 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
