@@ -681,7 +681,6 @@ export default function YouTubeChannelHub() {
                                     )}
                                     <div className="px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/20 shadow-lg">
                                       {isPlaylist ? `${item.playlistCount || 0} VIDEOS` : "LECTURE"}
-                                    </div>
                                  </div>
                               </div>
                            </div>
