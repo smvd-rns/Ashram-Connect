@@ -136,6 +136,9 @@ export default function AdminPanel() {
   const [bcTitle, setBcTitle] = useState("");
   const [bcBody, setBcBody] = useState("");
   const [bcUrl, setBcUrl] = useState("");
+  const [bcTarget, setBcTarget] = useState<"all" | "bcdb" | "manual">("all");
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [userSearchTerm, setUserSearchTerm] = useState("");
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   
   // Push Notifications Hook
@@ -440,7 +443,7 @@ export default function AdminPanel() {
   };
 
   const fetchUsers = async () => {
-    if (!session || profile?.role !== 1) return;
+    if (!session || !isManager) return;
     setLoadingUsers(true);
     try {
       const response = await fetch("/api/admin/users", {
@@ -462,6 +465,7 @@ export default function AdminPanel() {
   // Fetch Data Hooks
   useEffect(() => {
     if (activeView === "users") fetchUsers();
+    if (activeView === "notifications") fetchUsers(); // Pre-load users for manual targeting
     if (activeView === "bc-class") fetchLectures();
     if (activeView === "youtube-channels") fetchYtChannels();
     if (activeView === "usage-analytics") fetchAnalytics();
@@ -470,7 +474,7 @@ export default function AdminPanel() {
       fetchAttendanceMappings();
       fetchUsers(); // Required for email suggestions
     }
-  }, [activeView, session, profile?.role, isSuperAdmin]);
+  }, [activeView, session, profile?.role, isSuperAdmin, isManager]);
 
 
   const roleNames: Record<number, string> = {
@@ -625,7 +629,9 @@ export default function AdminPanel() {
         body: JSON.stringify({ 
           title: bcTitle, 
           body: bcBody, 
-          url: bcUrl 
+          url: bcUrl,
+          target: bcTarget,
+          userIds: Array.from(selectedUserIds)
         })
       });
       
@@ -2689,22 +2695,95 @@ export default function AdminPanel() {
                     />
                   </div>
 
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Target Audience</label>
+                    <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-2xl">
+                       <button 
+                        type="button"
+                        onClick={() => setBcTarget("all")}
+                        className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${bcTarget === 'all' ? 'bg-white text-devo-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                         Everyone
+                       </button>
+                       <button 
+                        type="button"
+                        onClick={() => setBcTarget("bcdb")}
+                        className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${bcTarget === 'bcdb' ? 'bg-white text-devo-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                         BCDB Only
+                       </button>
+                       <button 
+                        type="button"
+                        onClick={() => setBcTarget("manual")}
+                        className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${bcTarget === 'manual' ? 'bg-white text-devo-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                         Select Users
+                       </button>
+                    </div>
+                  </div>
+
+                  {bcTarget === "manual" && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                          type="text"
+                          placeholder="Search users to include..."
+                          value={userSearchTerm}
+                          onChange={(e) => setUserSearchTerm(e.target.value)}
+                          className="w-full pl-12 pr-6 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all text-xs font-bold"
+                        />
+                      </div>
+                      
+                      <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                         {users.filter(u => u.full_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email?.toLowerCase().includes(userSearchTerm.toLowerCase())).map(u => (
+                           <label key={u.id} className={`flex items-center gap-4 p-3 rounded-xl border-2 transition-all cursor-pointer ${selectedUserIds.has(u.id) ? 'bg-purple-50 border-purple-200' : 'bg-white border-slate-50 hover:border-slate-100'}`}>
+                             <input 
+                              type="checkbox" 
+                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500" 
+                              checked={selectedUserIds.has(u.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedUserIds);
+                                if (e.target.checked) next.add(u.id);
+                                else next.delete(u.id);
+                                setSelectedUserIds(next);
+                              }}
+                             />
+                             <div className="flex-1 min-w-0">
+                               <p className="text-xs font-black text-devo-950 truncate">{u.full_name || 'Anonymous'}</p>
+                               <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-tighter">{u.email}</p>
+                             </div>
+                             {u.role === 1 && <Shield className="w-3 h-3 text-purple-400" />}
+                           </label>
+                         ))}
+                      </div>
+                      <div className="flex justify-between items-center px-2">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{selectedUserIds.size} Users Selected</p>
+                         <button 
+                          type="button" 
+                          onClick={() => setSelectedUserIds(new Set())}
+                          className="text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline">
+                           Clear All
+                         </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 flex gap-4">
                     <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-1" />
                     <p className="text-[10px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
-                      This will send a notification to <span className="font-black underline">Every</span> user who has enabled alerts on their laptop or mobile. Use responsibly for important announcements only.
+                      {bcTarget === 'all' && <>This will send a notification to <span className="font-black underline">Every</span> registered user.</>}
+                      {bcTarget === 'bcdb' && <>This will target only users found in the <span className="font-black">Bhakti Center Database</span>.</>}
+                      {bcTarget === 'manual' && <>This will target the <span className="font-black">{selectedUserIds.size} specific users</span> you have selected above.</>}
                     </p>
                   </div>
 
                   <button 
-                    disabled={isBroadcasting || !bcTitle || !bcBody}
+                    disabled={isBroadcasting || !bcTitle || !bcBody || (bcTarget === 'manual' && selectedUserIds.size === 0)}
                     className="w-full py-5 bg-devo-950 hover:bg-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-slate-200 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3 active:scale-95"
                   >
                     {isBroadcasting ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
-                        <Globe className="w-5 h-5" /> Send Broadcast to All
+                        <Globe className="w-5 h-5" /> {bcTarget === 'all' ? 'Send Broadcast to All' : bcTarget === 'bcdb' ? 'Send to BCDB Members' : `Send to ${selectedUserIds.size} Selected Users`}
                       </>
                     )}
                   </button>

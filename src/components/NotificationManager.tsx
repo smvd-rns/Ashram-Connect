@@ -24,16 +24,29 @@ export default function NotificationManager({ session }: { session: any }) {
 
     console.log("[NotificationManager] Initializing Realtime fallback...");
     const channel = supabase.channel('broadcast_notifications')
-      .on('broadcast', { event: 'new_alert' }, (payload) => {
+      .on('broadcast', { event: 'new_alert' }, async (payload) => {
         console.log("[NotificationManager] Realtime alert received:", payload);
-        const { title, body, url } = payload.payload;
+        const { title, body, url, target_type, recipient_ids } = payload.payload;
         
-        // Show In-App Toast
-        setActiveToast({ title, body, url });
+        // 1. Identity Check for privacy
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-        // Trigger native notification if push failed or as double-delivery
-        if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(title, { body, icon: "/favicon.ico" });
+        // 2. Fetch role for Manager override
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        const isAdmin = profile?.role === 1 || profile?.role === 5;
+
+        // 3. Privacy Filter
+        const canSee = isAdmin || target_type === 'all' || recipient_ids?.includes(user.id);
+
+        if (canSee) {
+          // Show In-App Toast
+          setActiveToast({ title, body, url });
+
+          // Trigger native notification if push failed or as double-delivery
+          if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(title, { body, icon: "/favicon.ico" });
+          }
         }
       })
       .subscribe();
@@ -62,14 +75,6 @@ export default function NotificationManager({ session }: { session: any }) {
 
   return (
     <>
-      {/* 0. Proactive Sync Indicator (Mobile only, subtle) */}
-      {isSyncing && (
-        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[10000] bg-slate-900/80 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 flex items-center gap-2 animate-pulse">
-           <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-ping" />
-           <span className="text-[9px] font-black text-white uppercase tracking-widest">Syncing App Alerts...</span>
-        </div>
-      )}
-
       {/* 1. Global In-App Toast (Realtime Fallback) */}
       {activeToast && (
         <div className="fixed top-4 sm:top-20 right-4 left-4 sm:left-auto z-[9999] sm:w-[400px] animate-in slide-in-from-top-4 sm:slide-in-from-right-8 duration-500">

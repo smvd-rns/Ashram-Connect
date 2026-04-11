@@ -57,7 +57,7 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
           await webpush.sendNotification(s.subscription, JSON.stringify({
             title: payload.title,
             body: payload.body,
-            url: payload.url || '/',
+            url: payload.url || '/notifications', // Default to history page
             icon: payload.icon || '/favicon.ico',
             badge: payload.badge || '/favicon.ico'
           }));
@@ -74,13 +74,15 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
               body: payload.body,
             },
             data: {
-              url: payload.url || '/',
+              url: payload.url || '/notifications', // Default to history page
+              click_action: 'FLUTTER_NOTIFICATION_CLICK', // Legacy but helpful for some bridges
               icon: payload.icon || '/favicon.ico'
             },
             android: {
               priority: 'high' as const,
               notification: {
-                channelId: 'default'
+                channelId: 'default',
+                clickAction: 'TOP_STORY_ACTIVITY'
               }
             },
             apns: {
