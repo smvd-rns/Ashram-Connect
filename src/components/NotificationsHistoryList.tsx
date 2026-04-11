@@ -71,7 +71,7 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
   };
 
   useEffect(() => {
-    if (userId !== undefined) {
+    if (authReady) {
       fetchHistory();
     }
 
@@ -98,7 +98,7 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [limit, userId, isManager]);
+  }, [limit, userId, isManager, authReady]);
 
   if (loading) {
     return (
