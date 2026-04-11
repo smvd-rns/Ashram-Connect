@@ -5,9 +5,10 @@ import {
   Plane, Calendar, Mail, User, MapPin, 
   MessageSquare, Users, CheckCircle, 
   Loader2, Filter, Bell, Clock,
-  ChevronRight, Search, Briefcase, ShieldCheck
+  ChevronRight, Search, Briefcase, ShieldCheck, AlertCircle
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 interface TravelSubmission {
   id: string;
@@ -33,118 +34,9 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'All' | 'Pending' | 'Processed'>('All');
   const [searchQuery, setSearchQuery] = useState("");
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [isSubscribing, setIsSubscribing] = useState(false);
-
-  // Helper: Convert VAPID key
-  const urlBase64ToUint8Array = (base64String: string) => {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  };
-
-  const checkSubscription = useCallback(async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    setPushEnabled(!!subscription);
-  }, []);
-
-  // Register FCM Token from Native Bridge
-  useEffect(() => {
-    (window as any).registerFcmToken = async (fcmToken: string) => {
-      console.log("FCM Token received from native bridge:", fcmToken);
-      try {
-        const res = await fetch('/api/notifications/subscribe', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({ 
-              subscription: { token: fcmToken },
-              provider: 'fcm',
-              device_type: 'mobile' 
-          })
-        });
-        if (res.ok) {
-          setPushEnabled(true);
-          console.log("FCM token registered successfully.");
-        }
-      } catch (err) {
-        console.error("FCM registration failed:", err);
-      }
-    };
-  }, [session.access_token]);
-
-  const subscribeUser = async () => {
-    setIsSubscribing(true);
-    try {
-      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-        alert("Push notifications require HTTPS to work securely. Please ensure you are on a secure connection.");
-        setIsSubscribing(false);
-        return;
-      }
-
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        alert("Your browser/device doesn't support background notifications. Try using Chrome or Edge.");
-        setIsSubscribing(false);
-        return;
-      }
-
-      console.log("Registering Service Worker...");
-      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      await navigator.serviceWorker.ready;
-      console.log("Service Worker Ready.");
-
-      const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!publicVapidKey) {
-        throw new Error("VAPID public key is missing from environment. Please contact administrator.");
-      }
-
-      console.log("Requesting Push Subscription...");
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
-      });
-
-      console.log("Subscription obtained, sending to server...");
-      const res = await fetch('/api/notifications/subscribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ 
-            subscription,
-            device_type: window.innerWidth < 768 ? 'mobile' : 'desktop' 
-        })
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to save subscription on server");
-      }
-
-      setPushEnabled(true);
-      alert("Success! Manager background notifications are now active on this device.");
-    } catch (err: any) {
-      console.error("Subscription critical failure:", err);
-      if (err.name === 'NotAllowedError') {
-          alert("Permission Denied: Please reset your browser notification permissions for this site and try again.");
-      } else {
-          alert(`Activation Failed: ${err.message || 'Unknown error'}`);
-      }
-    } finally {
-      setIsSubscribing(false);
-    }
-  };
+  
+  // Centralized Push Notifications
+  const { pushEnabled, isSubscribing, subscribe: subscribeUser } = usePushNotifications(session);
 
   const fetchSubmissions = useCallback(async () => {
     try {
@@ -162,7 +54,6 @@ export default function TravelAdminView({ session, profile }: TravelAdminViewPro
 
   useEffect(() => {
     fetchSubmissions();
-    checkSubscription();
 
     // Realtime Subscription
     const channel = supabase

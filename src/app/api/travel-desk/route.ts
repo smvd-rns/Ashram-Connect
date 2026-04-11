@@ -1,79 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import webpush from "web-push";
 import { safeAuth, safeQuery } from "@/lib/resilient-db";
+import { sendPushToUsers, notifyManagers } from "@/lib/notifications";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-import admin from "@/lib/firebase-admin";
-
-/**
- * Helper: Send Push Notification to a user or group of users
- */
-async function sendPushToUsers(userIds: string[], payload: any) {
-  try {
-    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    const privateKey = process.env.VAPID_PRIVATE_KEY;
-
-    // Fetch all subscriptions for these users (Web and FCM)
-    const { data: subs, error } = await supabase
-      .from("push_subscriptions")
-      .select("subscription, provider")
-      .in("user_id", userIds);
-
-    if (error || !subs) return;
-
-    const pushPromises = subs.map(async (s) => {
-      // CHANNEL 1: Web Push (Browsers)
-      if (!s.provider || s.provider === 'web-push') {
-        if (!publicKey || !privateKey) return;
-        
-        webpush.setVapidDetails('mailto:shyam@ashramconnect.com', publicKey, privateKey);
-        
-        return webpush.sendNotification(s.subscription, JSON.stringify(payload))
-          .catch(err => {
-            if (err.statusCode === 410) {
-              supabase.from("push_subscriptions").delete().eq("subscription_key", err.endpoint);
-            }
-          });
-      }
-
-      // CHANNEL 2: Firebase FCM (Mobile App)
-      if (s.provider === 'fcm' && s.subscription?.token) {
-        try {
-          const message = {
-            token: s.subscription.token,
-            notification: {
-              title: payload.title,
-              body: payload.body,
-            },
-            data: {
-              url: payload.url || '/',
-              icon: payload.icon || '/favicon.ico'
-            },
-            android: {
-              priority: 'high' as const,
-              notification: {
-                clickAction: 'FLUTTER_NOTIFICATION_CLICK', // Common for wrappers
-                channelId: 'default'
-              }
-            }
-          };
-          return admin.messaging().send(message);
-        } catch (fcmErr) {
-          console.error("FCM delivery failed:", fcmErr);
-        }
-      }
-    });
-
-    await Promise.allSettled(pushPromises);
-  } catch (err) {
-    console.error("Push helper error:", err);
-  }
-}
 
 // GET: Fetch submissions (Manager only)
 export async function GET(req: NextRequest) {
@@ -85,9 +14,9 @@ export async function GET(req: NextRequest) {
     const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Travel Desk GET Auth");
     if (authError || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
-    // Fetch Role
+    // Fetch Role (Use supabaseAdmin to ensure we can see the user's role regardless of RLS)
     const { data: profile } = await safeQuery(async () => 
-        await supabase
+        await supabaseAdmin
             .from("profiles")
             .select("role")
             .eq("id", user.id)
@@ -95,10 +24,16 @@ export async function GET(req: NextRequest) {
         "Travel Desk GET Profile"
     );
 
-    let dbQuery = supabase.from("travel_submissions").select("*").eq("is_deleted", false);
+    const isManager = profile?.role === 1 || profile?.role === 5;
+    
+    // Use supabaseAdmin for managers to bypass RLS and see all data
+    let dbQuery = (isManager ? supabaseAdmin : supabase)
+        .from("travel_submissions")
+        .select("*")
+        .eq("is_deleted", false);
 
-    // If NOT manager (Role 5) or Super Admin (Role 1), restrict to OWN data
-    if (profile?.role !== 1 && profile?.role !== 5) {
+    // If NOT manager, restrict to OWN data
+    if (!isManager) {
       dbQuery = dbQuery.or(`user_id.eq.${user.id},email_id.ilike.${user.email}`);
     }
 
@@ -168,20 +103,12 @@ export async function POST(req: NextRequest) {
 
     // BACKGROUND TASK: Notify All Managers (Role 5) and Super Admins (Role 1)
     (async () => {
-        const { data: managers } = await supabase
-            .from("profiles")
-            .select("id")
-            .in("role", [1, 5]);
-        
-        if (managers && managers.length > 0) {
-            const managerIds = managers.map(m => m.id);
-            await sendPushToUsers(managerIds, {
-                title: "New Travel Request!",
-                body: `${devotee_name} has logged a new movement to ${places_of_travel}.`,
-                url: "/travel-desk",
-                icon: "/favicon.ico"
-            });
-        }
+        await notifyManagers({
+            title: "New Travel Request!",
+            body: `${devotee_name} has logged a new movement to ${places_of_travel}.`,
+            url: "/travel-desk",
+            icon: "/favicon.ico"
+        });
     })();
 
     return NextResponse.json({ data });
@@ -203,7 +130,7 @@ export async function PATCH(req: NextRequest) {
   
       // Check if user is Manager (Role 5) or Super Admin (Role 1)
       const { data: profile } = await safeQuery(async () => 
-        await supabase.from("profiles").select("role").eq("id", user.id).single(),
+        await supabaseAdmin.from("profiles").select("role").eq("id", user.id).single(),
         "Travel Desk PATCH Profile"
       );
       if (profile?.role !== 1 && profile?.role !== 5) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });

@@ -15,6 +15,11 @@ if (!admin.apps.length) {
         serviceAccount = JSON.parse(decoded);
       }
 
+      // Sanitize private key if it's escaped
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });

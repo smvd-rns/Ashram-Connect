@@ -20,8 +20,9 @@ import { useProfile } from "@/hooks/useProfile";
 import AttendanceTracing from "./AttendanceTracing";
 import BCDBManager from "./BCDBManager";
 import AdminPolicyManager from "./AdminPolicyManager";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
-type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing" | "bcdb" | "policies";
+type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing" | "bcdb" | "policies" | "notifications";
 
 export default function AdminPanel() {
   const searchParams = useSearchParams();
@@ -129,6 +130,17 @@ export default function AdminPanel() {
   const [newMachineStart, setNewMachineStart] = useState("02:00:00");
   const [newMachineEnd, setNewMachineEnd] = useState("07:30:00");
   const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
+  
+  // Broadcast State
+  const [bcTitle, setBcTitle] = useState("");
+  const [bcBody, setBcBody] = useState("");
+  const [bcUrl, setBcUrl] = useState("");
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [bcHistory, setBcHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // Push Notifications Hook
+  const { pushEnabled, subscribe: subscribePush, permission: pushPermission } = usePushNotifications(session);
 
   const totalAnalyticsPages = Math.ceil((history || []).length / rowsPerPage);
   const totalExpandedPages = Math.ceil((expandedUsers || []).length / expandedRowsPerPage);
@@ -445,6 +457,7 @@ export default function AdminPanel() {
   };
 
   const isSuperAdmin = profile?.role === 1;
+  const isManager = isSuperAdmin || profile?.role === 5;
   const canUploadVideos = isSuperAdmin || profile?.role === 2;
 
   // Fetch Data Hooks
@@ -453,6 +466,7 @@ export default function AdminPanel() {
     if (activeView === "bc-class") fetchLectures();
     if (activeView === "youtube-channels") fetchYtChannels();
     if (activeView === "usage-analytics") fetchAnalytics();
+    if (activeView === "notifications") fetchBroadcastHistory();
     if (activeView === "attendance-machines" && isSuperAdmin) {
       fetchAttendanceConfig();
       fetchAttendanceMappings();
@@ -594,6 +608,63 @@ export default function AdminPanel() {
 
   const handleEmailAuth = async (e: any) => {
     // Moved to AuthUI
+  };
+
+  const handleBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bcTitle || !bcBody) return;
+    
+    setIsBroadcasting(true);
+    setSubmitMessage(null);
+    
+    try {
+      const res = await fetch("/api/notifications/broadcast", {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ 
+          title: bcTitle, 
+          body: bcBody, 
+          url: bcUrl 
+        })
+      });
+      
+      if (res.ok) {
+        setSubmitMessage({ type: "success", text: "Broadcast initiated successfully! Users will receive it shortly." });
+        setBcTitle("");
+        setBcBody("");
+        setBcUrl("");
+        fetchBroadcastHistory();
+      } else {
+        const err = await res.json();
+        setSubmitMessage({ type: "error", text: err.error || "Broadcast failed" });
+      }
+    } catch (err) {
+      setSubmitMessage({ type: "error", text: "Network error during broadcast" });
+    } finally {
+      setIsBroadcasting(false);
+      setTimeout(() => setSubmitMessage(null), 5000);
+    }
+  };
+
+  const fetchBroadcastHistory = async () => {
+    if (!session || !isManager) return;
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from("notifications_history")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      
+      if (data) setBcHistory(data);
+    } catch (err) {
+      console.error("History fetch error:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   const extractYouTubeId = (url: string) => {
@@ -830,6 +901,27 @@ export default function AdminPanel() {
               <p className="text-slate-400 font-bold text-[10px] sm:text-base uppercase tracking-[0.2em]">Platform Resource Manager</p>
             </div>
 
+            {/* Notification Setup Banner for Managers */}
+            {isManager && !pushEnabled && (
+              <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 sm:p-8 rounded-[2rem] text-white shadow-2xl shadow-purple-200 border border-white/20 flex flex-col sm:flex-row items-center justify-between gap-6 animate-pulse hover:animate-none group transition-all">
+                <div className="flex items-center gap-6 text-center sm:text-left">
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md group-hover:scale-110 transition-transform">
+                    <AlertCircle className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black font-outfit">Action Required: Enable Alerts</h3>
+                    <p className="text-white/80 font-medium text-sm mt-1">You are missing travel desk alerts. Enable push notifications to receive instant mobile updates.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => subscribePush().catch(e => setSubmitMessage({ type: "error", text: "Permission Blocked: Enable in settings" }))}
+                  className="bg-white text-purple-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-xl active:scale-95 whitespace-nowrap"
+                >
+                  Enable Notifications Now
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
               {/* BC Class Card */}
               {canUploadVideos && (
@@ -934,6 +1026,28 @@ export default function AdminPanel() {
                       <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Manage biometric devices, authorize new serial numbers, and tune ingestion windows.</p>
                     </div>
                     <div className="flex items-center gap-2 text-cyan-600 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
+                      Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              {/* Notification Center Card */}
+              {isManager && (
+                <button 
+                  onClick={() => navigateToView("notifications")}
+                  className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-purple-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 hidden sm:block" />
+                  <div className="relative z-10 w-12 h-12 sm:w-16 sm:h-16 bg-purple-600 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-purple-100 group-hover:-rotate-6 transition-transform shrink-0">
+                    <Mail className="w-6 h-6 sm:w-8 sm:h-8" />
+                  </div>
+                  <div className="relative z-10 sm:mt-4 flex-1 min-w-0">
+                    <div>
+                      <h3 className="text-lg sm:text-2xl font-black text-devo-950 uppercase tracking-tight sm:normal-case">Notification Center</h3>
+                      <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-0.5 sm:mt-1 leading-relaxed line-clamp-1 sm:line-clamp-none">Send important broadcast alerts and updates to all registered members.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-purple-600 font-black text-[10px] uppercase tracking-widest mt-1 sm:mt-4">
                       Enter <ArrowRight className="w-3 h-3 group-hover:translate-x-2 transition-transform" />
                     </div>
                   </div>
@@ -2531,6 +2645,125 @@ export default function AdminPanel() {
   </div>
 )}
 </div>
+        )}
+
+        {/* VIEW: Notification Center (Broadcast) */}
+        {activeView === "notifications" && isManager && (
+          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 pb-20">
+            <button 
+              onClick={() => navigateToView("home")}
+              className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
+            </button>
+
+            <div className="max-w-3xl mx-auto">
+              <div className="bg-white p-8 sm:p-12 rounded-[2.5rem] shadow-2xl border border-slate-200">
+                <div className="text-center mb-10">
+                  <div className="w-20 h-20 bg-purple-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-purple-100 shadow-sm">
+                    <Mail className="w-10 h-10 text-purple-600" />
+                  </div>
+                  <h2 className="text-3xl font-outfit font-black text-devo-950">Broadcast Center</h2>
+                  <p className="text-slate-400 font-medium mt-2">Send an instant push notification to all registered users.</p>
+                </div>
+
+                <form onSubmit={handleBroadcast} className="space-y-6">
+                  {submitMessage && (
+                    <div className={`p-4 rounded-2xl flex items-start gap-4 border ${submitMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                       {submitMessage.type === 'success' ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+                       <p className="text-sm font-bold">{submitMessage.text}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Notification Title</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Schedule Update"
+                      value={bcTitle}
+                      onChange={(e) => setBcTitle(e.target.value)}
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Message Body</label>
+                    <textarea 
+                      required
+                      placeholder="Enter the message you want users to see on their device..."
+                      rows={4}
+                      value={bcBody}
+                      onChange={(e) => setBcBody(e.target.value)}
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all font-bold resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Target URL (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. /travel-desk"
+                      value={bcUrl}
+                      onChange={(e) => setBcUrl(e.target.value)}
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all font-bold"
+                    />
+                  </div>
+
+                  <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 flex gap-4">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-1" />
+                    <p className="text-[10px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
+                      This will send a notification to <span className="font-black underline">Every</span> user who has enabled alerts on their laptop or mobile. Use responsibly for important announcements only.
+                    </p>
+                  </div>
+
+                  <button 
+                    disabled={isBroadcasting || !bcTitle || !bcBody}
+                    className="w-full py-5 bg-devo-950 hover:bg-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-slate-200 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3 active:scale-95"
+                  >
+                    {isBroadcasting ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Globe className="w-5 h-5" /> Send Broadcast to All
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Broadcast History List */}
+              <div className="mt-12 bg-white/50 backdrop-blur-sm p-8 sm:p-10 rounded-[2.5rem] border border-slate-200">
+                <h3 className="text-xl font-black font-outfit text-devo-950 mb-6 flex items-center gap-3">
+                  <Clock className="w-5 h-5 text-slate-400" /> Recent Activity
+                </h3>
+                
+                {loadingHistory ? (
+                   <div className="py-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-purple-200" /></div>
+                ) : bcHistory.length === 0 ? (
+                   <div className="py-10 text-center text-slate-400 font-bold italic text-sm">No recent broadcasts found</div>
+                ) : (
+                  <div className="space-y-4">
+                    {bcHistory.map(h => (
+                      <div key={h.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="flex-1">
+                             <h4 className="font-black text-slate-900 text-sm leading-tight">{h.title}</h4>
+                             <p className="text-xs text-slate-500 mt-1 leading-relaxed">{h.body}</p>
+                             <div className="flex items-center gap-3 mt-3">
+                               <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md uppercase tracking-wider">{new Date(h.created_at).toLocaleDateString()}</span>
+                               {h.url !== '/' && <span className="text-[10px] font-bold text-slate-300">Target: {h.url}</span>}
+                             </div>
+                          </div>
+                          <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* VIEW: Attendance Tracing */}
