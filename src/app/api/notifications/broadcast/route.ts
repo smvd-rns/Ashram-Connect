@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: profile } = await safeQuery(async () => 
-      await supabaseAdmin.from("profiles").select("role").eq("id", user.id).single(),
+      await supabaseAdmin!.from("profiles").select("role").eq("id", user.id).single(),
       "Broadcast Profile Check"
     );
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Save to History (Optional failure)
-    const { error: historyError } = await supabaseAdmin
+    const { error: historyError } = await supabaseAdmin!
         .from("notifications_history")
         .insert({
             title,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         console.log(`Starting multi-channel broadcast: ${title}`);
         
         // A. REALTIME BROADCAST (For active users)
-        await supabaseAdmin.channel('broadcast_notifications').send({
+        await supabaseAdmin!.channel('broadcast_notifications').send({
             type: 'broadcast',
             event: 'new_alert',
             payload: { title, body, url: url || '/', icon: icon || '/favicon.ico' }
