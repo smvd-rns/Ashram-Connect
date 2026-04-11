@@ -2,7 +2,24 @@ import { NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { safeAuth, safeQuery } from "@/lib/resilient-db";
 
-// Helper to check for Super Admin role
+// Helper to check for Manager or higher role (Role 1 or 5)
+async function checkManager(token: string) {
+  const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Check Admin User");
+  if (authError || !user) return false;
+
+  const { data: profile } = await safeQuery(async () => 
+    await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single(),
+    "Check Admin Role"
+  );
+
+  return profile?.role === 1 || profile?.role === 5;
+}
+
+// Helper to check for Super Admin role (Strictly Role 1)
 async function checkSuperAdmin(token: string) {
   const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Check Admin User");
   if (authError || !user) return false;
@@ -27,8 +44,8 @@ export async function GET(request: Request) {
     }
 
     const token = authHeader.split(" ")[1];
-    if (!(await checkSuperAdmin(token))) {
-      return NextResponse.json({ error: "Access Denied: Super Admin Only" }, { status: 403 });
+    if (!(await checkManager(token))) {
+      return NextResponse.json({ error: "Access Denied: Management Privilege Required" }, { status: 403 });
     }
 
     // List all user profiles

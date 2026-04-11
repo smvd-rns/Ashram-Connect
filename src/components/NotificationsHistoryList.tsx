@@ -9,22 +9,56 @@ interface NotificationRecord {
   title: string;
   body: string;
   url: string;
+  target_type: string;
+  recipient_ids: string[];
   created_at: string;
 }
 
 export default function NotificationsHistoryList({ limit = 10 }: { limit?: number }) {
   const [history, setHistory] = useState<NotificationRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isManager, setIsManager] = useState(false);
+
+  useEffect(() => {
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserId(session.user.id);
+        // Check role
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+        
+        if (profile?.role === 1 || profile?.role === 5) {
+          setIsManager(true);
+        }
+      }
+    }
+    getSession();
+  }, []);
 
   const fetchHistory = async () => {
-    setLoading(true);
+    if (loading && history.length === 0) setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("notifications_history")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(limit);
       
+      // Privacy Filter: Only restrict if NOT a manager
+      if (!isManager && userId) {
+        // Strict recipient check using Postgres array comparison (contains)
+        query = query.or(`target_type.eq.all,recipient_ids.cs.{"${userId}"}`);
+      } else if (!userId) {
+        // Explicitly only show public broadcasts if user identity is missing
+        query = query.eq('target_type', 'all');
+      }
+
+      const { data, error } = await query;
       if (data) setHistory(data);
     } catch (err) {
       console.error("History fetch error:", err);
@@ -34,7 +68,9 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
   };
 
   useEffect(() => {
-    fetchHistory();
+    if (userId !== undefined) {
+      fetchHistory();
+    }
 
     // Subscribe to new notifications in real-time
     const channel = supabase
@@ -42,7 +78,16 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
       .on('postgres_changes', 
         { event: 'INSERT', schema: 'public', table: 'notifications_history' }, 
         (payload) => {
-          setHistory(prev => [payload.new as NotificationRecord, ...prev].slice(0, limit));
+          const newItem = payload.new as NotificationRecord;
+          
+          // Apply privacy logic to real-time updates as well
+          const canSee = isManager || 
+                        newItem.target_type === 'all' || 
+                        newItem.recipient_ids?.includes(userId || '');
+
+          if (canSee) {
+            setHistory(prev => [newItem, ...prev].slice(0, limit));
+          }
         }
       )
       .subscribe();
@@ -50,7 +95,7 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [limit]);
+  }, [limit, userId, isManager]);
 
   if (loading) {
     return (
