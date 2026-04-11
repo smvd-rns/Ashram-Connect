@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch Role (Use supabaseAdmin to ensure we can see the user's role regardless of RLS)
     const { data: profile } = await safeQuery(async () => 
-        await supabaseAdmin
+        await supabaseAdmin!
             .from("profiles")
             .select("role")
             .eq("id", user.id)
