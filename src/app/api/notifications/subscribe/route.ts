@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     const subscriptionKey = provider === 'fcm' ? subscription.token : subscription.endpoint;
 
     //Upsert the subscription for this user and standardized key
+    console.log(`[PushServer] Syncing subscription for user ${user.id} (${provider})...`);
     const { error: dbError } = await supabase
       .from("push_subscriptions")
       .upsert({
@@ -51,11 +52,15 @@ export async function POST(req: NextRequest) {
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id, subscription_key' } as any);
 
-    if (dbError) throw dbError;
+    if (dbError) {
+      console.error("[PushServer] Database Error during upsert:", dbError.message);
+      throw dbError;
+    }
 
+    console.log(`[PushServer] Successfully synced subscription for ${user.id}`);
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Subscription Error:", error.message);
+    console.error("[PushServer] General Subscription Error:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
