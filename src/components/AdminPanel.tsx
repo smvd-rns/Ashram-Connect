@@ -21,6 +21,7 @@ import AttendanceTracing from "./AttendanceTracing";
 import BCDBManager from "./BCDBManager";
 import AdminPolicyManager from "./AdminPolicyManager";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import NotificationsHistoryList from "./NotificationsHistoryList";
 
 type ActiveView = "home" | "bc-class" | "users" | "youtube-channels" | "usage-analytics" | "attendance-machines" | "attendance-tracing" | "bcdb" | "policies" | "notifications";
 
@@ -136,8 +137,6 @@ export default function AdminPanel() {
   const [bcBody, setBcBody] = useState("");
   const [bcUrl, setBcUrl] = useState("");
   const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [bcHistory, setBcHistory] = useState<any[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
   
   // Push Notifications Hook
   const { pushEnabled, subscribe: subscribePush, permission: pushPermission } = usePushNotifications(session);
@@ -466,7 +465,6 @@ export default function AdminPanel() {
     if (activeView === "bc-class") fetchLectures();
     if (activeView === "youtube-channels") fetchYtChannels();
     if (activeView === "usage-analytics") fetchAnalytics();
-    if (activeView === "notifications") fetchBroadcastHistory();
     if (activeView === "attendance-machines" && isSuperAdmin) {
       fetchAttendanceConfig();
       fetchAttendanceMappings();
@@ -636,7 +634,6 @@ export default function AdminPanel() {
         setBcTitle("");
         setBcBody("");
         setBcUrl("");
-        fetchBroadcastHistory();
       } else {
         const err = await res.json();
         setSubmitMessage({ type: "error", text: err.error || "Broadcast failed" });
@@ -646,24 +643,6 @@ export default function AdminPanel() {
     } finally {
       setIsBroadcasting(false);
       setTimeout(() => setSubmitMessage(null), 5000);
-    }
-  };
-
-  const fetchBroadcastHistory = async () => {
-    if (!session || !isManager) return;
-    setLoadingHistory(true);
-    try {
-      const { data, error } = await supabase
-        .from("notifications_history")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(10);
-      
-      if (data) setBcHistory(data);
-    } catch (err) {
-      console.error("History fetch error:", err);
-    } finally {
-      setLoadingHistory(false);
     }
   };
 
@@ -2738,29 +2717,7 @@ export default function AdminPanel() {
                   <Clock className="w-5 h-5 text-slate-400" /> Recent Activity
                 </h3>
                 
-                {loadingHistory ? (
-                   <div className="py-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-purple-200" /></div>
-                ) : bcHistory.length === 0 ? (
-                   <div className="py-10 text-center text-slate-400 font-bold italic text-sm">No recent broadcasts found</div>
-                ) : (
-                  <div className="space-y-4">
-                    {bcHistory.map(h => (
-                      <div key={h.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
-                        <div className="flex justify-between items-start gap-4">
-                          <div className="flex-1">
-                             <h4 className="font-black text-slate-900 text-sm leading-tight">{h.title}</h4>
-                             <p className="text-xs text-slate-500 mt-1 leading-relaxed">{h.body}</p>
-                             <div className="flex items-center gap-3 mt-3">
-                               <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md uppercase tracking-wider">{new Date(h.created_at).toLocaleDateString()}</span>
-                               {h.url !== '/' && <span className="text-[10px] font-bold text-slate-300">Target: {h.url}</span>}
-                             </div>
-                          </div>
-                          <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <NotificationsHistoryList limit={10} />
               </div>
             </div>
           </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -125,6 +125,16 @@ export default function Navbar() {
                <>
                  <div className="fixed inset-0 z-10" onClick={() => setShowDesktopMore(false)} />
                  <div className="absolute top-full right-0 mt-3 w-64 bg-white/95 backdrop-blur-3xl rounded-3xl border border-slate-200/50 shadow-2xl p-2 z-20 animate-in zoom-in-95 fade-in duration-200">
+                    <NextLink 
+                      href="/notifications" 
+                      onClick={() => setShowDesktopMore(false)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/notifications' ? 'bg-purple-50 text-purple-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                    >
+                      <Bell className="w-4 h-4" />
+                      <span className="text-[10px] font-black uppercase tracking-widest flex-1">Notifications</span>
+                      <div className={`w-1 h-1 rounded-full bg-purple-500 ${pathname === '/notifications' ? 'opacity-100' : 'opacity-0'}`} />
+                    </NextLink>
+
                     {isBcdb && (
                       <NextLink 
                         href="/policy-manual" 
@@ -259,6 +269,16 @@ export default function Navbar() {
           />
           <div className="absolute bottom-[84px] left-4 right-4 bg-white/95 backdrop-blur-3xl rounded-[2rem] border border-slate-200/50 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-500">
             <div className="flex flex-col py-2">
+              <NextLink 
+                href="/notifications" 
+                onClick={() => setShowMoreMenu(false)}
+                className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/notifications' ? 'bg-purple-50/50' : 'hover:bg-slate-50'}`}
+              >
+                <Bell className={`w-4 h-4 ${pathname === '/notifications' ? 'text-purple-600' : 'text-slate-400'}`} />
+                <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/notifications' ? 'text-purple-900' : 'text-slate-600'}`}>Notifications</span>
+                <div className={`w-1.5 h-1.5 rounded-full bg-purple-500 ${pathname === '/notifications' ? 'opacity-100' : 'opacity-0'}`} />
+              </NextLink>
+
               {isBcdb && (
                 <NextLink 
                   href="/policy-manual" 

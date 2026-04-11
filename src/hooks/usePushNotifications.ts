@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 export function usePushNotifications(session: any) {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
@@ -22,11 +23,15 @@ export function usePushNotifications(session: any) {
     return outputArray;
   };
 
-  const syncSubscription = useCallback(async (subscription: PushSubscription, provider = 'web-push') => {
-    if (!session?.access_token) return;
+  const syncSubscription = useCallback(async (subscription: any, provider = 'web-push') => {
+    if (!session?.access_token) {
+      console.log("[PushDiag] No session, skipping sync.");
+      return;
+    }
     
+    setIsSyncing(true);
     try {
-      console.log(`[PushHook] Syncing ${provider} subscription with server...`);
+      console.log(`[PushDiag] Syncing ${provider} subscription with server...`);
       const res = await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: {
@@ -42,29 +47,51 @@ export function usePushNotifications(session: any) {
       
       if (res.ok) {
         setPushEnabled(true);
-        console.log("[PushHook] Server sync successful.");
+        console.log(`[PushDiag] Server sync successful (${provider}).`);
+      } else {
+        const err = await res.json();
+        console.error(`[PushDiag] Server sync failed: ${err.error}`);
       }
     } catch (err) {
-      console.error("[PushHook] Sync failed:", err);
+      console.error("[PushDiag] Network error during sync:", err);
+    } finally {
+      setIsSyncing(false);
     }
   }, [session?.access_token]);
 
   const checkStatus = useCallback(async () => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (typeof window === 'undefined') return;
+    
+    // Check if we are in a Native (FCM) environment first
+    const isNative = (window as any).isNativeApp === true;
+    
+    if (isNative) {
+      console.log("[PushDiag] Native environment detected. Waiting for FCM bridge...");
+      // For native, we rely on the registerFcmToken bridge callback
+      return;
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.log("[PushDiag] Push API not supported in this browser.");
+      return;
+    }
     
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
+      console.log("[PushDiag] Local subscription found:", !!subscription);
+      
       setPushEnabled(!!subscription);
       setPermission(Notification.permission);
       
-      // AUTO-SYNC: If we have a local subscription but it's not active on server 
-      // (or we just want to be sure), we sync it.
       if (subscription) {
+        console.log("[PushDiag] Proactively re-syncing existing web-push registration...");
         await syncSubscription(subscription);
+      } else {
+        console.log("[PushDiag] No local subscription found.");
       }
     } catch (err) {
-      console.error("[PushHook] Status check failed:", err);
+      console.error("[PushDiag] Status check failed:", err);
     }
   }, [syncSubscription]);
 
@@ -92,7 +119,7 @@ export function usePushNotifications(session: any) {
       setPermission(Notification.permission);
       return true;
     } catch (err) {
-      console.error("[PushHook] Subscription failed:", err);
+      console.error("[PushDiag] Subscription failed:", err);
       throw err;
     } finally {
       setIsSubscribing(false);
@@ -103,10 +130,15 @@ export function usePushNotifications(session: any) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    (window as any).registerFcmToken = async (fcmToken: string) => {
-      console.log("[PushHook] FCM Token received from bridge:", fcmToken);
+    console.log("[PushDiag] Setting up Global registerFcmToken listener.");
+    (window as any).registerFcmToken = (fcmToken: string) => {
+      console.log("[PushDiag] FCM Token received from native bridge:", fcmToken);
       const mockSub = { token: fcmToken } as any;
-      await syncSubscription(mockSub, 'fcm');
+      syncSubscription(mockSub, 'fcm');
+    };
+
+    return () => {
+      // Don't delete it on unmount as native might call it later
     };
   }, [syncSubscription]);
 
@@ -117,5 +149,5 @@ export function usePushNotifications(session: any) {
     }
   }, [session, checkStatus]);
 
-  return { pushEnabled, isSubscribing, permission, subscribe, checkStatus };
+  return { pushEnabled, isSubscribing, isSyncing, permission, subscribe, checkStatus };
 }
