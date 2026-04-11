@@ -1,5 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 
+// Global queue to catch FCM tokens before the hook is mounted
+let queuedFcmToken: string | null = null;
+if (typeof window !== 'undefined') {
+  (window as any).registerFcmToken = (token: string) => {
+    console.log("[PushDiag] Global catch: FCM Token queued.", token);
+    queuedFcmToken = token;
+    // If a listener is already attached, call it
+    if ((window as any).onFcmTokenReady) {
+      (window as any).onFcmTokenReady(token);
+    }
+  };
+}
+
 /**
  * Hook for managing push notifications across the app.
  * Handles auto-syncing local registration with the server.
@@ -24,14 +37,11 @@ export function usePushNotifications(session: any) {
   };
 
   const syncSubscription = useCallback(async (subscription: any, provider = 'web-push') => {
-    if (!session?.access_token) {
-      console.log("[PushDiag] No session, skipping sync.");
-      return;
-    }
+    if (!session?.access_token) return;
     
     setIsSyncing(true);
     try {
-      console.log(`[PushDiag] Syncing ${provider} subscription with server...`);
+      console.log(`[PushDiag] Proactively syncing ${provider} registration to server...`);
       const res = await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: {
@@ -47,13 +57,12 @@ export function usePushNotifications(session: any) {
       
       if (res.ok) {
         setPushEnabled(true);
-        console.log(`[PushDiag] Server sync successful (${provider}).`);
+        console.log(`[PushDiag] Auto-sync success (${provider}).`);
       } else {
-        const err = await res.json();
-        console.error(`[PushDiag] Server sync failed: ${err.error}`);
+        console.error("[PushDiag] Sync failed.");
       }
     } catch (err) {
-      console.error("[PushDiag] Network error during sync:", err);
+      console.error("[PushDiag] Sync error:", err);
     } finally {
       setIsSyncing(false);
     }
@@ -62,36 +71,34 @@ export function usePushNotifications(session: any) {
   const checkStatus = useCallback(async () => {
     if (typeof window === 'undefined') return;
     
-    // Check if we are in a Native (FCM) environment first
     const isNative = (window as any).isNativeApp === true;
+    setPermission(Notification.permission);
     
     if (isNative) {
-      console.log("[PushDiag] Native environment detected. Waiting for FCM bridge...");
-      // For native, we rely on the registerFcmToken bridge callback
+      console.log("[PushDiag] Native environment. Checking for queued token...");
+      if (queuedFcmToken) {
+        await syncSubscription({ token: queuedFcmToken }, 'fcm');
+      }
       return;
     }
 
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.log("[PushDiag] Push API not supported in this browser.");
-      return;
-    }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
-      console.log("[PushDiag] Local subscription found:", !!subscription);
       
       setPushEnabled(!!subscription);
-      setPermission(Notification.permission);
-      
+
       if (subscription) {
-        console.log("[PushDiag] Proactively re-syncing existing web-push registration...");
         await syncSubscription(subscription);
-      } else {
-        console.log("[PushDiag] No local subscription found.");
+      } else if (Notification.permission === 'granted') {
+        // COMPULSORY: If permission is granted but no subscription exists, create it silently!
+        console.log("[PushDiag] Permission granted but no record. SILENT SYNC STARTING...");
+        await subscribe(); // This handles SW and PushManager registration
       }
     } catch (err) {
-      console.error("[PushDiag] Status check failed:", err);
+      console.error("[PushDiag] Status check error:", err);
     }
   }, [syncSubscription]);
 
@@ -100,49 +107,47 @@ export function usePushNotifications(session: any) {
     setIsSubscribing(true);
     
     try {
-      // 1. Register Service Worker
+      console.log("[PushDiag] SILENT REGISTRATION IN PROGRESS...");
       const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       await navigator.serviceWorker.ready;
 
-      // 2. Get Public Key from env
       const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!publicVapidKey) throw new Error("VAPID public key missing");
+      if (!publicVapidKey) throw new Error("VAPID missing");
 
-      // 3. Subscribe via PushManager
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
       });
 
-      // 4. Send to server
       await syncSubscription(subscription);
       setPermission(Notification.permission);
       return true;
     } catch (err) {
-      console.error("[PushDiag] Subscription failed:", err);
+      console.error("[PushDiag] Silent registration failed:", err);
       throw err;
     } finally {
       setIsSubscribing(false);
     }
   };
 
-  // Setup Native Bridge for FCM (Mobile Apps)
+  // Bridge for Native Android Tokens
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    console.log("[PushDiag] Setting up Global registerFcmToken listener.");
-    (window as any).registerFcmToken = (fcmToken: string) => {
-      console.log("[PushDiag] FCM Token received from native bridge:", fcmToken);
-      const mockSub = { token: fcmToken } as any;
-      syncSubscription(mockSub, 'fcm');
+    (window as any).onFcmTokenReady = (token: string) => {
+      console.log("[PushDiag] FCM Token received via bridge callback.");
+      syncSubscription({ token }, 'fcm');
     };
 
-    return () => {
-      // Don't delete it on unmount as native might call it later
-    };
+    // If a token was already queued before this effect ran, process it now
+    if (queuedFcmToken) {
+      console.log("[PushDiag] Processing previously queued FCM token.");
+      syncSubscription({ token: queuedFcmToken }, 'fcm');
+      queuedFcmToken = null; // Mark as processed
+    }
   }, [syncSubscription]);
 
-  // Run initial check
+  // Initial check on mount/session change
   useEffect(() => {
     if (session) {
       checkStatus();
