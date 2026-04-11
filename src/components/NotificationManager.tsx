@@ -56,6 +56,20 @@ export default function NotificationManager({ session }: { session: any }) {
     };
   }, [session]);
 
+  // 1.5. NATIVE DEEP-LINK LISTENER (Fixes file:/// error)
+  useEffect(() => {
+    const handleDeepLink = (event: any) => {
+      const url = event.detail?.url;
+      if (url) {
+        console.log("[NotificationManager] Deep-link signal received:", url);
+        router.push(url);
+      }
+    };
+
+    window.addEventListener('app-deep-link', handleDeepLink);
+    return () => window.removeEventListener('app-deep-link', handleDeepLink);
+  }, [router]);
+
   // 2. AUTO-DISMISS TOAST
   useEffect(() => {
     if (activeToast) {
@@ -101,14 +115,6 @@ export default function NotificationManager({ session }: { session: any }) {
                 </div>
                 <h4 className="font-black font-outfit text-slate-900 mt-1 text-sm sm:text-base">{activeToast.title}</h4>
                 <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1 line-clamp-2 leading-relaxed">{activeToast.body}</p>
-                {activeToast.url && (
-                  <button 
-                    onClick={() => handleToastClick(activeToast.url!)}
-                    className="inline-flex items-center gap-2 mt-4 text-[10px] font-black text-purple-600 uppercase tracking-[0.2em] hover:gap-3 transition-all"
-                  >
-                    View Details <ExternalLink className="w-3 h-3" />
-                  </button>
-                )}
               </div>
             </div>
           </div>

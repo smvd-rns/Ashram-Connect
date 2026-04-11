@@ -144,15 +144,6 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
                   <p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed break-words">
                     {item.body}
                   </p>
-                  {item.url && item.url !== '/' && (
-                    <a 
-                      href={item.url} 
-                      className="inline-flex items-center gap-2 mt-4 text-[10px] font-black text-purple-600 uppercase tracking-widest hover:gap-3 transition-all"
-                    >
-                      View Linked Page
-                      <CheckCircle className="w-3.5 h-3.5" />
-                    </a>
-                  )}
                </div>
             </div>
           </div>
