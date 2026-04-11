@@ -2777,8 +2777,8 @@ export default function AdminPanel() {
               </div>
 
               {/* Broadcast History List */}
-              <div className="mt-12 bg-white/50 backdrop-blur-sm p-8 sm:p-10 rounded-[2.5rem] border border-slate-200">
-                <h3 className="text-xl font-black font-outfit text-devo-950 mb-6 flex items-center gap-3">
+              <div className="mt-8 sm:mt-12 bg-white/50 backdrop-blur-sm p-4 sm:p-10 rounded-[2.5rem] border border-slate-200">
+                <h3 className="text-lg sm:text-xl font-black font-outfit text-devo-950 mb-6 flex items-center gap-3">
                   <Clock className="w-5 h-5 text-slate-400" /> Recent Activity
                 </h3>
                 
