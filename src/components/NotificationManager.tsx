@@ -67,6 +67,23 @@ export default function NotificationManager({ session }: { session: any }) {
     };
 
     window.addEventListener('app-deep-link', handleDeepLink);
+
+    // 1.6. STARTUP PERSISTENCE CHECK (Fixes Cold-Start Race Condition)
+    const checkPendingLink = () => {
+      try {
+        const pending = localStorage.getItem('pending_deep_link');
+        if (pending) {
+          console.log("[NotificationManager] Found pending startup link:", pending);
+          localStorage.removeItem('pending_deep_link');
+          setTimeout(() => router.push(pending), 500); // Small delay to ensure router is warm
+        }
+      } catch (err) {
+        console.error("[NotificationManager] Storage check error:", err);
+      }
+    };
+
+    checkPendingLink();
+
     return () => window.removeEventListener('app-deep-link', handleDeepLink);
   }, [router]);
 
