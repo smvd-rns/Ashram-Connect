@@ -289,26 +289,9 @@ export default function OptimizedVideoPlayer({
             }}
           />
 
-          {/* 
-              PAUSED INTERCEPTOR: When paused, YouTube displays a "More Videos" grid.
-              We place an overlay above the controls to block these related video clicks
-              while allowing the user to click to Resume.
-          */}
-          {currentState === (window as any).YT?.PlayerState?.PAUSED && (
-            <div 
-              className="absolute inset-x-0 top-0 bottom-[14%] z-40 bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group"
-              onClick={(e) => {
-                e.stopPropagation();
-                playerInstance.current?.playVideo();
-              }}
-            >
-               <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="w-8 h-8 flex items-center justify-center">
-                    <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[14px] border-l-white border-b-[8px] border-b-transparent ml-1" />
-                  </div>
-               </div>
-            </div>
-          )}
+          {/* Paused interceptor removed — YouTube's native controls handle tap-to-resume.
+              The overlay was causing a visible blur layer whenever the video was system-paused
+              (e.g. screen lock), which confused users on unlock. */}
         </>
       )}
     </div>
