@@ -34,8 +34,18 @@ export default function OptimizedVideoPlayer({
   const [timedOut, setTimedOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const playerInstance = useRef<any>(null);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
   const [currentState, setCurrentState] = useState<number | null>(null);
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
+
+  // Initialize silent audio on mount to keep process alive in background/locked state
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // 1-second silent WAV base64
+    const audio = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAIlYAAIhYAQACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    audio.loop = true;
+    silentAudioRef.current = audio;
+  }, []);
 
   // Fallback URL for standard iframe (Used if JS API fails or is blocked)
   // vq=small (240p) ensures much faster loading on slower connections
@@ -113,11 +123,13 @@ export default function OptimizedVideoPlayer({
     navigator.mediaSession.setActionHandler("play", () => {
       userPausedRef.current = false;
       playerInstance.current?.playVideo();
+      silentAudioRef.current?.play().catch(() => {});
       navigator.mediaSession.playbackState = "playing";
     });
     navigator.mediaSession.setActionHandler("pause", () => {
       userPausedRef.current = true;
       playerInstance.current?.pauseVideo();
+      silentAudioRef.current?.pause();
       navigator.mediaSession.playbackState = "paused";
     });
     navigator.mediaSession.setActionHandler("seekto", (details) => {
@@ -160,7 +172,11 @@ export default function OptimizedVideoPlayer({
               updateMediaSession();
               wasPlayingRef.current = true;
               userPausedRef.current = false; // Reset on play
+              
+              // Key Fix: Playing silent audio keeps the background task alive when screen locks
+              silentAudioRef.current?.play().catch(() => {});
             } else if (isPaused) {
+              silentAudioRef.current?.pause();
               // If it's paused while hidden but wasn't a user pause, force resume
               if (document.hidden && !userPausedRef.current && wasPlayingRef.current) {
                 console.log("[YT-PLAYER] Intercepting background pause, resuming...");
@@ -210,10 +226,11 @@ export default function OptimizedVideoPlayer({
           // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
           setTimeout(() => {
             playerInstance.current?.playVideo();
+            silentAudioRef.current?.play().catch(() => {});
             if ('mediaSession' in navigator) {
               navigator.mediaSession.playbackState = "playing";
             }
-          }, 150);
+          }, 250); // Slightly increased delay for OS transition safety
         }
       } else {
         // Tab is visible again.
@@ -331,11 +348,13 @@ export default function OptimizedVideoPlayer({
                 e.stopPropagation(); e.preventDefault();
                 userPausedRef.current = false;
                 playerInstance.current?.playVideo();
+                silentAudioRef.current?.play().catch(() => {});
               }}
               onTouchStartCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
                 userPausedRef.current = false;
                 playerInstance.current?.playVideo();
+                silentAudioRef.current?.play().catch(() => {});
               }}
             >
                <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
