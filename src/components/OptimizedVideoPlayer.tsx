@@ -35,8 +35,28 @@ export default function OptimizedVideoPlayer({
   const [error, setError] = useState<string | null>(null);
   const playerInstance = useRef<any>(null);
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [currentState, setCurrentState] = useState<number | null>(null);
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
+
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        console.log('[YT-PLAYER] Wake lock acquired');
+      } catch (err) {
+        console.log('[YT-PLAYER] Wake lock failed:', err);
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release();
+      wakeLockRef.current = null;
+      console.log('[YT-PLAYER] Wake lock released');
+    }
+  };
 
   useEffect(() => {
     // We now use a DOM-attached element (see JSX return) 
@@ -123,12 +143,14 @@ export default function OptimizedVideoPlayer({
       userPausedRef.current = false;
       playerInstance.current?.playVideo();
       silentAudioRef.current?.play().catch(() => {});
+      requestWakeLock();
       navigator.mediaSession.playbackState = "playing";
     });
     navigator.mediaSession.setActionHandler("pause", () => {
       userPausedRef.current = true;
       playerInstance.current?.pauseVideo();
       silentAudioRef.current?.pause();
+      releaseWakeLock();
       navigator.mediaSession.playbackState = "paused";
     });
     navigator.mediaSession.setActionHandler("seekto", (details) => {
@@ -197,8 +219,10 @@ export default function OptimizedVideoPlayer({
               
               // Key Fix: Playing silent audio keeps the background task alive when screen locks
               silentAudioRef.current?.play().catch(() => {});
+              requestWakeLock();
             } else if (isPaused) {
               silentAudioRef.current?.pause();
+              releaseWakeLock();
               // If it's paused while hidden but wasn't a user pause, force resume
               if (document.hidden && !userPausedRef.current && wasPlayingRef.current) {
                 forcePlayWithTries(3);
@@ -231,6 +255,7 @@ export default function OptimizedVideoPlayer({
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = null;
       }
+      releaseWakeLock();
     };
   }, [playerReady, videoId, timedOut]); // eslint-disable-line react-hooks/exhaustive-deps
 

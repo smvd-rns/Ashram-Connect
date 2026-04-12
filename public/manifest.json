@@ -1,0 +1,20 @@
+{
+  "name": "YT Lectures App",
+  "short_name": "YT Lectures",
+  "description": "Devotional YouTube Lectures App",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["education", "entertainment"],
+  "lang": "en",
+  "dir": "ltr"
+}</content>
+<parameter name="filePath">c:\Users\Admin\Documents\BC-Class\yt-lectures-final\public\manifest.json
