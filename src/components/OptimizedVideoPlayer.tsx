@@ -149,11 +149,17 @@ export default function OptimizedVideoPlayer({
             setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
+            const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
             if (isPlaying) {
               updateMediaSession();
               wasPlayingRef.current = true;
-            } else if (event.data === (window as any).YT?.PlayerState?.PAUSED) {
-              wasPlayingRef.current = false;
+            } else if (isPaused) {
+              // ONLY mark as "user paused" when the tab is actually visible.
+              // If document.hidden is true, this pause was triggered by the browser
+              // (tab switch, screen lock) — we preserve wasPlayingRef so we can resume.
+              if (!document.hidden) {
+                wasPlayingRef.current = false;
+              }
             }
           },
           onError: () => {
@@ -190,21 +196,16 @@ export default function OptimizedVideoPlayer({
     const handleVisibility = () => {
       if (!playerInstance.current || !window.YT) return;
 
-      if (document.hidden) {
-        // Tab is hidden. If it was playing just before, force resume.
+      if (!document.hidden) {
+        // Tab is visible again — resume if it was playing before the tab switch.
         if (wasPlayingRef.current) {
-          // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
+          // Small delay to let the browser fully restore the tab before calling play.
           setTimeout(() => {
             playerInstance.current?.playVideo();
             if ('mediaSession' in navigator) {
               navigator.mediaSession.playbackState = "playing";
             }
           }, 150);
-        }
-      } else {
-        // Tab is visible again.
-        if (wasPlayingRef.current) {
-          playerInstance.current?.playVideo();
         }
       }
     };
@@ -270,28 +271,27 @@ export default function OptimizedVideoPlayer({
       */}
       {playerReady && !timedOut && (
         <>
-          {/* Bottom Right Shield (Covers YouTube Logo/Watermark) */}
+          {/* Bottom Right Shield — covers YouTube logo watermark (larger for mobile tap accuracy) */}
           <div 
-            className="absolute bottom-0 right-0 w-[12%] h-[12%] z-[35] cursor-default pointer-events-auto"
-            title="Privacy Restricted"
-            onClick={(e) => {
-              e.stopPropagation();
-              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-            }}
+            className="absolute bottom-0 right-0 w-[22%] h-[18%] z-[9999] cursor-default pointer-events-auto"
+            title="Temple Media Policy"
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
+            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
 
-          {/* Top Left Shield (Covers Title and Channel branding) */}
+          {/* Top Left Shield — covers title bar and channel name */}
           <div 
-            className="absolute top-0 left-0 w-[60%] h-[15%] z-[35] cursor-default pointer-events-auto"
-            onClick={(e) => {
-              e.stopPropagation();
-              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-            }}
+            className="absolute top-0 left-0 w-[75%] h-[22%] z-[9999] cursor-default pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
+            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
 
-          {/* Paused interceptor removed — YouTube's native controls handle tap-to-resume.
-              The overlay was causing a visible blur layer whenever the video was system-paused
-              (e.g. screen lock), which confused users on unlock. */}
+          {/* Bottom Bar Shield — covers the entire YouTube control/branding bar at the bottom */}
+          <div 
+            className="absolute bottom-0 left-0 right-0 h-[14%] z-[9998] cursor-default pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
+            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
+          />
         </>
       )}
     </div>
