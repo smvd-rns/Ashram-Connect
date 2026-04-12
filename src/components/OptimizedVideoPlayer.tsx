@@ -111,10 +111,12 @@ export default function OptimizedVideoPlayer({
     navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING ? "playing" : "paused";
 
     navigator.mediaSession.setActionHandler("play", () => {
+      intendedPlayStateRef.current = "PLAYING";
       playerInstance.current?.playVideo();
       navigator.mediaSession.playbackState = "playing";
     });
     navigator.mediaSession.setActionHandler("pause", () => {
+      intendedPlayStateRef.current = "PAUSED";
       playerInstance.current?.pauseVideo();
       navigator.mediaSession.playbackState = "paused";
     });
@@ -126,7 +128,7 @@ export default function OptimizedVideoPlayer({
   };
 
   // 2. Initialize/Update Player Instance
-  const wasPlayingRef = useRef(false);
+  const intendedPlayStateRef = useRef<"PLAYING" | "PAUSED">("PAUSED");
 
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
@@ -150,11 +152,17 @@ export default function OptimizedVideoPlayer({
             setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
+            const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
+            
             if (isPlaying) {
               updateMediaSession();
-              wasPlayingRef.current = true;
-            } else if (event.data === (window as any).YT?.PlayerState?.PAUSED) {
-              wasPlayingRef.current = false;
+              intendedPlayStateRef.current = "PLAYING";
+            } else if (isPaused) {
+              // If the video pauses while the screen is on (document is NOT hidden), 
+              // it means the user actively paused it (via tap or controls).
+              if (!document.hidden) {
+                intendedPlayStateRef.current = "PAUSED";
+              }
             }
           },
           onError: () => {
@@ -191,21 +199,16 @@ export default function OptimizedVideoPlayer({
     const handleVisibility = () => {
       if (!playerInstance.current || !window.YT) return;
 
-      if (document.hidden) {
-        // Tab is hidden. If it was playing just before, force resume.
-        if (wasPlayingRef.current) {
-          // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
-          setTimeout(() => {
-            playerInstance.current?.playVideo();
-            if ('mediaSession' in navigator) {
-              navigator.mediaSession.playbackState = "playing";
-            }
-          }, 150);
-        }
-      } else {
-        // Tab is visible again.
-        if (wasPlayingRef.current) {
-          playerInstance.current?.playVideo();
+      if (!document.hidden) {
+        // App is visible again (user unlocked screen or came back to browser).
+        if (intendedPlayStateRef.current === "PLAYING") {
+           // We use a slight delay to allow the browser to fully un-suspend the iframe context
+           setTimeout(() => {
+             playerInstance.current?.playVideo();
+             if ('mediaSession' in navigator) {
+               navigator.mediaSession.playbackState = "playing";
+             }
+           }, 200);
         }
       }
     };
@@ -316,10 +319,12 @@ export default function OptimizedVideoPlayer({
               className="absolute inset-x-0 top-0 bottom-[14%] z-[9998] bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group pointer-events-auto bg-white/[0.01] touch-none"
               onClickCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
+                intendedPlayStateRef.current = "PLAYING";
                 playerInstance.current?.playVideo();
               }}
               onTouchStartCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
+                intendedPlayStateRef.current = "PLAYING";
                 playerInstance.current?.playVideo();
               }}
             >
