@@ -111,10 +111,12 @@ export default function OptimizedVideoPlayer({
     navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING ? "playing" : "paused";
 
     navigator.mediaSession.setActionHandler("play", () => {
+      userPausedRef.current = false;
       playerInstance.current?.playVideo();
       navigator.mediaSession.playbackState = "playing";
     });
     navigator.mediaSession.setActionHandler("pause", () => {
+      userPausedRef.current = true;
       playerInstance.current?.pauseVideo();
       navigator.mediaSession.playbackState = "paused";
     });
@@ -127,6 +129,7 @@ export default function OptimizedVideoPlayer({
 
   // 2. Initialize/Update Player Instance
   const wasPlayingRef = useRef(false);
+  const userPausedRef = useRef(false); // Track if PAUSE was triggered by USER vs SYSTEM
 
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
@@ -149,12 +152,22 @@ export default function OptimizedVideoPlayer({
           onStateChange: (event: any) => {
             setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
+            
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
+            const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
+
             if (isPlaying) {
               updateMediaSession();
               wasPlayingRef.current = true;
-            } else if (event.data === (window as any).YT?.PlayerState?.PAUSED) {
-              wasPlayingRef.current = false;
+              userPausedRef.current = false; // Reset on play
+            } else if (isPaused) {
+              // If it's paused while hidden but wasn't a user pause, force resume
+              if (document.hidden && !userPausedRef.current && wasPlayingRef.current) {
+                console.log("[YT-PLAYER] Intercepting background pause, resuming...");
+                setTimeout(() => {
+                  playerInstance.current?.playVideo();
+                }, 100);
+              }
             }
           },
           onError: () => {
@@ -316,10 +329,12 @@ export default function OptimizedVideoPlayer({
               className="absolute inset-x-0 top-0 bottom-[14%] z-[9998] bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group pointer-events-auto bg-white/[0.01] touch-none"
               onClickCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
+                userPausedRef.current = false;
                 playerInstance.current?.playVideo();
               }}
               onTouchStartCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
+                userPausedRef.current = false;
                 playerInstance.current?.playVideo();
               }}
             >
