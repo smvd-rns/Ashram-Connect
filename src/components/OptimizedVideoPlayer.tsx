@@ -34,37 +34,8 @@ export default function OptimizedVideoPlayer({
   const [timedOut, setTimedOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const playerInstance = useRef<any>(null);
-  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [currentState, setCurrentState] = useState<number | null>(null);
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
-
-  const requestWakeLock = async () => {
-    if ('wakeLock' in navigator) {
-      try {
-        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        console.log('[YT-PLAYER] Wake lock acquired');
-      } catch (err) {
-        console.log('[YT-PLAYER] Wake lock failed:', err);
-      }
-    }
-  };
-
-  const releaseWakeLock = () => {
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release();
-      wakeLockRef.current = null;
-      console.log('[YT-PLAYER] Wake lock released');
-    }
-  };
-
-  useEffect(() => {
-    // We now use a DOM-attached element (see JSX return) 
-    // This is more reliable for keeping the session alive on iOS/Android
-    if (silentAudioRef.current) {
-        silentAudioRef.current.volume = 0.01; // Nearly silent but active
-    }
-  }, []);
 
   // Fallback URL for standard iframe (Used if JS API fails or is blocked)
   // vq=small (240p) ensures much faster loading on slower connections
@@ -140,17 +111,11 @@ export default function OptimizedVideoPlayer({
     navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING ? "playing" : "paused";
 
     navigator.mediaSession.setActionHandler("play", () => {
-      userPausedRef.current = false;
       playerInstance.current?.playVideo();
-      silentAudioRef.current?.play().catch(() => {});
-      requestWakeLock();
       navigator.mediaSession.playbackState = "playing";
     });
     navigator.mediaSession.setActionHandler("pause", () => {
-      userPausedRef.current = true;
       playerInstance.current?.pauseVideo();
-      silentAudioRef.current?.pause();
-      releaseWakeLock();
       navigator.mediaSession.playbackState = "paused";
     });
     navigator.mediaSession.setActionHandler("seekto", (details) => {
@@ -159,33 +124,9 @@ export default function OptimizedVideoPlayer({
       }
     });
   };
-  
-  // Hardened Background Resume with Retries
-  const forcePlayWithTries = (tries = 3) => {
-    if (!playerInstance.current || !wasPlayingRef.current || userPausedRef.current) return;
-    
-    console.log(`[YT-PLAYER] Force Resume Attempt (${4 - tries}/3)`);
-    playerInstance.current.playVideo();
-    silentAudioRef.current?.play().catch(() => {});
-    
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = "playing";
-    }
-
-    if (tries > 1) {
-      setTimeout(() => {
-         // Check if still paused (system might have blocked it)
-         const state = playerInstance.current?.getPlayerState();
-         if (state === (window as any).YT?.PlayerState?.PAUSED || state === (window as any).YT?.PlayerState?.BUFFERING) {
-           forcePlayWithTries(tries - 1);
-         }
-      }, 500);
-    }
-  };
 
   // 2. Initialize/Update Player Instance
   const wasPlayingRef = useRef(false);
-  const userPausedRef = useRef(false); // Track if PAUSE was triggered by USER vs SYSTEM
 
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
@@ -208,25 +149,12 @@ export default function OptimizedVideoPlayer({
           onStateChange: (event: any) => {
             setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
-            
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
-            const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
-
             if (isPlaying) {
               updateMediaSession();
               wasPlayingRef.current = true;
-              userPausedRef.current = false; // Reset on play
-              
-              // Key Fix: Playing silent audio keeps the background task alive when screen locks
-              silentAudioRef.current?.play().catch(() => {});
-              requestWakeLock();
-            } else if (isPaused) {
-              silentAudioRef.current?.pause();
-              releaseWakeLock();
-              // If it's paused while hidden but wasn't a user pause, force resume
-              if (document.hidden && !userPausedRef.current && wasPlayingRef.current) {
-                forcePlayWithTries(3);
-              }
+            } else if (event.data === (window as any).YT?.PlayerState?.PAUSED) {
+              wasPlayingRef.current = false;
             }
           },
           onError: () => {
@@ -255,7 +183,6 @@ export default function OptimizedVideoPlayer({
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = null;
       }
-      releaseWakeLock();
     };
   }, [playerReady, videoId, timedOut]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -266,8 +193,14 @@ export default function OptimizedVideoPlayer({
 
       if (document.hidden) {
         // Tab is hidden. If it was playing just before, force resume.
-        if (wasPlayingRef.current && !userPausedRef.current) {
-           forcePlayWithTries(2);
+        if (wasPlayingRef.current) {
+          // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
+          setTimeout(() => {
+            playerInstance.current?.playVideo();
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.playbackState = "playing";
+            }
+          }, 150);
         }
       } else {
         // Tab is visible again.
@@ -383,15 +316,11 @@ export default function OptimizedVideoPlayer({
               className="absolute inset-x-0 top-0 bottom-[14%] z-[9998] bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group pointer-events-auto bg-white/[0.01] touch-none"
               onClickCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
-                userPausedRef.current = false;
                 playerInstance.current?.playVideo();
-                silentAudioRef.current?.play().catch(() => {});
               }}
               onTouchStartCapture={(e) => {
                 e.stopPropagation(); e.preventDefault();
-                userPausedRef.current = false;
                 playerInstance.current?.playVideo();
-                silentAudioRef.current?.play().catch(() => {});
               }}
             >
                <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
@@ -403,15 +332,6 @@ export default function OptimizedVideoPlayer({
           )}
         </>
       )}
-
-      {/* Hidden audio element used as a "Live Anchor" for background play */}
-      <audio 
-        ref={silentAudioRef} 
-        src="data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAIlYAAIhYAQACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        loop 
-        playsInline
-        style={{ display: "none" }}
-      />
     </div>
   );
 }
