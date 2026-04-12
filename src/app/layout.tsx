@@ -3,6 +3,7 @@ import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import AuthGuard from "@/components/AuthGuard";
 import PolicyModal from "@/components/PolicyModal";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -10,6 +11,7 @@ const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 export const metadata: Metadata = {
   title: "Spiritual Echoes - Devotional Discourses",
   description: "A sanctuary of spiritual knowledge, housing enlightening discourses and lectures.",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -22,6 +24,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${outfit.variable} font-sans antialiased`}
       >
+        <ServiceWorkerRegister />
         <div className="min-h-screen flex flex-col">
           {/* Main Content Area */}
           <main className="w-full pt-0 md:pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
