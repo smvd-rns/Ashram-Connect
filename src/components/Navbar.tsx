@@ -226,7 +226,7 @@ export default function Navbar() {
       </nav>
 
       {/* ─── MOBILE TAB BAR (Bottom) ─────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 py-3 flex items-center justify-between gap-1 safe-area-bottom">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[1000] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 py-3 flex items-center justify-between gap-1 safe-area-bottom">
         <NextLink href="/" className="flex flex-col items-center gap-1 group flex-1">
           <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isHome ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
             <HomeIcon active={isHome} /> 

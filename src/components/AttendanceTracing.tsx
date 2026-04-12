@@ -40,7 +40,6 @@ import {
   Cell,
   PieChart,
   Pie,
-  Legend,
   YAxis,
 } from "recharts";
 
@@ -882,14 +881,14 @@ export default function AttendanceTracing({
   };
 
   return (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative overflow-x-hidden no-scrollbar">
-      {/* Dynamic Background Blobs for Visual Depth */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-200/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 relative w-full max-w-full min-w-0">
+      {/* Dynamic Background Blobs for Visual Depth - clipped to not cause overflow */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-200/20 rounded-full blur-[120px] animate-pulse pointer-events-none overflow-hidden" />
       <div
-        className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-100/30 rounded-full blur-[120px] animate-pulse pointer-events-none"
+        className="absolute bottom-[-10%] right-0 w-[40%] h-[40%] bg-orange-100/30 rounded-full blur-[120px] animate-pulse pointer-events-none overflow-hidden"
         style={{ animationDelay: "2s" }}
       />
-      <div className="absolute top-[20%] right-[15%] w-[20%] h-[20%] bg-purple-100/40 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-[20%] right-0 w-[20%] h-[20%] bg-purple-100/40 rounded-full blur-[100px] pointer-events-none overflow-hidden" />
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
@@ -992,16 +991,16 @@ export default function AttendanceTracing({
           </p>
         </div>
       ) : (
-        <div className="grid gap-12 w-full">
+        <div className="grid gap-12 w-full min-w-0">
           {viewMode === "matrix" ? (
-            <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] sm:rounded-[4rem] border border-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] overflow-hidden w-full transition-all duration-700">
+            <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] sm:rounded-[4rem] border border-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] w-full transition-all duration-700">
               <div className="p-3 sm:p-4 flex flex-col bg-slate-50/20">
                 {/* Single Row Compact Header */}
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 w-full pb-2">
                   {/* Filter & Date Controls */}
-                  <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
                     {/* Time Range */}
-                    <div className="flex items-center p-1 bg-slate-100/50 rounded-xl sm:rounded-2xl border border-slate-200/50 shadow-inner w-full sm:w-auto overflow-x-auto no-scrollbar">
+                    <div className="flex items-center p-1 bg-slate-100/50 rounded-xl sm:rounded-2xl border border-slate-200/50 shadow-inner w-auto max-w-full overflow-x-auto no-scrollbar">
                       {(["day", "week", "month", "custom"] as const).map(
                         (r) => (
                           <button
@@ -1016,7 +1015,7 @@ export default function AttendanceTracing({
                     </div>
 
                     {/* Navigation Pills */}
-                    <div className="flex items-center bg-white p-1 rounded-xl sm:rounded-2xl border border-slate-100 shadow-sm gap-1 group/nav w-full sm:w-auto">
+                    <div className="flex items-center bg-white p-1 rounded-xl sm:rounded-2xl border border-slate-100 shadow-sm gap-1 group/nav w-full md:w-auto overflow-x-auto">
                       {timeRange !== "custom" ? (
                         <>
                           <button
@@ -1364,7 +1363,7 @@ export default function AttendanceTracing({
                     >
                       <thead>
                         <tr className="bg-slate-900 text-white">
-                          <th className="px-4 sm:px-6 py-4 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] relative sm:sticky sm:left-0 bg-slate-900 z-10 sm:z-20 sm:shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[120px] sm:min-w-[180px]">
+                          <th className="px-4 sm:px-6 py-4 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] sticky left-0 bg-slate-900 z-10 z-20 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[120px] sm:min-w-[180px]">
                             Portfolio
                           </th>
                           {getDateColumns().map((date) => (
@@ -1421,7 +1420,7 @@ export default function AttendanceTracing({
                               className={`transition-colors group ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50/40"} hover:bg-indigo-50/30`}
                             >
                               <td
-                                className={`px-2 sm:px-4 py-2 sticky left-0 z-[100] border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-indigo-50`}
+                                className={`px-2 sm:px-4 py-2 sticky left-0 z-50 border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-indigo-50`}
                               >
                                 <div className="font-black text-slate-800 text-sm sm:text-[15px] tracking-tighter leading-none mb-1 truncate max-w-[150px]">
                                   {user.full_name}
@@ -1810,8 +1809,8 @@ export default function AttendanceTracing({
               </div>
             </div>
           ) : (
-            <div className="space-y-12 animate-in slide-in-from-right-10 duration-700 w-full">
-              <div className="bg-white/95 backdrop-blur-3xl p-6 sm:px-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 w-full relative z-50">
+            <div className="space-y-12 animate-in slide-in-from-right-10 duration-700 w-full min-w-0">
+              <div className="bg-white/95 backdrop-blur-3xl p-4 sm:px-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-start justify-between gap-4 w-full min-w-0 relative z-50 max-w-full">
                 <div className="w-full md:w-auto">
                   <h3 className="text-2xl sm:text-3xl font-black tracking-tighter font-outfit text-slate-900 leading-none mb-1.5 break-words">
                     {displayUser?.full_name}
@@ -1821,8 +1820,8 @@ export default function AttendanceTracing({
                   </p>
                 </div>
 
-                {/* Date Range Navigator */}
-                <div className="flex flex-nowrap md:justify-center items-center gap-2 sm:gap-3 w-full md:w-auto flex-1 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                {/* Date Range Navigator - wraps on small screens */}
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                   {/* Week / Month toggle */}
                   <div className="flex shrink-0 items-center p-1 bg-slate-100/60 rounded-xl border border-slate-200/60 shadow-inner">
                     {(["week", "month"] as const).map((r) => (
@@ -1964,7 +1963,7 @@ export default function AttendanceTracing({
               </div>
 
               {/* Visual Dashboard - Recharts Integration */}
-              <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-top-4 duration-1000">
+              <div className="w-full min-w-0 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-top-4 duration-1000">
                 {(() => {
                   const pivotForStats = parseLocalDate(historyPivot);
                   let hStart: Date, hEnd: Date;
@@ -2161,11 +2160,19 @@ export default function AttendanceTracing({
                     return null;
                   };
 
+                  const trendPointCount = Math.max(activityData.length, 1);
+                  // Wider plot when many days so points/labels stay readable; scroll horizontally on narrow screens.
+                  const trendChartMinWidth = Math.max(
+                    340,
+                    trendPointCount * 56 + 100,
+                  );
+                  const trendChartNeedsScroll = trendChartMinWidth > 380;
+
                   return (
                     <>
                       {/* Area Chart: Spiritual Practices Style */}
-                      <div className="lg:col-span-2 bg-gradient-to-br from-orange-50/30 to-white p-6 rounded-[2.5rem] border border-orange-100/50 shadow-sm relative overflow-hidden group">
-                        <div className="flex items-center gap-3 mb-6">
+                      <div className="lg:col-span-2 min-w-0 bg-gradient-to-br from-orange-50/30 to-white p-6 rounded-[2.5rem] border border-orange-100/50 shadow-sm relative overflow-hidden group">
+                        <div className="flex items-center gap-3 mb-4 sm:mb-6">
                           <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
                             <Book className="w-5 h-5 text-orange-600" />
                           </div>
@@ -2173,15 +2180,31 @@ export default function AttendanceTracing({
                             Practice Trends
                           </h4>
                         </div>
-                        <div className="h-[250px] sm:h-[300px] w-full min-w-0">
-                          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                        {trendChartNeedsScroll && (
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 lg:hidden">
+                            Scroll chart sideways for clearer dates
+                          </p>
+                        )}
+                        <div className="overflow-x-auto overflow-y-hidden custom-attendance-scrollbar -mx-1 px-1 pb-1 rounded-xl">
+                          <div
+                            className="h-[280px] sm:h-[340px] min-h-[280px]"
+                            style={{
+                              width: trendChartMinWidth,
+                              minWidth: trendChartMinWidth,
+                            }}
+                          >
+                            <ResponsiveContainer
+                              width="100%"
+                              height="100%"
+                              minWidth={0}
+                            >
                             <AreaChart
                               data={activityData}
                               margin={{
-                                top: 10,
-                                right: 30,
-                                left: 0,
-                                bottom: 0,
+                                top: 12,
+                                right: 20,
+                                left: 4,
+                                bottom: trendPointCount > 12 ? 28 : 12,
                               }}
                             >
                               <defs>
@@ -2262,12 +2285,13 @@ export default function AttendanceTracing({
                                 dataKey="date"
                                 axisLine={false}
                                 tickLine={false}
+                                interval={0}
                                 tick={{
-                                  fontSize: 9,
+                                  fontSize: 11,
                                   fontWeight: 900,
                                   fill: "#64748b",
                                 }}
-                                dy={10}
+                                dy={12}
                               />
                               <YAxis
                                 axisLine={false}
@@ -2275,8 +2299,9 @@ export default function AttendanceTracing({
                                 domain={[0, 12]}
                                 ticks={[7.5]}
                                 tickFormatter={() => "4:30"}
+                                width={44}
                                 tick={{
-                                  fontSize: 9,
+                                  fontSize: 11,
                                   fontWeight: 900,
                                   fill: "#64748b",
                                 }}
@@ -2295,12 +2320,12 @@ export default function AttendanceTracing({
                                 fillOpacity={1}
                                 fill="url(#colorMangal)"
                                 dot={{
-                                  r: 3,
+                                  r: 4,
                                   fill: "#8b5cf6",
                                   strokeWidth: 2,
                                   stroke: "#fff",
                                 }}
-                                activeDot={{ r: 5, strokeWidth: 0 }}
+                                activeDot={{ r: 6, strokeWidth: 0 }}
                                 name="Mangal Aarti"
                               />
                               <Area
@@ -2311,12 +2336,12 @@ export default function AttendanceTracing({
                                 fillOpacity={1}
                                 fill="url(#colorJapa)"
                                 dot={{
-                                  r: 3,
+                                  r: 4,
                                   fill: "#ea580c",
                                   strokeWidth: 2,
                                   stroke: "#fff",
                                 }}
-                                activeDot={{ r: 5, strokeWidth: 0 }}
+                                activeDot={{ r: 6, strokeWidth: 0 }}
                                 name="Harinam"
                               />
                               <Area
@@ -2327,12 +2352,12 @@ export default function AttendanceTracing({
                                 fillOpacity={1}
                                 fill="url(#colorHearing)"
                                 dot={{
-                                  r: 3,
+                                  r: 4,
                                   fill: "#3b82f6",
                                   strokeWidth: 2,
                                   stroke: "#fff",
                                 }}
-                                activeDot={{ r: 5, strokeWidth: 0 }}
+                                activeDot={{ r: 6, strokeWidth: 0 }}
                                 name="SB Class"
                               />
                               <Area
@@ -2343,34 +2368,44 @@ export default function AttendanceTracing({
                                 fillOpacity={1}
                                 fill="url(#colorReading)"
                                 dot={{
-                                  r: 3,
+                                  r: 4,
                                   fill: "#10b981",
                                   strokeWidth: 2,
                                   stroke: "#fff",
                                 }}
-                                activeDot={{ r: 5, strokeWidth: 0 }}
+                                activeDot={{ r: 6, strokeWidth: 0 }}
                                 name="BC Class"
-                              />
-                              <Legend
-                                verticalAlign="bottom"
-                                align="center"
-                                iconType="circle"
-                                iconSize={8}
-                                wrapperStyle={{
-                                  paddingTop: "20px",
-                                  fontSize: "10px",
-                                  fontWeight: 900,
-                                  textTransform: "uppercase",
-                                }}
                               />
                             </AreaChart>
                           </ResponsiveContainer>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-orange-100/60 pt-4">
+                          {[
+                            { name: "BC Class", color: "#10b981" },
+                            { name: "Harinam", color: "#ea580c" },
+                            { name: "Mangal Aarti", color: "#8b5cf6" },
+                            { name: "SB Class", color: "#3b82f6" },
+                          ].map((item) => (
+                            <div
+                              key={item.name}
+                              className="flex items-center gap-2"
+                            >
+                              <span
+                                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: item.color }}
+                              />
+                              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">
+                                {item.name}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
                       {/* Summary Cards */}
-                      <div className="flex flex-col gap-6">
-                        <div className="flex-1 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
+                      <div className="flex flex-col gap-6 min-w-0">
+                        <div className="flex-1 min-w-0 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
                           <div className="space-y-1">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
                               Session Accuracy
@@ -2392,7 +2427,7 @@ export default function AttendanceTracing({
                           </div>
                         </div>
 
-                        <div className="flex-1 bg-indigo-600 p-6 rounded-[2.5rem] border border-indigo-500 shadow-xl shadow-indigo-100 relative overflow-hidden group">
+                        <div className="flex-1 min-w-0 bg-indigo-600 p-6 rounded-[2.5rem] border border-indigo-500 shadow-xl shadow-indigo-100 relative overflow-hidden group">
                           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000" />
                           <div className="relative z-10 space-y-4">
                             <div className="flex items-center justify-between">
@@ -2449,12 +2484,12 @@ export default function AttendanceTracing({
                 })()}
               </div>
 
-              <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] mt-8 border border-slate-100 w-full overflow-hidden">
-                <div className="overflow-x-auto overflow-y-hidden custom-attendance-scrollbar w-full">
-                  <table className="w-full text-left border-separate border-spacing-0 min-w-0">
+              <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] mt-8 border border-slate-100 w-full min-w-0 max-w-full">
+                <div className="overflow-x-auto overflow-y-hidden custom-attendance-scrollbar w-full max-w-full min-w-0">
+                  <table className="w-full text-left border-separate border-spacing-0" style={{ minWidth: `${80 + (machines.length * 90)}px` }}>
                     <thead>
                       <tr className="bg-slate-900 text-white">
-                        <th className="px-2 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-[12px] font-black uppercase tracking-[0.1em] sticky left-0 bg-slate-900 z-[100] shadow-[4px_0_10px_-4px_rgba(0,0,0,0.3)] min-w-[65px] sm:min-w-[100px] border-b border-white/10">
+                        <th className="px-2 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-[12px] font-black uppercase tracking-[0.1em] sticky left-0 bg-slate-900 z-50 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.3)] min-w-[65px] sm:min-w-[100px] border-b border-white/10">
                           Timeline
                         </th>
                         {machines.map((m) => {
@@ -2464,7 +2499,7 @@ export default function AttendanceTracing({
                           return (
                             <th
                               key={m.id}
-                              className="px-0.5 sm:px-1 py-2 sm:py-2.5 text-center border-l border-b border-white/10 min-w-0"
+                              className="px-1 sm:px-2 py-2 sm:py-2.5 text-center border-l border-b border-white/10 min-w-[80px] sm:min-w-[100px]"
                             >
                               <div className="flex flex-col items-center justify-center gap-1.5">
                                 <div
@@ -2539,7 +2574,7 @@ export default function AttendanceTracing({
                               className={`transition-colors group hover:bg-slate-50/80 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
                             >
                               <td
-                                className={`px-2 sm:px-3 py-1 sm:py-1.5 sticky left-0 z-[100] border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)] ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-slate-50/95`}
+                                className={`px-2 sm:px-3 py-1 sm:py-1.5 sticky left-0 z-50 border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)] ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-slate-50/95`}
                               >
                                 <div className="font-black text-slate-900 text-[13px] sm:text-[18px] tracking-tight sm:tracking-tighter uppercase font-outfit whitespace-nowrap">
                                   {new Date(date).toLocaleDateString("en-US", {
@@ -2742,7 +2777,7 @@ export default function AttendanceTracing({
                         );
                         return (
                           <tr className="bg-slate-900 text-white">
-                            <td className="px-2 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-[12px] font-black uppercase tracking-widest text-slate-400 border-t border-white/10 sticky left-0 bg-slate-900 z-[100] shadow-[4px_0_10px_-4px_rgba(0,0,0,0.3)]">
+                            <td className="px-2 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-[12px] font-black uppercase tracking-widest text-slate-400 border-t border-white/10 sticky left-0 bg-slate-900 z-50 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.3)]">
                               Total
                             </td>
                             {machines.map((m) => {

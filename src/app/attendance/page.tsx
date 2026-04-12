@@ -85,8 +85,8 @@ export default function PersonalAttendancePage() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-slate-50 pt-20 sm:pt-24 pb-20 overflow-x-hidden">
-        <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-12">
+      <div className="min-h-screen bg-slate-50 pt-16 sm:pt-20 pb-24 md:pb-20 overflow-x-hidden">
+        <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-12 min-w-0">
           {isAttendanceIncharge && !isBcdb ? (
             <div className="max-w-xl mx-auto">
               <div className="mb-6 text-center">
@@ -103,9 +103,9 @@ export default function PersonalAttendancePage() {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start min-w-0">
               {/* Main Attendance Section - Left side */}
-              <div className="col-span-1 lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8 lg:space-y-10">
+              <div className="col-span-1 lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8 lg:space-y-10 min-w-0">
                 <div className="animate-in fade-in slide-in-from-left-4 duration-700">
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tighter mb-2 font-outfit uppercase">My Attendance</h1>
                   <div className="flex items-center gap-3">
@@ -133,7 +133,7 @@ export default function PersonalAttendancePage() {
               </div>
 
               {/* Sidebar Space - Now housing the Exception Reporting Form */}
-              <div className="flex flex-col lg:col-span-4 xl:col-span-3 lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300">
+              <div className="flex flex-col lg:col-span-4 xl:col-span-3 lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300 min-w-0">
                 <AttendanceExceptionForm
                   userEmail={profile?.email || ""}
                   onSuccess={() => setRefreshKey(prev => prev + 1)}
