@@ -15,6 +15,24 @@ export interface PushPayload {
   badge?: string;
 }
 
+/** FCM no longer accepts this token — remove from DB so broadcasts stop retrying it. */
+export function isFcmTokenInvalid(err: unknown): boolean {
+  const e = err as {
+    code?: string;
+    errorInfo?: { code?: string; message?: string };
+    message?: string;
+  };
+  const code = e?.code || e?.errorInfo?.code || "";
+  const msg = `${e?.message || ""} ${e?.errorInfo?.message || ""}`.toLowerCase();
+  return (
+    code === "messaging/registration-token-not-registered" ||
+    code === "messaging/invalid-registration-token" ||
+    code === "messaging/unregistered" ||
+    msg.includes("requested entity was not found") ||
+    msg.includes("not a valid fcm registration token")
+  );
+}
+
 /**
  * Send a push notification to a list of user IDs
  * Targets all registered devices (Web and FCM) for each user
@@ -27,7 +45,7 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
     // 1. Fetch all active subscriptions for these users
     const { data: subs, error } = await supabase
       .from("push_subscriptions")
-      .select("subscription, provider, user_id, device_type")
+      .select("subscription, provider, user_id, device_type, subscription_key")
       .in("user_id", userIds);
 
     if (error) {
@@ -98,13 +116,27 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
           console.log(`[FCM] Success: Device ${index} (User: ${s.user_id})`);
         }
       } catch (err: any) {
-        // Handle expired subscriptions (410 Gone for Web Push)
+        // Web Push: subscription gone (user revoked / expired)
         if (err.statusCode === 410) {
-          console.log(`Cleaning up expired subscription for user ${s.user_id}`);
-          await supabase.from("push_subscriptions").delete().eq("subscription_key", err.endpoint || s.subscription?.endpoint);
-        } else {
-          console.error(`Push delivery failed for Device ${index} (${s.provider}):`, err.message);
+          const key = err.endpoint || s.subscription?.endpoint;
+          if (key) {
+            console.log(`Cleaning up expired Web Push subscription for user ${s.user_id}`);
+            await supabase.from("push_subscriptions").delete().eq("subscription_key", key);
+          }
+          return;
         }
+        // FCM: token unregistered, invalid, or app uninstalled
+        if (s.provider === "fcm" && isFcmTokenInvalid(err)) {
+          const key = s.subscription_key || s.subscription?.token;
+          if (key) {
+            console.log(
+              `[FCM] Removing invalid token for user ${s.user_id} (${String(err?.errorInfo?.code || err?.code || "invalid-token")})`,
+            );
+            await supabase.from("push_subscriptions").delete().eq("subscription_key", key);
+          }
+          return;
+        }
+        console.error(`Push delivery failed for Device ${index} (${s.provider}):`, err.message);
       }
     });
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 import admin from "@/lib/firebase-admin";
+import { isFcmTokenInvalid } from "@/lib/notifications";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,43 +42,75 @@ export async function POST(req: NextRequest) {
     const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
 
-    const results = await Promise.allSettled(subs.map(async (s) => {
-      const payload = {
-        title: "Diagnostic Test",
-        body: `Testing ${s.provider} notification on ${s.device_type} (Time: ${new Date().toLocaleTimeString()})`,
-        url: "/travel-desk",
-        icon: "/favicon.ico"
-      };
-
-      if (!s.provider || s.provider === 'web-push') {
-        if (!publicKey || !privateKey) throw new Error("VAPID keys missing for Web Push");
-        webpush.setVapidDetails('mailto:shyam@ashramconnect.com', publicKey, privateKey);
-        return webpush.sendNotification(s.subscription, JSON.stringify(payload));
-      }
-
-      if (s.provider === 'fcm' && s.subscription?.token) {
-        const message = {
-          token: s.subscription.token,
-          notification: {
-            title: payload.title,
-            body: payload.body,
-          },
-          data: {
-            url: payload.url,
-            icon: payload.icon
-          },
-          android: {
-            priority: 'high' as const,
-            notification: {
-              channelId: 'default'
-            }
-          }
+    const results = await Promise.allSettled(
+      subs.map(async (s) => {
+        const payload = {
+          title: "Diagnostic Test",
+          body: `Testing ${s.provider} notification on ${s.device_type} (Time: ${new Date().toLocaleTimeString()})`,
+          url: "/travel-desk",
+          icon: "/favicon.ico",
         };
-        return admin.messaging().send(message);
-      }
-      
-      throw new Error(`Unsupported provider: ${s.provider}`);
-    }));
+
+        try {
+          if (!s.provider || s.provider === "web-push") {
+            if (!publicKey || !privateKey)
+              throw new Error("VAPID keys missing for Web Push");
+            webpush.setVapidDetails(
+              "mailto:shyam@ashramconnect.com",
+              publicKey,
+              privateKey,
+            );
+            return webpush.sendNotification(
+              s.subscription,
+              JSON.stringify(payload),
+            );
+          }
+
+          if (s.provider === "fcm" && s.subscription?.token) {
+            const message = {
+              token: s.subscription.token,
+              notification: {
+                title: payload.title,
+                body: payload.body,
+              },
+              data: {
+                url: payload.url,
+                icon: payload.icon,
+              },
+              android: {
+                priority: "high" as const,
+                notification: {
+                  channelId: "default",
+                },
+              },
+            };
+            return admin.messaging().send(message);
+          }
+
+          throw new Error(`Unsupported provider: ${s.provider}`);
+        } catch (err: any) {
+          if (err?.statusCode === 410 && s.subscription?.endpoint) {
+            await supabase
+              .from("push_subscriptions")
+              .delete()
+              .eq("subscription_key", s.subscription.endpoint);
+          } else if (
+            s.provider === "fcm" &&
+            isFcmTokenInvalid(err) &&
+            (s.subscription_key || s.subscription?.token)
+          ) {
+            await supabase
+              .from("push_subscriptions")
+              .delete()
+              .eq(
+                "subscription_key",
+                s.subscription_key || s.subscription.token,
+              );
+          }
+          throw err;
+        }
+      }),
+    );
 
     const successful = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.filter(r => r.status === 'rejected').length;
