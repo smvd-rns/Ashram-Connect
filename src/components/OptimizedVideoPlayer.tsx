@@ -38,8 +38,7 @@ export default function OptimizedVideoPlayer({
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
 
   // Fallback URL for standard iframe (Used if JS API fails or is blocked)
-  // vq=small (240p) ensures much faster loading on slower connections
-  const fallbackUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3&vq=small`;
+  const fallbackUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
 
   // 1. Load YouTube IFrame API Script (Globally once)
   useEffect(() => {
@@ -53,14 +52,14 @@ export default function OptimizedVideoPlayer({
 
     if (checkYT()) return;
 
-    // AUTO-FALLBACK: If the API doesn't load in 1.5 seconds, we use a standard iframe
+    // AUTO-FALLBACK: If the API doesn't load in 3.5 seconds, we use a standard iframe
     // This fixed the "Stuck on Initializing" issue on high-security laptops/ad-blockers
     const fallbackTimer = setTimeout(() => {
       if (!window.YT || !window.YT.Player) {
         console.warn("[YT-PLAYER] Using Standard Fallback (API slow/blocked)");
         setTimedOut(true);
       }
-    }, 1500);
+    }, 3500);
 
     if (!document.getElementById("youtube-api-script")) {
       const tag = document.createElement("script");
@@ -111,12 +110,10 @@ export default function OptimizedVideoPlayer({
     navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING ? "playing" : "paused";
 
     navigator.mediaSession.setActionHandler("play", () => {
-      intendedPlayStateRef.current = "PLAYING";
       playerInstance.current?.playVideo();
       navigator.mediaSession.playbackState = "playing";
     });
     navigator.mediaSession.setActionHandler("pause", () => {
-      intendedPlayStateRef.current = "PAUSED";
       playerInstance.current?.pauseVideo();
       navigator.mediaSession.playbackState = "paused";
     });
@@ -128,7 +125,7 @@ export default function OptimizedVideoPlayer({
   };
 
   // 2. Initialize/Update Player Instance
-  const intendedPlayStateRef = useRef<"PLAYING" | "PAUSED">("PAUSED");
+  const wasPlayingRef = useRef(false);
 
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
@@ -152,13 +149,11 @@ export default function OptimizedVideoPlayer({
             setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
-            const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
-            
             if (isPlaying) {
               updateMediaSession();
-              intendedPlayStateRef.current = "PLAYING";
-            } else if (isPaused) {
-              intendedPlayStateRef.current = "PAUSED";
+              wasPlayingRef.current = true;
+            } else if (event.data === (window as any).YT?.PlayerState?.PAUSED) {
+              wasPlayingRef.current = false;
             }
           },
           onError: () => {
@@ -196,19 +191,22 @@ export default function OptimizedVideoPlayer({
       if (!playerInstance.current || !window.YT) return;
 
       if (document.hidden) {
-        // When tab is hidden or screen locks, we can attempt a smooth play trigger, 
-        // but OS policies will usually override this for iframe video.
-        if (intendedPlayStateRef.current === "PLAYING") {
-          // A tiny timeout helps bypass instant-hide pause triggers on some browsers
+        // Tab is hidden. If it was playing just before, force resume.
+        if (wasPlayingRef.current) {
+          // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
           setTimeout(() => {
             playerInstance.current?.playVideo();
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.playbackState = "playing";
+            }
           }, 150);
         }
+      } else {
+        // Tab is visible again.
+        if (wasPlayingRef.current) {
+          playerInstance.current?.playVideo();
+        }
       }
-      // We do NOT attempt to auto-play when !document.hidden (screen wakes).
-      // Mobile Safari and Chrome STRICTLY block algorithmic un-pausing of video
-      // after a lock screen event, unless the user performs a physical tap.
-      // Trying to play() here causes a "play -> immediately forced pause" glitch.
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
@@ -274,35 +272,19 @@ export default function OptimizedVideoPlayer({
         <>
           {/* Bottom Right Shield (Covers YouTube Logo/Watermark) */}
           <div 
-            className="absolute bottom-0 right-0 w-[15%] h-[15%] z-[9999] cursor-default pointer-events-auto bg-white/[0.01] touch-none"
+            className="absolute bottom-0 right-0 w-[12%] h-[12%] z-[35] cursor-default pointer-events-auto"
             title="Privacy Restricted"
-            onClickCapture={(e) => {
-              e.stopPropagation(); e.preventDefault();
-              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-            }}
-            onTouchStartCapture={(e) => {
-              e.stopPropagation(); e.preventDefault();
-              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-            }}
-            onContextMenuCapture={(e) => {
-              e.stopPropagation(); e.preventDefault();
+            onClick={(e) => {
+              e.stopPropagation();
               openExternal(`https://www.youtube.com/watch?v=${videoId}`);
             }}
           />
 
           {/* Top Left Shield (Covers Title and Channel branding) */}
           <div 
-            className="absolute top-0 left-0 w-[80%] h-[20%] z-[9999] cursor-default pointer-events-auto bg-white/[0.01] touch-none"
-            onClickCapture={(e) => {
-              e.stopPropagation(); e.preventDefault();
-              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-            }}
-            onTouchStartCapture={(e) => {
-              e.stopPropagation(); e.preventDefault();
-              openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-            }}
-            onContextMenuCapture={(e) => {
-              e.stopPropagation(); e.preventDefault();
+            className="absolute top-0 left-0 w-[60%] h-[15%] z-[35] cursor-default pointer-events-auto"
+            onClick={(e) => {
+              e.stopPropagation();
               openExternal(`https://www.youtube.com/watch?v=${videoId}`);
             }}
           />
@@ -314,15 +296,9 @@ export default function OptimizedVideoPlayer({
           */}
           {currentState === (window as any).YT?.PlayerState?.PAUSED && (
             <div 
-              className="absolute inset-x-0 top-0 bottom-[14%] z-[9998] bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group pointer-events-auto bg-white/[0.01] touch-none"
-              onClickCapture={(e) => {
-                e.stopPropagation(); e.preventDefault();
-                intendedPlayStateRef.current = "PLAYING";
-                playerInstance.current?.playVideo();
-              }}
-              onTouchStartCapture={(e) => {
-                e.stopPropagation(); e.preventDefault();
-                intendedPlayStateRef.current = "PLAYING";
+              className="absolute inset-x-0 top-0 bottom-[14%] z-40 bg-black/5 backdrop-blur-[1px] flex items-center justify-center cursor-pointer group"
+              onClick={(e) => {
+                e.stopPropagation();
                 playerInstance.current?.playVideo();
               }}
             >
