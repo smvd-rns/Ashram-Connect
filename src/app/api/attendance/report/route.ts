@@ -89,27 +89,30 @@ export async function GET(req: NextRequest) {
     // Pre-populate matrix with BCDB users and grant them Harinam access
     (bcdbUsers || []).forEach(u => {
       if (!u.email_id) return;
-      matrix[u.email_id] = {
-        email: u.email_id,
-        full_name: u.initiated_name || u.legal_name || u.email_id.split("@")[0],
+      const email = u.email_id.toLowerCase().trim();
+      matrix[email] = {
+        email: email,
+        full_name: u.initiated_name || u.legal_name || email.split("@")[0],
         assigned_machines: ["harinam_virtual"],
         dates: {}
       };
     });
 
-    // Fallback dictionary for physical mappers not in BCDB
-    const emails = [...new Set(mappingsList.map(m => m.user_email))];
+    const emails = [...new Set(mappingsList.map(m => (m.user_email || "").toLowerCase().trim()))].filter(Boolean);
     const { data: profiles } = await supabase.from("profiles").select("email, full_name").in("email", emails);
     const profileMap: Record<string, string> = {};
-    (profiles || []).forEach((p: any) => { profileMap[p.email] = p.full_name; });
+    (profiles || []).forEach((p: any) => { 
+      const email = (p.email || "").toLowerCase().trim();
+      if (email) profileMap[email] = p.full_name; 
+    });
 
-    // Pre-populate hardware assigned_machines from mappings
     mappingsList.forEach(m => {
-      const email = m.user_email.toLowerCase();
+      const email = (m.user_email || "").toLowerCase().trim();
+      if (!email) return;
       if (!matrix[email]) {
         matrix[email] = {
           email: email,
-          full_name: profileMap[m.user_email] || m.user_email.split("@")[0],
+          full_name: profileMap[email] || email.split("@")[0],
           assigned_machines: [],
           dates: {}
         };
@@ -174,8 +177,8 @@ export async function GET(req: NextRequest) {
     machinesList.push(harinamVirtualMachine);
 
     (harinamDataList || []).forEach((record: any) => {
-      const email = record.user_email.toLowerCase();
-      if (!matrix[email]) return;
+      const email = (record.user_email || "").toLowerCase().trim();
+      if (!email || !matrix[email]) return;
       const date = record.date;
       if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
       matrix[email].dates[date]["Harinam"] = [{
@@ -199,8 +202,8 @@ export async function GET(req: NextRequest) {
     if (exceptionsError) throw exceptionsError;
 
     (exceptionsList || []).forEach((ex: any) => {
-      const email = ex.user_email.toLowerCase();
-      if (!matrix[email] || !ex.date) return;
+      const email = (ex.user_email || "").toLowerCase().trim();
+      if (!email || !matrix[email] || !ex.date) return;
       const date = ex.date;
       if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
 
