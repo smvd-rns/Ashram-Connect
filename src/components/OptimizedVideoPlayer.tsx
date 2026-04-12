@@ -38,13 +38,12 @@ export default function OptimizedVideoPlayer({
   const [currentState, setCurrentState] = useState<number | null>(null);
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
 
-  // Initialize silent audio on mount to keep process alive in background/locked state
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    // 1-second silent WAV base64
-    const audio = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAIlYAAIhYAQACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    audio.loop = true;
-    silentAudioRef.current = audio;
+    // We now use a DOM-attached element (see JSX return) 
+    // This is more reliable for keeping the session alive on iOS/Android
+    if (silentAudioRef.current) {
+        silentAudioRef.current.volume = 0.01; // Nearly silent but active
+    }
   }, []);
 
   // Fallback URL for standard iframe (Used if JS API fails or is blocked)
@@ -138,6 +137,29 @@ export default function OptimizedVideoPlayer({
       }
     });
   };
+  
+  // Hardened Background Resume with Retries
+  const forcePlayWithTries = (tries = 3) => {
+    if (!playerInstance.current || !wasPlayingRef.current || userPausedRef.current) return;
+    
+    console.log(`[YT-PLAYER] Force Resume Attempt (${4 - tries}/3)`);
+    playerInstance.current.playVideo();
+    silentAudioRef.current?.play().catch(() => {});
+    
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = "playing";
+    }
+
+    if (tries > 1) {
+      setTimeout(() => {
+         // Check if still paused (system might have blocked it)
+         const state = playerInstance.current?.getPlayerState();
+         if (state === (window as any).YT?.PlayerState?.PAUSED || state === (window as any).YT?.PlayerState?.BUFFERING) {
+           forcePlayWithTries(tries - 1);
+         }
+      }, 500);
+    }
+  };
 
   // 2. Initialize/Update Player Instance
   const wasPlayingRef = useRef(false);
@@ -179,10 +201,7 @@ export default function OptimizedVideoPlayer({
               silentAudioRef.current?.pause();
               // If it's paused while hidden but wasn't a user pause, force resume
               if (document.hidden && !userPausedRef.current && wasPlayingRef.current) {
-                console.log("[YT-PLAYER] Intercepting background pause, resuming...");
-                setTimeout(() => {
-                  playerInstance.current?.playVideo();
-                }, 100);
+                forcePlayWithTries(3);
               }
             }
           },
@@ -222,15 +241,8 @@ export default function OptimizedVideoPlayer({
 
       if (document.hidden) {
         // Tab is hidden. If it was playing just before, force resume.
-        if (wasPlayingRef.current) {
-          // 150ms timeout to allow any browser "auto-pause" to finish before we force "play"
-          setTimeout(() => {
-            playerInstance.current?.playVideo();
-            silentAudioRef.current?.play().catch(() => {});
-            if ('mediaSession' in navigator) {
-              navigator.mediaSession.playbackState = "playing";
-            }
-          }, 250); // Slightly increased delay for OS transition safety
+        if (wasPlayingRef.current && !userPausedRef.current) {
+           forcePlayWithTries(2);
         }
       } else {
         // Tab is visible again.
@@ -366,6 +378,15 @@ export default function OptimizedVideoPlayer({
           )}
         </>
       )}
+
+      {/* Hidden audio element used as a "Live Anchor" for background play */}
+      <audio 
+        ref={silentAudioRef} 
+        src="data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAIlYAAIhYAQACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        loop 
+        playsInline
+        style={{ display: "none" }}
+      />
     </div>
   );
 }
