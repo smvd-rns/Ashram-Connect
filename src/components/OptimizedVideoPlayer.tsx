@@ -158,11 +158,7 @@ export default function OptimizedVideoPlayer({
               updateMediaSession();
               intendedPlayStateRef.current = "PLAYING";
             } else if (isPaused) {
-              // If the video pauses while the screen is on (document is NOT hidden), 
-              // it means the user actively paused it (via tap or controls).
-              if (!document.hidden) {
-                intendedPlayStateRef.current = "PAUSED";
-              }
+              intendedPlayStateRef.current = "PAUSED";
             }
           },
           onError: () => {
@@ -199,18 +195,20 @@ export default function OptimizedVideoPlayer({
     const handleVisibility = () => {
       if (!playerInstance.current || !window.YT) return;
 
-      if (!document.hidden) {
-        // App is visible again (user unlocked screen or came back to browser).
+      if (document.hidden) {
+        // When tab is hidden or screen locks, we can attempt a smooth play trigger, 
+        // but OS policies will usually override this for iframe video.
         if (intendedPlayStateRef.current === "PLAYING") {
-           // We use a slight delay to allow the browser to fully un-suspend the iframe context
-           setTimeout(() => {
-             playerInstance.current?.playVideo();
-             if ('mediaSession' in navigator) {
-               navigator.mediaSession.playbackState = "playing";
-             }
-           }, 200);
+          // A tiny timeout helps bypass instant-hide pause triggers on some browsers
+          setTimeout(() => {
+            playerInstance.current?.playVideo();
+          }, 150);
         }
       }
+      // We do NOT attempt to auto-play when !document.hidden (screen wakes).
+      // Mobile Safari and Chrome STRICTLY block algorithmic un-pausing of video
+      // after a lock screen event, unless the user performs a physical tap.
+      // Trying to play() here causes a "play -> immediately forced pause" glitch.
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
