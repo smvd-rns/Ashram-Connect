@@ -3059,6 +3059,7 @@ function SessionCard({
   idx,
   sessionIcons,
   handleUpdateMachine,
+  handleDeleteMachine,
   getSessionLabel,
   setAudienceModal,
 }: any) {
