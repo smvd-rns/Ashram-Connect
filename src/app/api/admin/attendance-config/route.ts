@@ -49,10 +49,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "update_settings") {
-      const { sync_from_date } = data;
+      const { sync_from_date, prasadam_start_time, prasadam_end_time, prasadam_machine_ids } = data;
       const { data: updatedSettings, error } = await supabase
         .from("attendance_settings")
-        .update({ sync_from_date, updated_at: new Date().toISOString() })
+        .update({ 
+          sync_from_date, 
+          prasadam_start_time, 
+          prasadam_end_time, 
+          prasadam_machine_ids,
+          updated_at: new Date().toISOString() 
+        })
         .eq("id", "global")
         .select()
         .single();
