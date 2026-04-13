@@ -993,12 +993,12 @@ export default function AttendanceTracing({
       ) : (
         <div className="grid gap-12 w-full min-w-0">
           {viewMode === "matrix" ? (
-            <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] sm:rounded-[4rem] border border-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] w-full transition-all duration-700">
-              <div className="p-3 sm:p-4 flex flex-col bg-slate-50/20">
+            <div className="bg-white/95 backdrop-blur-3xl p-4 sm:p-8 rounded-[2.5rem] sm:rounded-[3rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] border border-white w-full transition-all duration-700 overflow-hidden">
+              <div className="flex flex-col gap-6">
                 {/* Single Row Compact Header */}
-                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 w-full pb-2">
+                <div className="flex flex-col lg:flex-row lg:flex-wrap items-start lg:items-center justify-between gap-4 w-full pb-2">
                   {/* Filter & Date Controls */}
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full xl:w-auto">
                     {/* Time Range */}
                     <div className="flex items-center p-1 bg-slate-100/50 rounded-xl sm:rounded-2xl border border-slate-200/50 shadow-inner w-auto max-w-full overflow-x-auto no-scrollbar">
                       {(["day", "week", "month", "custom"] as const).map(
@@ -1354,22 +1354,19 @@ export default function AttendanceTracing({
                     </table>
                   </div>
                 ) : (
-                  <div className="rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto overflow-y-hidden custom-attendance-scrollbar relative">
+                  <div className="rounded-3xl border border-slate-100 shadow-inner bg-slate-50/50 overflow-x-auto overflow-y-hidden custom-attendance-scrollbar relative min-h-[400px]">
                     <table
-                      className="text-left border-separate border-spacing-0"
-                      style={{
-                        minWidth: `${120 + getDateColumns().length * 40}px`,
-                      }}
+                      className="text-left border-separate border-spacing-0 w-full min-w-max"
                     >
                       <thead>
                         <tr className="bg-slate-900 text-white">
-                          <th className="px-4 sm:px-6 py-4 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] sticky left-0 bg-slate-900 z-10 z-20 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] min-w-[120px] sm:min-w-[180px]">
+                          <th className="px-4 py-4 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] sticky left-0 bg-slate-900 z-10 shadow-[8px_0_15px_-5px_rgba(0,0,0,0.3)] w-[120px] sm:w-[200px] min-w-[120px] sm:min-w-[200px] border-r border-white/5 align-bottom">
                             Portfolio
                           </th>
                           {getDateColumns().map((date) => (
                             <th
                               key={date}
-                              className="px-1 sm:px-4 py-4 text-center min-w-[40px] sm:min-w-[50px] border-r border-white/5"
+                              className="px-2 sm:px-4 py-4 text-center min-w-[50px] sm:min-w-[65px] w-[50px] sm:w-[65px] border-r border-white/5 align-bottom"
                             >
                               <div className="text-[10px] sm:text-xs font-black leading-none mb-1">
                                 {new Date(date).toLocaleDateString("en-IN", {
@@ -1386,21 +1383,21 @@ export default function AttendanceTracing({
                             </th>
                           ))}
                           {activeMachine?.id === "harinam_virtual" ? (
-                            <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-indigo-400 uppercase tracking-widest bg-slate-950 shadow-[inset_0_2px_0_#6366f1]">
+                            <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-indigo-400 uppercase tracking-widest bg-slate-950 shadow-[inset_0_2px_0_#6366f1] align-bottom">
                               Total Hrs
                             </th>
                           ) : (
                             <>
-                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#10b981]">
+                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#10b981] align-bottom">
                                 P
                               </th>
-                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-amber-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#fbbf24]">
+                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-amber-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#fbbf24] align-bottom">
                                 L
                               </th>
-                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-rose-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#f43f5e]">
+                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-rose-400 uppercase tracking-widest bg-slate-950 border-r border-white/5 shadow-[inset_0_2px_0_#f43f5e] align-bottom">
                                 A
                               </th>
-                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-indigo-400 uppercase tracking-widest bg-slate-950 shadow-[inset_0_2px_0_#6366f1]">
+                              <th className="px-2 sm:px-4 py-4 text-center text-[10px] sm:text-[11px] font-black text-indigo-400 uppercase tracking-widest bg-slate-950 shadow-[inset_0_2px_0_#6366f1] align-bottom">
                                 %
                               </th>
                             </>
@@ -1420,20 +1417,20 @@ export default function AttendanceTracing({
                               className={`transition-colors group ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50/40"} hover:bg-indigo-50/30`}
                             >
                               <td
-                                className={`px-2 sm:px-4 py-2 sticky left-0 z-50 border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-indigo-50`}
+                                className={`px-2 sm:px-4 py-3 sticky left-0 z-20 border-r border-b border-slate-200 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] ${uIdx % 2 === 0 ? "bg-white" : "bg-slate-50"} group-hover:bg-indigo-50 w-[120px] sm:w-[200px] min-w-[120px] sm:min-w-[200px] align-middle`}
                               >
-                                <div className="font-black text-slate-800 text-sm sm:text-[15px] tracking-tighter leading-none mb-1 truncate max-w-[150px]">
+                                <div className="font-black text-slate-800 text-sm sm:text-[15px] tracking-tighter leading-none mb-1 truncate w-[100px] sm:w-[180px]">
                                   {user.full_name}
                                 </div>
-                                <div className="flex items-center gap-1.5 mt-1.5">
-                                  <span className="text-[10px] font-black text-slate-400 tabular-nums">
+                                <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden w-[100px] sm:w-[180px]">
+                                  <span className="text-[10px] font-black text-slate-400 tabular-nums shrink-0">
                                     #
                                     {user.dates[Object.keys(user.dates)[0]]?.[
                                       activeMachine?.description
                                     ]?.[0]?.zk_user_id || "--"}
                                   </span>
-                                  <span className="w-1 h-1 rounded-full bg-slate-200" />
-                                  <span className="text-[9px] font-bold text-slate-400 truncate max-w-[100px]">
+                                  <span className="w-1 h-1 rounded-full bg-slate-200 shrink-0" />
+                                  <span className="text-[9px] font-bold text-slate-400 truncate">
                                     {user.email}
                                   </span>
                                 </div>
@@ -1525,8 +1522,7 @@ export default function AttendanceTracing({
                                                 ? "L"
                                                 : "A"}
                                           </div>
-                                          {logs.length > 0 &&
-                                            status !== "absent" && (
+                                          {logs.length > 0 && (
                                               <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
                                                 {(() => {
                                                   const earliest = logs.reduce(
@@ -1811,7 +1807,7 @@ export default function AttendanceTracing({
           ) : (
             <div className="space-y-12 animate-in slide-in-from-right-10 duration-700 w-full min-w-0">
               <div className="bg-white/95 backdrop-blur-3xl p-4 sm:px-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-start justify-between gap-4 w-full min-w-0 relative z-50 max-w-full">
-                <div className="w-full md:w-auto">
+                <div className="flex flex-col min-w-0">
                   <h3 className="text-2xl sm:text-3xl font-black tracking-tighter font-outfit text-slate-900 leading-none mb-1.5 break-words">
                     {displayUser?.full_name}
                   </h3>
@@ -1820,93 +1816,96 @@ export default function AttendanceTracing({
                   </p>
                 </div>
 
-                {/* Date Range Navigator - wraps on small screens */}
-                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                  {/* Week / Month toggle */}
-                  <div className="flex shrink-0 items-center p-1 bg-slate-100/60 rounded-xl border border-slate-200/60 shadow-inner">
-                    {(["week", "month"] as const).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setHistoryRange(r)}
-                        className={`px-3 sm:px-4 py-1.5 rounded-lg font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all ${historyRange === r ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-slate-600"}`}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Prev / Date label / Next */}
-                  <div className="flex shrink-0 items-center bg-white rounded-xl border border-slate-100 shadow-sm gap-1 p-1">
-                    <button
-                      onClick={() => {
-                        const d = parseLocalDate(historyPivot);
-                        if (historyRange === "week") d.setDate(d.getDate() - 7);
-                        else d.setMonth(d.getMonth() - 1);
-                        setHistoryPivot(toLocalDateStr(d));
-                      }}
-                      className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <div className="relative flex items-center justify-center px-4 py-1.5 bg-indigo-50/30 border border-indigo-100/30 rounded-lg cursor-pointer group/hdate">
-                      <Calendar className="w-3.5 h-3.5 text-indigo-400 mr-1.5" />
-                      <span className="text-xs font-black text-slate-700 tracking-tight group-hover/hdate:text-indigo-600 transition-colors whitespace-nowrap">
-                        {(() => {
-                          const pivot = parseLocalDate(historyPivot);
-                          if (historyRange === "week") {
-                            const day = pivot.getDay();
-                            const diff =
-                              pivot.getDate() - day + (day === 0 ? -6 : 1);
-                            const start = new Date(
-                              pivot.getFullYear(),
-                              pivot.getMonth(),
-                              diff,
-                            );
-                            const end = new Date(
-                              pivot.getFullYear(),
-                              pivot.getMonth(),
-                              diff + 6,
-                            );
-                            return `${start.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} – ${end.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
-                          }
-                          return pivot.toLocaleDateString("en-IN", {
-                            month: "long",
-                            year: "numeric",
-                          });
-                        })()}
-                      </span>
-                      <input
-                        type="date"
-                        value={historyPivot}
-                        onChange={(e) => setHistoryPivot(e.target.value)}
-                        className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10"
-                      />
-                    </div>
-                    <button
-                      onClick={() => {
-                        const d = parseLocalDate(historyPivot);
-                        if (historyRange === "week") d.setDate(d.getDate() + 7);
-                        else d.setMonth(d.getMonth() + 1);
-                        setHistoryPivot(toLocalDateStr(d));
-                      }}
-                      className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                  {/* Back Button */}
                   {!forceUserView && (
                     <button
                       onClick={() => setViewMode("matrix")}
-                      className="flex items-center justify-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] bg-indigo-50 px-5 py-2.5 rounded-xl hover:bg-indigo-100 transition-all shrink-0 w-full sm:w-auto"
+                      className="flex items-center justify-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] bg-indigo-50 px-5 py-2.5 rounded-xl hover:bg-indigo-100 transition-all shrink-0"
                     >
                       <ChevronLeft className="w-4 h-4" /> Back to Matrix
                     </button>
                   )}
+
+                  {/* Date Range Navigator */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Week / Month toggle */}
+                    <div className="flex shrink-0 items-center p-1 bg-slate-100/60 rounded-xl border border-slate-200/60 shadow-inner">
+                      {(["week", "month"] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setHistoryRange(r)}
+                          className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-tight transition-all ${historyRange === r ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Prev / Date label / Next */}
+                    <div className="flex shrink-0 items-center bg-white rounded-xl border border-slate-100 shadow-sm gap-1 p-1">
+                      <button
+                        onClick={() => {
+                          const d = parseLocalDate(historyPivot);
+                          if (historyRange === "week") d.setDate(d.getDate() - 7);
+                          else d.setMonth(d.getMonth() - 1);
+                          setHistoryPivot(toLocalDateStr(d));
+                        }}
+                        className="p-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="relative flex items-center justify-center px-3 py-1.5 bg-indigo-50/30 border border-indigo-100/30 rounded-lg cursor-pointer group/hdate">
+                        <Calendar className="w-3 h-3 text-indigo-400 mr-1.5" />
+                        <span className="text-[10px] font-black text-slate-700 tracking-tight group-hover/hdate:text-indigo-600 transition-colors whitespace-nowrap">
+                          {(() => {
+                            const pivot = parseLocalDate(historyPivot);
+                            if (historyRange === "week") {
+                              const day = pivot.getDay();
+                              const diff =
+                                pivot.getDate() - day + (day === 0 ? -6 : 1);
+                              const start = new Date(
+                                pivot.getFullYear(),
+                                pivot.getMonth(),
+                                diff,
+                              );
+                              const end = new Date(
+                                pivot.getFullYear(),
+                                pivot.getMonth(),
+                                diff + 6,
+                              );
+                              return `${start.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} – ${end.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
+                            }
+                            return pivot.toLocaleDateString("en-IN", {
+                              month: "long",
+                              year: "numeric",
+                            });
+                          })()}
+                        </span>
+                        <input
+                          type="date"
+                          value={historyPivot}
+                          onChange={(e) => setHistoryPivot(e.target.value)}
+                          className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          const d = parseLocalDate(historyPivot);
+                          if (historyRange === "week") d.setDate(d.getDate() + 7);
+                          else d.setMonth(d.getMonth() + 1);
+                          setHistoryPivot(toLocalDateStr(d));
+                        }}
+                        className="p-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all active:scale-90"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Search Bar */}
                   {isAdmin && !forceUserView && (
-                    <div className="relative flex items-center w-full sm:w-72 group/hsearch">
-                      <Search className="absolute left-3.5 w-4 h-4 text-slate-400 group-focus-within/hsearch:text-indigo-600 transition-colors" />
+                    <div className="relative flex items-center w-full sm:w-64 group/hsearch">
+                      <Search className="absolute left-3.5 w-3.5 h-3.5 text-slate-400 group-focus-within/hsearch:text-indigo-600 transition-colors" />
                       <input
                         type="text"
                         placeholder="Search student..."
@@ -1916,8 +1915,12 @@ export default function AttendanceTracing({
                           setShowUserDropdown(true);
                         }}
                         onFocus={() => setShowUserDropdown(true)}
-                        className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl outline-none font-bold text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
+                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-4 py-2 rounded-xl outline-none font-bold text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
                       />
+                    </div>
+                  )}
+                </div>
+
 
                       {showUserDropdown && historySearchQuery.length > 0 && (
                         <div className="absolute top-full left-0 sm:right-0 sm:left-auto w-full sm:w-80 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[200] p-2 space-y-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -1957,10 +1960,7 @@ export default function AttendanceTracing({
                             ))}
                         </div>
                       )}
-                    </div>
-                  )}
                 </div>
-              </div>
 
               {/* Visual Dashboard - Recharts Integration */}
               <div className="w-full min-w-0 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-top-4 duration-1000">
