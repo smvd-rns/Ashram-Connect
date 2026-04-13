@@ -153,7 +153,6 @@ export default function PersonalAttendancePage() {
               {isAttendanceIncharge && (
                 <AttendanceInchargeForm
                   session={session}
-                  profile={profile}
                   onSuccess={() => setRefreshKey((prev) => prev + 1)}
                 />
               )}
