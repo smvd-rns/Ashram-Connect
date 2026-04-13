@@ -7,6 +7,7 @@ import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHoriz
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
+import { useVmInchargeAccess } from "@/hooks/useVmInchargeAccess";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -15,7 +16,7 @@ export default function Navbar() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showDesktopMore, setShowDesktopMore] = useState(false);
-  const [hasVmInchargeAccess, setHasVmInchargeAccess] = useState(false);
+  const hasVmInchargeAccess = useVmInchargeAccess(session);
   const role = Number(profile?.role);
   const canOpenAttendance = isBcdb || role === 1 || role === 3 || hasVmInchargeAccess;
 
@@ -53,25 +54,6 @@ export default function Navbar() {
 
     return () => subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    const checkVmAccess = async () => {
-      if (!session?.access_token) {
-        setHasVmInchargeAccess(false);
-        return;
-      }
-      try {
-        const res = await fetch("/api/attendance/virtual-machine", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const data = await res.json().catch(() => ({}));
-        setHasVmInchargeAccess(res.ok && !!data?.machine);
-      } catch {
-        setHasVmInchargeAccess(false);
-      }
-    };
-    checkVmAccess();
-  }, [session?.access_token]);
 
   const getInitials = () => {
     if (profile?.full_name) {
