@@ -7,11 +7,13 @@ import Navbar from "@/components/Navbar";
 import AttendanceTracing from "@/components/AttendanceTracing";
 import AttendanceExceptionForm from "@/components/AttendanceExceptionForm";
 import AttendanceInchargeForm from "@/components/AttendanceInchargeForm";
+import VirtualMachineAttendanceForm from "@/components/VirtualMachineAttendanceForm";
 import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 
 export default function PersonalAttendancePage() {
   const [session, setSession] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);
+  const [hasVmInchargeAccess, setHasVmInchargeAccess] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,9 +32,30 @@ export default function PersonalAttendancePage() {
   const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
   const role = Number(profile?.role);
   const isAttendanceIncharge = role === 3;
+  const isVirtualMachineIncharge = hasVmInchargeAccess;
   const isSuperAdmin = role === 1;
+  const canViewFullAttendance = isBcdb || isSuperAdmin;
 
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const checkVmAccess = async () => {
+      if (!session?.access_token) {
+        setHasVmInchargeAccess(false);
+        return;
+      }
+      try {
+        const res = await fetch("/api/attendance/virtual-machine", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        setHasVmInchargeAccess(res.ok && !!data?.machine);
+      } catch {
+        setHasVmInchargeAccess(false);
+      }
+    };
+    checkVmAccess();
+  }, [session?.access_token]);
 
   if (initializing || (session && loadingProfile)) {
     return (
@@ -61,7 +84,7 @@ export default function PersonalAttendancePage() {
     );
   }
 
-  if (!isBcdb && !isAttendanceIncharge && !isSuperAdmin) {
+  if (!isBcdb && !isAttendanceIncharge && !isVirtualMachineIncharge && !isSuperAdmin) {
     return (
       <>
         <Navbar />
@@ -87,24 +110,9 @@ export default function PersonalAttendancePage() {
       <Navbar />
       <div className="min-h-screen bg-slate-50 pt-16 sm:pt-20 pb-24 md:pb-20 overflow-x-hidden">
         <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-12 min-w-0">
-          {isAttendanceIncharge && !isBcdb ? (
-            <div className="max-w-xl mx-auto">
-              <div className="mb-6 text-center">
-                <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter mb-2 font-outfit uppercase">
-                  Attendance Incharge
-                </h1>
-                <p className="text-slate-500 font-bold text-xs uppercase tracking-[0.2em]">
-                  Harinam bulk marking access
-                </p>
-              </div>
-              <AttendanceInchargeForm
-                session={session}
-                onSuccess={() => setRefreshKey((prev) => prev + 1)}
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start min-w-0">
-              {/* Main Attendance Section - Left side */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start min-w-0">
+            {/* Main Attendance Section - Left side */}
+            {canViewFullAttendance && (
               <div className="col-span-1 lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8 lg:space-y-10 min-w-0">
                 <div className="animate-in fade-in slide-in-from-left-4 duration-700">
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tighter mb-2 font-outfit uppercase">My Attendance</h1>
@@ -125,35 +133,46 @@ export default function PersonalAttendancePage() {
                   <AttendanceTracing
                     key={refreshKey}
                     isAdmin={isSuperAdmin}
-                    forceUserView={true}
+                    forceUserView={!isSuperAdmin}
                     session={session}
                     profile={profile}
                   />
                 </Suspense>
               </div>
+            )}
 
-              {/* Sidebar Space - Now housing the Exception Reporting Form */}
-              <div className="flex flex-col lg:col-span-4 xl:col-span-3 lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300 min-w-0">
+            {/* Sidebar Space - Now housing the Exception Reporting Form */}
+            <div className={`flex flex-col ${canViewFullAttendance ? "lg:col-span-4 xl:col-span-3" : "lg:col-span-12 xl:col-span-12 max-w-3xl mx-auto w-full"} lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300 min-w-0`}>
+              {canViewFullAttendance && (
                 <AttendanceExceptionForm
                   userEmail={profile?.email || ""}
                   onSuccess={() => setRefreshKey(prev => prev + 1)}
                 />
+              )}
 
-                {isAttendanceIncharge && (
-                  <AttendanceInchargeForm
-                    session={session}
-                    onSuccess={() => setRefreshKey((prev) => prev + 1)}
-                  />
-                )}
+              {isAttendanceIncharge && (
+                <AttendanceInchargeForm
+                  session={session}
+                  profile={profile}
+                  onSuccess={() => setRefreshKey((prev) => prev + 1)}
+                />
+              )}
 
-                {/* Decorative card for remaining insights */}
+              {isVirtualMachineIncharge && (
+                <VirtualMachineAttendanceForm
+                  session={session}
+                  onSuccess={() => setRefreshKey((prev) => prev + 1)}
+                />
+              )}
+
+              {canViewFullAttendance && (
                 <div className="bg-white/40 backdrop-blur-sm border border-slate-100 rounded-[2.5rem] p-8 flex flex-col items-center text-center gap-4 opacity-60">
                   <p className="font-black text-slate-400 uppercase tracking-[0.3em] text-[8px]">Wisdom Analytics</p>
                   <p className="text-slate-300 font-bold text-[10px] leading-relaxed">Additional patterns and insights will appear here as your data grows.</p>
                 </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </>

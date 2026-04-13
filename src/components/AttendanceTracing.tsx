@@ -27,6 +27,7 @@ import {
   PieChart as PieIcon,
   LineChart as LineIcon,
   Book,
+  Sparkles,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -89,6 +90,7 @@ export default function AttendanceTracing({
   const [newMachine, setNewMachine] = useState({
     serial_number: "",
     description: "",
+    is_virtual: false,
     ingestion_start: "02:00",
     ingestion_end: "11:00",
     p_start: "04:00",
@@ -100,6 +102,13 @@ export default function AttendanceTracing({
   // Custom Modal State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Audience Management Modal
+  const [audienceModal, setAudienceModal] = useState<{
+    show: boolean;
+    machineId: string | null;
+    sessionName: string;
+  }>({ show: false, machineId: null, sessionName: "" });
 
   // User History Admin Search
   const [historySearchQuery, setHistorySearchQuery] = useState("");
@@ -113,7 +122,7 @@ export default function AttendanceTracing({
   // Sync profile data when forceUserView is active
   useEffect(() => {
     if (forceUserView && profile?.email) {
-      setSelectedUserEmail(profile.email);
+      setSelectedUserEmail(profile.email.toLowerCase());
       setViewMode("history");
     }
   }, [forceUserView, profile?.email]);
@@ -474,6 +483,8 @@ export default function AttendanceTracing({
     }, logs[0]);
 
     if (!earliestLog || !earliestLog.check_time) {
+      if (logs.some((l) => l?.vm_status === "P")) return "present";
+      if (logs.some((l) => l?.vm_status === "A")) return "absent";
       // Manual entries or duration-based features
       if (
         logs.some(
@@ -574,7 +585,13 @@ export default function AttendanceTracing({
   });
 
   const displayUser =
-    report.find((u) => u.email.toLowerCase() === selectedUserEmail?.toLowerCase()) || report[0];
+    report.find((u) => u.email.toLowerCase() === selectedUserEmail?.toLowerCase()) || 
+    (viewMode === "history" && selectedUserEmail?.toLowerCase() === profile?.email?.toLowerCase() ? {
+      email: profile.email,
+      full_name: profile.full_name || profile.email.split("@")[0],
+      dates: {},
+      assigned_machines: []
+    } : report[0]);
   const activeMachine = machines.find((m) => m.id === selectedMachineId);
 
   const handleUpdateMachine = async (id: string, updates: any) => {
@@ -597,8 +614,12 @@ export default function AttendanceTracing({
   };
 
   const handleAddMachine = async () => {
-    if (!newMachine.serial_number || !newMachine.description) {
-      alert("Serial Number and Session Name are required.");
+    if (!newMachine.is_virtual && !newMachine.serial_number) {
+      alert("Serial Number is required for hardware nodes.");
+      return;
+    }
+    if (!newMachine.description) {
+      alert("Session Name is required.");
       return;
     }
     setLoading(true);
@@ -624,6 +645,7 @@ export default function AttendanceTracing({
       setNewMachine({
         serial_number: "",
         description: "",
+        is_virtual: false,
         ingestion_start: "02:00",
         ingestion_end: "11:00",
         p_start: "04:00",
@@ -1482,8 +1504,36 @@ export default function AttendanceTracing({
                                           </div>
                                         );
                                       }
-                                      return null;
-                                    })() || (logs.length > 0 ? (
+                                    })() || (activeMachine?.is_virtual && activeMachine?.id !== "harinam_virtual" ? (
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            await fetch("/api/admin/attendance-config", {
+                                              method: "POST",
+                                              headers: {
+                                                "Content-Type": "application/json",
+                                                "Authorization": `Bearer ${session.access_token}`
+                                              },
+                                              body: JSON.stringify({
+                                                action: "toggle_manual_attendance",
+                                                data: {
+                                                  machineId: activeMachine.id,
+                                                  userEmail: user.email,
+                                                  date,
+                                                  currentStatus: logs.length > 0 ? "present" : "absent"
+                                                }
+                                              })
+                                            });
+                                            fetchReport();
+                                          } catch (e) { console.error(e); }
+                                        }}
+                                        className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-lg flex items-center justify-center font-black text-[10px] sm:text-[11px] transition-all transform hover:scale-110 shadow-sm border ${logs.length > 0
+                                          ? "bg-emerald-500 text-white border-emerald-400"
+                                          : "bg-white text-slate-300 border-slate-100 hover:border-indigo-200 hover:text-indigo-400"}`}
+                                      >
+                                        {logs.length > 0 ? "P" : "+"}
+                                      </button>
+                                    ) : (logs.length > 0 ? (
                                       activeMachine?.id ===
                                         "harinam_virtual" ? (
                                         (() => {
@@ -1522,34 +1572,16 @@ export default function AttendanceTracing({
                                                 ? "L"
                                                 : "A"}
                                           </div>
-                                          {logs.length > 0 && (
-                                              <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
-                                                {(() => {
-                                                  const earliest = logs.reduce(
-                                                    (min: any, log: any) =>
-                                                      !min.check_time ||
-                                                        (log.check_time &&
-                                                          new Date(
-                                                            log.check_time,
-                                                          ) <
-                                                          new Date(
-                                                            min.check_time,
-                                                          ))
-                                                        ? log
-                                                        : min,
-                                                    logs[0],
-                                                  );
-                                                  return formatRawTime(
-                                                    earliest.check_time,
-                                                  );
-                                                })()}
-                                              </span>
-                                            )}
+                                          {logs.length > 0 && !activeMachine?.is_virtual && (
+                                            <span className="text-[10px] font-black text-slate-500 tracking-tighter tabular-nums leading-none mt-0.5">
+                                              {formatRawTime(logs[0].check_time)}
+                                            </span>
+                                          )}
                                         </div>
                                       )
                                     ) : (
                                       <div className="w-1 h-1 mx-auto bg-slate-200 rounded-full opacity-20" />
-                                    ))}
+                                    )))}
                                   </td>
                                 );
                               })}
@@ -1666,7 +1698,27 @@ export default function AttendanceTracing({
                         <XCircle className="w-5 h-5" />
                       </button>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-6">
+                      {/* Session Type Toggle */}
+                      <div className="flex p-1.5 bg-slate-100 rounded-2xl w-full sm:w-fit self-center mx-auto mb-2">
+                        {[
+                          { id: false, label: "Physical Node", icon: HardDrive },
+                          { id: true, label: "Virtual Session", icon: Sparkles },
+                        ].map((type) => (
+                          <button
+                            key={type.label}
+                            onClick={() => setNewMachine({ ...newMachine, is_virtual: type.id as boolean })}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${newMachine.is_virtual === type.id
+                              ? "bg-white text-indigo-600 shadow-sm"
+                              : "text-slate-400 hover:text-slate-600"
+                              }`}
+                          >
+                            <type.icon className="w-3.5 h-3.5" />
+                            {type.label}
+                          </button>
+                        ))}
+                      </div>
+
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">
                           Attendance Target Name
@@ -1687,33 +1739,35 @@ export default function AttendanceTracing({
                           />
                         </div>
                       </div>
-                      <div className="space-y-3">
-                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-6">
-                          Biometric Node (S/N)
-                        </label>
-                        <div className="relative">
-                          <HardDrive className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                          <select
-                            value={newMachine.serial_number}
-                            onChange={(e) =>
-                              setNewMachine({
-                                ...newMachine,
-                                serial_number: e.target.value,
-                              })
-                            }
-                            className="w-full bg-slate-50/50 border border-slate-200 pl-16 pr-10 py-5 rounded-3xl outline-none font-bold text-slate-800 appearance-none focus:bg-white transition-all shadow-inner"
-                          >
-                            <option value="">Select Target Device...</option>
-                            {machines.map((m) => (
-                              <option key={m.id} value={m.serial_number}>
-                                {m.serial_number}{" "}
-                                {m.description ? `(${m.description})` : ""}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronRight className="absolute right-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 rotate-90" />
+                      {!newMachine.is_virtual && (
+                        <div className="space-y-3">
+                          <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-6">
+                            Biometric Node (S/N)
+                          </label>
+                          <div className="relative">
+                            <HardDrive className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <select
+                              value={newMachine.serial_number}
+                              onChange={(e) =>
+                                setNewMachine({
+                                  ...newMachine,
+                                  serial_number: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-50/50 border border-slate-200 pl-16 pr-10 py-5 rounded-3xl outline-none font-bold text-slate-800 appearance-none focus:bg-white transition-all shadow-inner"
+                            >
+                              <option value="">Select Target Device...</option>
+                              {machines.filter(m => !m.is_virtual).map((m) => (
+                                <option key={m.id} value={m.serial_number}>
+                                  {m.serial_number}{" "}
+                                  {m.description ? `(${m.description})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronRight className="absolute right-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 rotate-90" />
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <div className="space-y-6 pt-6 border-t border-slate-50">
                         <h5 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2">
                           <Clock className="w-4 h-4" /> Telemetry Window
@@ -1800,6 +1854,7 @@ export default function AttendanceTracing({
                       handleDeleteMachine={handleDeleteMachine}
                       handleUpdateMachine={handleUpdateMachine}
                       getSessionLabel={getSessionLabel}
+                      setAudienceModal={setAudienceModal}
                     />
                   ))}
               </div>
@@ -1917,10 +1972,6 @@ export default function AttendanceTracing({
                         onFocus={() => setShowUserDropdown(true)}
                         className="w-full bg-slate-50 border border-slate-200 pl-9 pr-4 py-2 rounded-xl outline-none font-bold text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
                       />
-                    </div>
-                  )}
-                </div>
-
 
                       {showUserDropdown && historySearchQuery.length > 0 && (
                         <div className="absolute top-full left-0 sm:right-0 sm:left-auto w-full sm:w-80 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[200] p-2 space-y-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -1960,7 +2011,10 @@ export default function AttendanceTracing({
                             ))}
                         </div>
                       )}
+                    </div>
+                  )}
                 </div>
+              </div>
 
               {/* Visual Dashboard - Recharts Integration */}
               <div className="w-full min-w-0 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-top-4 duration-1000">
@@ -2023,6 +2077,10 @@ export default function AttendanceTracing({
                             : 0;
                           dayStats[label] = Math.min(12, Math.round(mins / 15)); // Normalize to 0-12 scale
                           dayStats[`${label}_hrs`] = (mins / 60).toFixed(1);
+                        } else if (m.is_virtual) {
+                          // Generic Virtual Session (Present/Absent only)
+                          dayStats[label] = logs.length > 0 ? 10 : 0;
+                          dayStats[`${label}_status`] = logs.length > 0 ? "P" : "A";
                         } else {
                           const st = getStatus(logs, m);
                           const earliest = logs.reduce(
@@ -2198,208 +2256,207 @@ export default function AttendanceTracing({
                               height="100%"
                               minWidth={0}
                             >
-                            <AreaChart
-                              data={activityData}
-                              margin={{
-                                top: 12,
-                                right: 20,
-                                left: 4,
-                                bottom: trendPointCount > 12 ? 28 : 12,
-                              }}
-                            >
-                              <defs>
-                                <linearGradient
-                                  id="colorJapa"
-                                  x1="0"
-                                  y1="0"
-                                  x2="0"
-                                  y2="1"
-                                >
-                                  <stop
-                                    offset="5%"
-                                    stopColor="#ea580c"
-                                    stopOpacity={0.1}
-                                  />
-                                  <stop
-                                    offset="95%"
-                                    stopColor="#ea580c"
-                                    stopOpacity={0}
-                                  />
-                                </linearGradient>
-                                <linearGradient
-                                  id="colorHearing"
-                                  x1="0"
-                                  y1="0"
-                                  x2="0"
-                                  y2="1"
-                                >
-                                  <stop
-                                    offset="5%"
-                                    stopColor="#3b82f6"
-                                    stopOpacity={0.1}
-                                  />
-                                  <stop
-                                    offset="95%"
-                                    stopColor="#3b82f6"
-                                    stopOpacity={0}
-                                  />
-                                </linearGradient>
-                                <linearGradient
-                                  id="colorReading"
-                                  x1="0"
-                                  y1="0"
-                                  x2="0"
-                                  y2="1"
-                                >
-                                  <stop
-                                    offset="5%"
-                                    stopColor="#10b981"
-                                    stopOpacity={0.1}
-                                  />
-                                  <stop
-                                    offset="95%"
-                                    stopColor="#10b981"
-                                    stopOpacity={0}
-                                  />
-                                </linearGradient>
-                                <linearGradient
-                                  id="colorMangal"
-                                  x1="0"
-                                  y1="0"
-                                  x2="0"
-                                  y2="1"
-                                >
-                                  <stop
-                                    offset="5%"
-                                    stopColor="#8b5cf6"
-                                    stopOpacity={0.1}
-                                  />
-                                  <stop
-                                    offset="95%"
-                                    stopColor="#8b5cf6"
-                                    stopOpacity={0}
-                                  />
-                                </linearGradient>
-                              </defs>
-                              <XAxis
-                                dataKey="date"
-                                axisLine={false}
-                                tickLine={false}
-                                interval={0}
-                                tick={{
-                                  fontSize: 11,
-                                  fontWeight: 900,
-                                  fill: "#64748b",
+                              <AreaChart
+                                data={activityData}
+                                margin={{
+                                  top: 12,
+                                  right: 20,
+                                  left: 4,
+                                  bottom: trendPointCount > 12 ? 28 : 12,
                                 }}
-                                dy={12}
-                              />
-                              <YAxis
-                                axisLine={false}
-                                tickLine={false}
-                                domain={[0, 12]}
-                                ticks={[7.5]}
-                                tickFormatter={() => "4:30"}
-                                width={44}
-                                tick={{
-                                  fontSize: 11,
-                                  fontWeight: 900,
-                                  fill: "#64748b",
-                                }}
-                              />
-                              <CartesianGrid
-                                strokeDasharray="3 3"
-                                vertical={false}
-                                stroke="#f1f5f9"
-                              />
-                              <Tooltip content={<CustomVisualTooltip />} />
-                              <Area
-                                type="monotone"
-                                dataKey="Mangal Aarti"
-                                stroke="#8b5cf6"
-                                strokeWidth={3}
-                                fillOpacity={1}
-                                fill="url(#colorMangal)"
-                                dot={{
-                                  r: 4,
-                                  fill: "#8b5cf6",
-                                  strokeWidth: 2,
-                                  stroke: "#fff",
-                                }}
-                                activeDot={{ r: 6, strokeWidth: 0 }}
-                                name="Mangal Aarti"
-                              />
-                              <Area
-                                type="monotone"
-                                dataKey="Harinam"
-                                stroke="#ea580c"
-                                strokeWidth={3}
-                                fillOpacity={1}
-                                fill="url(#colorJapa)"
-                                dot={{
-                                  r: 4,
-                                  fill: "#ea580c",
-                                  strokeWidth: 2,
-                                  stroke: "#fff",
-                                }}
-                                activeDot={{ r: 6, strokeWidth: 0 }}
-                                name="Harinam"
-                              />
-                              <Area
-                                type="monotone"
-                                dataKey="SB Class"
-                                stroke="#3b82f6"
-                                strokeWidth={3}
-                                fillOpacity={1}
-                                fill="url(#colorHearing)"
-                                dot={{
-                                  r: 4,
-                                  fill: "#3b82f6",
-                                  strokeWidth: 2,
-                                  stroke: "#fff",
-                                }}
-                                activeDot={{ r: 6, strokeWidth: 0 }}
-                                name="SB Class"
-                              />
-                              <Area
-                                type="monotone"
-                                dataKey="BC Class"
-                                stroke="#10b981"
-                                strokeWidth={3}
-                                fillOpacity={1}
-                                fill="url(#colorReading)"
-                                dot={{
-                                  r: 4,
-                                  fill: "#10b981",
-                                  strokeWidth: 2,
-                                  stroke: "#fff",
-                                }}
-                                activeDot={{ r: 6, strokeWidth: 0 }}
-                                name="BC Class"
-                              />
-                            </AreaChart>
-                          </ResponsiveContainer>
+                              >
+                                <defs>
+                                  <linearGradient
+                                    id="colorJapa"
+                                    x1="0"
+                                    y1="0"
+                                    x2="0"
+                                    y2="1"
+                                  >
+                                    <stop
+                                      offset="5%"
+                                      stopColor="#ea580c"
+                                      stopOpacity={0.1}
+                                    />
+                                    <stop
+                                      offset="95%"
+                                      stopColor="#ea580c"
+                                      stopOpacity={0}
+                                    />
+                                  </linearGradient>
+                                  <linearGradient
+                                    id="colorHearing"
+                                    x1="0"
+                                    y1="0"
+                                    x2="0"
+                                    y2="1"
+                                  >
+                                    <stop
+                                      offset="5%"
+                                      stopColor="#3b82f6"
+                                      stopOpacity={0.1}
+                                    />
+                                    <stop
+                                      offset="95%"
+                                      stopColor="#3b82f6"
+                                      stopOpacity={0}
+                                    />
+                                  </linearGradient>
+                                  <linearGradient
+                                    id="colorReading"
+                                    x1="0"
+                                    y1="0"
+                                    x2="0"
+                                    y2="1"
+                                  >
+                                    <stop
+                                      offset="5%"
+                                      stopColor="#10b981"
+                                      stopOpacity={0.1}
+                                    />
+                                    <stop
+                                      offset="95%"
+                                      stopColor="#10b981"
+                                      stopOpacity={0}
+                                    />
+                                  </linearGradient>
+                                  <linearGradient
+                                    id="colorMangal"
+                                    x1="0"
+                                    y1="0"
+                                    x2="0"
+                                    y2="1"
+                                  >
+                                    <stop
+                                      offset="5%"
+                                      stopColor="#8b5cf6"
+                                      stopOpacity={0.1}
+                                    />
+                                    <stop
+                                      offset="95%"
+                                      stopColor="#8b5cf6"
+                                      stopOpacity={0}
+                                    />
+                                  </linearGradient>
+                                </defs>
+                                <XAxis
+                                  dataKey="date"
+                                  axisLine={false}
+                                  tickLine={false}
+                                  interval={0}
+                                  tick={{
+                                    fontSize: 11,
+                                    fontWeight: 900,
+                                    fill: "#64748b",
+                                  }}
+                                  dy={12}
+                                />
+                                <YAxis
+                                  axisLine={false}
+                                  tickLine={false}
+                                  domain={[0, 12]}
+                                  ticks={[7.5]}
+                                  tickFormatter={() => "4:30"}
+                                  width={44}
+                                  tick={{
+                                    fontSize: 11,
+                                    fontWeight: 900,
+                                    fill: "#64748b",
+                                  }}
+                                />
+                                <CartesianGrid
+                                  strokeDasharray="3 3"
+                                  vertical={false}
+                                  stroke="#f1f5f9"
+                                />
+                                <Tooltip content={<CustomVisualTooltip />} />
+                                <Area
+                                  type="monotone"
+                                  dataKey="Mangal Aarti"
+                                  stroke="#8b5cf6"
+                                  strokeWidth={3}
+                                  fillOpacity={1}
+                                  fill="url(#colorMangal)"
+                                  dot={{
+                                    r: 4,
+                                    fill: "#8b5cf6",
+                                    strokeWidth: 2,
+                                    stroke: "#fff",
+                                  }}
+                                  activeDot={{ r: 6, strokeWidth: 0 }}
+                                  name="Mangal Aarti"
+                                />
+                                <Area
+                                  type="monotone"
+                                  dataKey="Harinam"
+                                  stroke="#ea580c"
+                                  strokeWidth={3}
+                                  fillOpacity={1}
+                                  fill="url(#colorJapa)"
+                                  dot={{
+                                    r: 4,
+                                    fill: "#ea580c",
+                                    strokeWidth: 2,
+                                    stroke: "#fff",
+                                  }}
+                                  activeDot={{ r: 6, strokeWidth: 0 }}
+                                  name="Harinam"
+                                />
+                                <Area
+                                  type="monotone"
+                                  dataKey="SB Class"
+                                  stroke="#3b82f6"
+                                  strokeWidth={3}
+                                  fillOpacity={1}
+                                  fill="url(#colorHearing)"
+                                  dot={{
+                                    r: 4,
+                                    fill: "#3b82f6",
+                                    strokeWidth: 2,
+                                    stroke: "#fff",
+                                  }}
+                                  activeDot={{ r: 6, strokeWidth: 0 }}
+                                  name="SB Class"
+                                />
+                                <Area
+                                  type="monotone"
+                                  dataKey="BC Class"
+                                  stroke="#10b981"
+                                  strokeWidth={3}
+                                  fillOpacity={1}
+                                  fill="url(#colorReading)"
+                                  dot={{
+                                    r: 4,
+                                    fill: "#10b981",
+                                    strokeWidth: 2,
+                                    stroke: "#fff",
+                                  }}
+                                  activeDot={{ r: 6, strokeWidth: 0 }}
+                                  name="BC Class"
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
                           </div>
                         </div>
                         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-orange-100/60 pt-4">
-                          {[
-                            { name: "BC Class", color: "#10b981" },
-                            { name: "Harinam", color: "#ea580c" },
-                            { name: "Mangal Aarti", color: "#8b5cf6" },
-                            { name: "SB Class", color: "#3b82f6" },
-                          ].map((item) => (
-                            <div
-                              key={item.name}
-                              className="flex items-center gap-2"
-                            >
-                              <span
-                                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                style={{ backgroundColor: item.color }}
-                              />
-                              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">
-                                {item.name}
-                              </span>
-                            </div>
-                          ))}
+                          {machines.map((m) => {
+                            const label = getSessionLabel(m.description);
+                            const iconStyle = sessionIcons[label] || sessionIcons.default;
+                            return (
+                              <div
+                                key={m.id}
+                                className="flex items-center gap-2"
+                              >
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{ backgroundColor: iconStyle.accent.replace('bg-', '') === iconStyle.accent ? iconStyle.accent : '#6366f1' }}
+                                />
+                                <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">
+                                  {label}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -2549,13 +2606,17 @@ export default function AttendanceTracing({
                         }
                         const hStartStr = toLocalDateStr(hStart);
                         const hEndStr = toLocalDateStr(hEnd);
-                        const filteredEntries = Object.entries(
-                          displayUser?.dates || {},
-                        )
-                          .filter(
-                            ([date]) => date >= hStartStr && date <= hEndStr,
-                          )
-                          .sort(([a], [b]) => b.localeCompare(a));
+                        
+                        // Prefill all dates in the range so timeline shows empty rows
+                        const dateEntries: Record<string, any> = {};
+                        const currDate = new Date(hStart);
+                        while(currDate <= hEnd) {
+                          const dateStr = toLocalDateStr(currDate);
+                          dateEntries[dateStr] = displayUser?.dates?.[dateStr] || {};
+                          currDate.setDate(currDate.getDate() + 1);
+                        }
+
+                        const filteredEntries = Object.entries(dateEntries).sort(([a], [b]) => b.localeCompare(a));
                         if (filteredEntries.length === 0)
                           return (
                             <tr>
@@ -2664,9 +2725,18 @@ export default function AttendanceTracing({
 
                                   if (earliest?.is_manual) {
                                     renderContent = (
-                                      <div className="flex items-center justify-center gap-1.5 font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-indigo-100 shadow-sm mx-auto w-fit">
-                                        Manual
-                                      </div>
+                                      earliest?.vm_status ? (
+                                        <div className={`flex items-center justify-center gap-1.5 font-black px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border shadow-sm mx-auto w-fit ${earliest.vm_status === "P"
+                                            ? "text-emerald-600 bg-emerald-50 border-emerald-100"
+                                            : "text-rose-600 bg-rose-50 border-rose-100"
+                                          }`}>
+                                          {earliest.vm_status}
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-center gap-1.5 font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm uppercase border border-indigo-100 shadow-sm mx-auto w-fit">
+                                          Manual
+                                        </div>
+                                      )
                                     );
                                   } else if (status === "present") {
                                     renderContent = (
@@ -2819,6 +2889,167 @@ export default function AttendanceTracing({
           )}
         </div>
       )}
+
+      {/* Audience Management Modal */}
+      {audienceModal.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => setAudienceModal({ ...audienceModal, show: false })}
+          />
+          <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
+            <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-8 text-white">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                    <Users className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black tracking-tighter">Manage Audience</h3>
+                    <p className="text-indigo-100 text-xs font-bold uppercase tracking-widest opacity-80">{audienceModal.sessionName}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAudienceModal({ ...audienceModal, show: false })}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-colors"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="relative">
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search users to add/remove..."
+                  className="w-full bg-slate-50 border border-slate-200 pl-14 pr-6 py-4 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all shadow-inner"
+                  onChange={(e) => setHistorySearchQuery(e.target.value)}
+                  value={historySearchQuery}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const filtered = report.filter(u =>
+                      u.full_name?.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                      u.email?.toLowerCase().includes(historySearchQuery.toLowerCase())
+                    ).map(u => u.email);
+
+                    try {
+                      setLoading(true);
+                      await fetch("/api/admin/attendance-config", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": `Bearer ${session.access_token}`
+                        },
+                        body: JSON.stringify({
+                          action: "bulk_assign_users",
+                          data: { machineId: audienceModal.machineId, userEmails: filtered, assign: true }
+                        })
+                      });
+                      fetchReport();
+                    } finally {
+                      setLoading(true);
+                      await fetchMachines();
+                      setLoading(false);
+                    }
+                  }}
+                  className="flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border border-emerald-100"
+                >
+                  Bulk Add Filtered
+                </button>
+                <button
+                  onClick={async () => {
+                    const filtered = report.filter(u =>
+                      u.full_name?.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                      u.email?.toLowerCase().includes(historySearchQuery.toLowerCase())
+                    ).map(u => u.email);
+
+                    try {
+                      setLoading(true);
+                      await fetch("/api/admin/attendance-config", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": `Bearer ${session.access_token}`
+                        },
+                        body: JSON.stringify({
+                          action: "bulk_assign_users",
+                          data: { machineId: audienceModal.machineId, userEmails: filtered, assign: false }
+                        })
+                      });
+                      fetchReport();
+                    } finally {
+                      setLoading(true);
+                      await fetchMachines();
+                      setLoading(false);
+                    }
+                  }}
+                  className="flex-1 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border border-rose-100"
+                >
+                  Bulk Remove Filtered
+                </button>
+              </div>
+
+              <div className="max-h-[350px] overflow-y-auto pr-2 custom-attendance-scrollbar space-y-2">
+                {report
+                  .filter(u =>
+                    u.full_name?.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                    u.email?.toLowerCase().includes(historySearchQuery.toLowerCase())
+                  )
+                  .map((user) => {
+                    const isAssigned = user.assigned_machines?.includes(audienceModal.machineId);
+                    return (
+                      <div
+                        key={user.email}
+                        className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isAssigned ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-slate-100'}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${isAssigned ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                            {user.full_name?.charAt(0) || user.email.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-800 text-sm">{user.full_name || 'Anonymous User'}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{user.email}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch("/api/admin/attendance-config", {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  "Authorization": `Bearer ${session.access_token}`
+                                },
+                                body: JSON.stringify({
+                                  action: "bulk_assign_users",
+                                  data: { machineId: audienceModal.machineId, userEmails: [user.email], assign: !isAssigned }
+                                })
+                              });
+                              fetchReport();
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all ${isAssigned
+                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                            : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                        >
+                          {isAssigned ? 'Assigned' : 'Assign'}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2827,9 +3058,9 @@ function SessionCard({
   m,
   idx,
   sessionIcons,
-  handleDeleteMachine,
   handleUpdateMachine,
   getSessionLabel,
+  setAudienceModal,
 }: any) {
   const [localData, setLocalData] = React.useState(m);
   const [hasChanges, setHasChanges] = React.useState(false);
@@ -2883,6 +3114,17 @@ function SessionCard({
           >
             <Trash2 className="w-4 h-4 sm:w-6 sm:h-6" />
           </button>
+
+          {localData.is_virtual && (
+            <button
+              onClick={() => setAudienceModal({ show: true, machineId: localData.id, sessionName: localData.description })}
+              className="p-2.5 sm:p-4 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-2xl transition-all shadow-sm flex items-center gap-2 group"
+              title="Manage Audience"
+            >
+              <Users className="w-4 h-4 sm:w-6 sm:h-6" />
+              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Manage Audience</span>
+            </button>
+          )}
         </div>
       </div>
 

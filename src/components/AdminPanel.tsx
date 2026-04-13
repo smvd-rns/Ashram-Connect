@@ -4,11 +4,11 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { 
-  Loader2, LogOut, CheckCircle, AlertCircle, Mail, Globe, 
-  UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo, 
+import {
+  Loader2, LogOut, CheckCircle, AlertCircle, Mail, Globe,
+  UserPlus, LogIn, LayoutGrid, Upload, Users, List, FileVideo,
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
-  Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck, 
+  Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck,
   Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft, RotateCcw,
   BookOpen
 } from "lucide-react";
@@ -34,16 +34,21 @@ export default function AdminPanel() {
   const [activeView, setActiveView] = useState<ActiveView>(
     (searchParams.get("view") as ActiveView) || "home"
   );
-  
+
   // -- Attendance Sub-View --
-  const [attendanceSubView, setAttendanceSubView] = useState<"devices" | "mappings">("devices");
+  const [attendanceSubView, setAttendanceSubView] = useState<"devices" | "mappings" | "vm-incharge">("devices");
   const [attendanceMappings, setAttendanceMappings] = useState<any[]>([]);
+  const [vmInchargeAssignments, setVmInchargeAssignments] = useState<any[]>([]);
+  const [vmMachineId, setVmMachineId] = useState("");
+  const [vmInchargeUserId, setVmInchargeUserId] = useState("");
+  const [vmInchargeSearch, setVmInchargeSearch] = useState("");
+  const [vmUserDropdownOpen, setVmUserDropdownOpen] = useState(false);
   const [mappingMachineId, setMappingMachineId] = useState("");
   const [mappingZKId, setMappingZKId] = useState("");
   const [mappingEmail, setMappingEmail] = useState("");
   const [mappingSearch, setMappingSearch] = useState("");
   const [isUploadingMapping, setIsUploadingMapping] = useState(false);
-  
+
   // Synchronize state with URL changes (Back/Forward buttons)
   useEffect(() => {
     const view = searchParams.get("view") as ActiveView || "home";
@@ -131,7 +136,7 @@ export default function AdminPanel() {
   const [newMachineStart, setNewMachineStart] = useState("02:00:00");
   const [newMachineEnd, setNewMachineEnd] = useState("07:30:00");
   const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
-  
+
   // Broadcast State
   const [bcTitle, setBcTitle] = useState("");
   const [bcBody, setBcBody] = useState("");
@@ -139,7 +144,7 @@ export default function AdminPanel() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [isBroadcasting, setIsBroadcasting] = useState(false);
-  
+
   // Push Notifications Hook
   const { pushEnabled, subscribe: subscribePush, permission: pushPermission } = usePushNotifications(session);
 
@@ -201,7 +206,7 @@ export default function AdminPanel() {
     try {
       const response = await fetch("/api/admin/profile", {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
           "Content-Type": "application/json"
         },
@@ -246,18 +251,18 @@ export default function AdminPanel() {
     try {
       const res = await fetch("/api/admin/attendance-config", {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ 
-          action: "add_machine", 
-          data: { 
-            serial_number: newMachineSN, 
+        body: JSON.stringify({
+          action: "add_machine",
+          data: {
+            serial_number: newMachineSN,
             description: newMachineDesc,
             ingestion_start: newMachineStart,
             ingestion_end: newMachineEnd
-          } 
+          }
         })
       });
       if (res.ok) {
@@ -280,13 +285,13 @@ export default function AdminPanel() {
     try {
       const res = await fetch("/api/admin/attendance-config", {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ 
-          action: "update_settings", 
-          data: attendanceSettings 
+        body: JSON.stringify({
+          action: "update_settings",
+          data: attendanceSettings
         })
       });
       if (res.ok) {
@@ -307,13 +312,13 @@ export default function AdminPanel() {
     try {
       const res = await fetch("/api/admin/attendance-config", {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ 
-          action: "update_machine", 
-          data: { id, ...updates } 
+        body: JSON.stringify({
+          action: "update_machine",
+          data: { id, ...updates }
         })
       });
       if (res.ok) fetchAttendanceConfig();
@@ -335,46 +340,110 @@ export default function AdminPanel() {
     }
   };
 
+  const fetchVirtualMachineInchargeData = async () => {
+    if (!session || profile?.role !== 1) return;
+    try {
+      const res = await fetch("/api/admin/virtual-machine-incharge", {
+        headers: { "Authorization": `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.assignments) setVmInchargeAssignments(data.assignments);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const assignVirtualMachineIncharge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vmMachineId || !vmInchargeUserId) {
+      setSubmitMessage({ type: "error", text: "Please select both virtual machine and incharge user." });
+      setTimeout(() => setSubmitMessage(null), 4000);
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/virtual-machine-incharge", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "assign_incharge",
+          data: { machine_id: vmMachineId, incharge_user_id: vmInchargeUserId },
+        }),
+      });
+      const payload = await res.json();
+      if (res.ok) {
+        setSubmitMessage({ type: "success", text: "Virtual machine incharge assigned successfully." });
+        setVmMachineId("");
+        setVmInchargeUserId("");
+        fetchVirtualMachineInchargeData();
+        fetchUsers();
+      } else {
+        setSubmitMessage({ type: "error", text: payload?.error || "Failed to assign incharge." });
+      }
+    } catch (err: any) {
+      setSubmitMessage({ type: "error", text: err?.message || "Network error while assigning incharge." });
+    } finally {
+      setIsSubmitting(false);
+      setTimeout(() => setSubmitMessage(null), 5000);
+    }
+  };
+
+  const deleteVirtualMachineInchargeAssignment = async (id: string) => {
+    if (!confirm("Remove this virtual machine incharge assignment?")) return;
+    try {
+      const res = await fetch(`/api/admin/virtual-machine-incharge?id=${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session.access_token}` },
+      });
+      if (res.ok) fetchVirtualMachineInchargeData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleAddMapping = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mappingMachineId || !mappingZKId || !mappingEmail) return;
-    
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/admin/attendance-mapping", {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
-          "Content-Type": "application/json" 
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ 
-          action: "add_mapping", 
-          data: { machine_id: mappingMachineId, zk_user_id: mappingZKId, user_email: mappingEmail } 
+        body: JSON.stringify({
+          action: "add_mapping",
+          data: { machine_id: mappingMachineId, zk_user_id: mappingZKId, user_email: mappingEmail }
         })
       });
-    const responseData = await res.json();
-    if (res.ok) {
-      setMappingZKId("");
-      setMappingEmail("");
-      setSubmitMessage({ type: "success", text: "User mapping created successfully!" });
-      fetchAttendanceMappings();
-    } else {
-      setSubmitMessage({ type: "error", text: responseData.error || "Failed to create mapping." });
+      const responseData = await res.json();
+      if (res.ok) {
+        setMappingZKId("");
+        setMappingEmail("");
+        setSubmitMessage({ type: "success", text: "User mapping created successfully!" });
+        fetchAttendanceMappings();
+      } else {
+        setSubmitMessage({ type: "error", text: responseData.error || "Failed to create mapping." });
+      }
+      setTimeout(() => setSubmitMessage(null), 5000);
+    } catch (err) {
+      console.error(err);
+      setSubmitMessage({ type: "error", text: "A network error occurred. Please try again." });
+      setTimeout(() => setSubmitMessage(null), 5000);
+    } finally {
+      setIsSubmitting(false);
     }
-    setTimeout(() => setSubmitMessage(null), 5000);
-  } catch (err) {
-    console.error(err);
-    setSubmitMessage({ type: "error", text: "A network error occurred. Please try again." });
-    setTimeout(() => setSubmitMessage(null), 5000);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   const deleteMapping = async (id: string) => {
     if (!confirm("Remove this mapping?")) return;
     try {
-      const res = await fetch(`/api/admin/attendance-mapping?id=${id}`, { 
+      const res = await fetch(`/api/admin/attendance-mapping?id=${id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
@@ -397,7 +466,7 @@ export default function AdminPanel() {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
-        
+
         const mappedData = data.map((row: any) => {
           const rawMachine = row["Machine ID"] || row["machine_id"] || row["Machine SN"] || row["Machine Serial Number"];
           const rawZKId = String(row["ZK User ID"] || row["zk_user_id"] || row["User ID"] || row["User Pin"]);
@@ -405,7 +474,7 @@ export default function AdminPanel() {
 
           // Try to lookup UUID from Serial Number first
           const foundMachine = attendanceMachines.find(m => m.serial_number === String(rawMachine) || m.id === rawMachine);
-          
+
           if (!foundMachine) return null;
 
           return {
@@ -418,15 +487,15 @@ export default function AdminPanel() {
         if (mappedData.length > 0) {
           const res = await fetch("/api/admin/attendance-mapping", {
             method: "POST",
-            headers: { 
+            headers: {
               "Authorization": `Bearer ${session.access_token}`,
-              "Content-Type": "application/json" 
+              "Content-Type": "application/json"
             },
             body: JSON.stringify({ action: "bulk_add_mapping", data: mappedData })
           });
           if (res.ok) {
-             setSubmitMessage({ type: "success", text: `Successfully mapped ${mappedData.length} users!` });
-             fetchAttendanceMappings();
+            setSubmitMessage({ type: "success", text: `Successfully mapped ${mappedData.length} users!` });
+            fetchAttendanceMappings();
           }
         }
       } catch (err) {
@@ -483,6 +552,7 @@ export default function AdminPanel() {
       fetchAttendanceConfig();
       fetchAttendanceMappings();
       fetchUsers(); // Required for email suggestions
+      fetchVirtualMachineInchargeData();
     }
   }, [activeView, session, profile?.role, isSuperAdmin, isManager]);
 
@@ -493,7 +563,8 @@ export default function AdminPanel() {
     3: "Attendance Incharge",
     4: "BC Access",
     5: "Manager",
-    6: "Viewer"
+    6: "Viewer",
+    7: "Virtual Machine Incharge"
   };
 
   const roleColors: Record<number, string> = {
@@ -502,12 +573,13 @@ export default function AdminPanel() {
     3: "bg-blue-50 text-blue-700 border-blue-100",
     4: "bg-emerald-50 text-emerald-700 border-emerald-100",
     5: "bg-purple-50 text-purple-700 border-purple-100",
-    6: "bg-slate-50 text-slate-700 border-slate-100"
+    6: "bg-slate-50 text-slate-700 border-slate-100",
+    7: "bg-cyan-50 text-cyan-700 border-cyan-100"
   };
 
   // Pagination Logic
-  const filteredLectures = (lectures || []).filter(l => 
-    l.title?.toLowerCase().includes(lectureSearch.toLowerCase()) || 
+  const filteredLectures = (lectures || []).filter(l =>
+    l.title?.toLowerCase().includes(lectureSearch.toLowerCase()) ||
     l.speaker_name?.toLowerCase().includes(lectureSearch.toLowerCase())
   );
   const totalLecturePages = Math.ceil(filteredLectures.length / (lecturesPerPage || 10));
@@ -515,8 +587,8 @@ export default function AdminPanel() {
 
   const filteredUsers = (users || []).filter(u => {
     const s = userSearch.toLowerCase();
-    const matchesSearch = 
-      u.email?.toLowerCase().includes(s) || 
+    const matchesSearch =
+      u.email?.toLowerCase().includes(s) ||
       (u.full_name?.toLowerCase().includes(s)) ||
       (u.temple?.toLowerCase().includes(s)) ||
       (u.mobile?.toLowerCase().includes(s));
@@ -530,15 +602,15 @@ export default function AdminPanel() {
   // Pagination UI Helper
   const generatePagination = (currentPage: number, totalPages: number) => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    
+
     if (currentPage <= 4) {
       return [1, 2, 3, 4, 5, "...", totalPages];
     }
-    
+
     if (currentPage >= totalPages - 3) {
       return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
     }
-    
+
     return [1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages];
   };
 
@@ -602,7 +674,7 @@ export default function AdminPanel() {
     try {
       const response = await fetch("/api/admin/users", {
         method: "PATCH",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
           "Content-Type": "application/json"
         },
@@ -625,25 +697,25 @@ export default function AdminPanel() {
   const handleBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bcTitle || !bcBody) return;
-    
+
     setIsBroadcasting(true);
     setSubmitMessage(null);
-    
+
     try {
       const res = await fetch("/api/notifications/broadcast", {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${session.access_token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ 
-          title: bcTitle, 
-          body: bcBody, 
+        body: JSON.stringify({
+          title: bcTitle,
+          body: bcBody,
           target: bcTarget,
           userIds: Array.from(selectedUserIds)
         })
       });
-      
+
       if (res.ok) {
         setSubmitMessage({ type: "success", text: "Broadcast initiated successfully! Users will receive it shortly." });
         setBcTitle("");
@@ -662,14 +734,14 @@ export default function AdminPanel() {
 
   const extractYouTubeId = (url: string) => {
     if (!url) return null;
-    
+
     // Robust Regex to match various YouTube URL formats
     // Handles: watch?v=, youtu.be/, embed/, v/, live/, /u/w/, youtube-nocookie.com, etc.
     const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube-nocookie\.com\/embed\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regex);
-    
+
     if (match && match[1]) return match[1];
-    
+
     // Fallback for short internal links if needed
     const shortLiveMatch = url.match(/live\/([a-zA-Z0-9_-]{11})/);
     return (shortLiveMatch && shortLiveMatch[1]) ? shortLiveMatch[1] : null;
@@ -692,7 +764,7 @@ export default function AdminPanel() {
   const processParsedRows = (rawRows: any[][]) => {
     // Skip header if it feels like one
     const startIdx = (rawRows[0] && String(rawRows[0][0]).toLowerCase().includes('youtube')) ? 1 : 0;
-    
+
     const formattedLines = rawRows.slice(startIdx).map(row => {
       if (!row || row.length === 0) return null;
       const url = String(row[0] || "").trim();
@@ -701,15 +773,15 @@ export default function AdminPanel() {
       const title = String(row[1] || "").trim();
       const speaker = String(row[2] || "").trim();
       const date = row[3] ? normalizeDate(String(row[3])) : new Date().toISOString().split('T')[0];
-      
+
       return `${url} | ${title} | ${speaker} | ${date}`;
     }).filter(Boolean);
 
     if (formattedLines.length > 0) {
       setBulkData((prev: string) => prev + (prev ? "\n" : "") + formattedLines.join("\n"));
-      setSubmitMessage({ 
-        type: "success", 
-        text: `Imported ${formattedLines.length} rows with smart data cleaning. Review and publish.` 
+      setSubmitMessage({
+        type: "success",
+        text: `Imported ${formattedLines.length} rows with smart data cleaning. Review and publish.`
       });
     } else {
       setSubmitMessage({ type: "error", text: "No valid data rows found in the file." });
@@ -734,7 +806,7 @@ export default function AdminPanel() {
         } else {
           const text = event.target?.result as string;
           const rows = text.split(/\r?\n/).filter(l => l.trim()).map(line => {
-             return line.split(/[|,]/).map(p => p.trim().replace(/^"|"$/g, ''));
+            return line.split(/[|,]/).map(p => p.trim().replace(/^"|"$/g, ''));
           });
           processParsedRows(rows);
         }
@@ -766,11 +838,11 @@ export default function AdminPanel() {
         setIsSubmitting(false);
         return;
       }
-      payload = { 
-        youtube_id: videoId, 
-        title: title || "Untitled Lecture", 
-        speaker_name: speaker || "Unknown Speaker", 
-        date: normalizeDate(date) 
+      payload = {
+        youtube_id: videoId,
+        title: title || "Untitled Lecture",
+        speaker_name: speaker || "Unknown Speaker",
+        date: normalizeDate(date)
       };
     } else {
       // Process bulk data (format: URL | Title | Speaker | Date per line)
@@ -781,11 +853,11 @@ export default function AdminPanel() {
           const [u, t, s, d] = parts;
           const vId = extractYouTubeId(u);
           if (vId) {
-            payload.push({ 
-              youtube_id: vId, 
-              title: t || "Untitled Lecture", 
-              speaker_name: s || "Unknown Speaker", 
-              date: normalizeDate(d) 
+            payload.push({
+              youtube_id: vId,
+              title: t || "Untitled Lecture",
+              speaker_name: s || "Unknown Speaker",
+              date: normalizeDate(d)
             });
           }
         }
@@ -843,40 +915,40 @@ export default function AdminPanel() {
     return (
       <div className="max-w-xl mx-auto mt-20 px-4">
         <div className="bg-white/80 backdrop-blur-2xl p-10 rounded-[2rem] sm:rounded-[3rem] shadow-[0_32px_64px_-16px_rgba(249,115,22,0.15)] border border-white ring-1 ring-slate-200 space-y-8 animate-in zoom-in duration-300">
-           <div className="text-center">
-             <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-orange-200 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-100">
-               <UserPlus className="w-10 h-10 text-orange-600" />
-             </div>
-             <h2 className="text-3xl font-outfit font-black text-slate-900 tracking-tight">Finish Registration</h2>
-             <p className="text-slate-400 mt-2 font-medium">Please provide your details to access the dashboard</p>
-           </div>
+          <div className="text-center">
+            <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-orange-200 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-100">
+              <UserPlus className="w-10 h-10 text-orange-600" />
+            </div>
+            <h2 className="text-3xl font-outfit font-black text-slate-900 tracking-tight">Finish Registration</h2>
+            <p className="text-slate-400 mt-2 font-medium">Please provide your details to access the dashboard</p>
+          </div>
 
-           <form onSubmit={handleProfileComplete} className="space-y-6">
-              {authError && <div className="p-4 bg-red-50 text-red-700 text-sm rounded-2xl flex items-center border border-red-100 animate-shake"><AlertCircle className="w-5 h-5 mr-3 shrink-0" />{authError}</div>}
-              
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Full Name</label>
-                  <input type="text" required placeholder="Srinivasa Ramanujan" value={regName} onChange={(e) => setRegName(e.target.value)} className="w-full px-8 py-5 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all font-bold text-lg text-slate-800 placeholder:text-slate-200 hover:border-slate-300" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Mobile Number</label>
-                  <input type="tel" required placeholder="+91 98765 43210" value={regMobile} onChange={(e) => setRegMobile(e.target.value)} className="w-full px-8 py-5 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all font-bold text-lg text-slate-800 placeholder:text-slate-200 hover:border-slate-300" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Temple/Center</label>
-                  <input type="text" required placeholder="NVCC Pune / Akurdi Center" value={regTemple} onChange={(e) => setRegTemple(e.target.value)} className="w-full px-8 py-5 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all font-bold text-lg text-slate-800 placeholder:text-slate-200 hover:border-slate-300" />
-                </div>
-                <div className="space-y-2 grayscale opacity-40">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Email (Verified)</label>
-                  <input type="email" readOnly value={session.user.email} className="w-full px-8 py-5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-500" />
-                </div>
+          <form onSubmit={handleProfileComplete} className="space-y-6">
+            {authError && <div className="p-4 bg-red-50 text-red-700 text-sm rounded-2xl flex items-center border border-red-100 animate-shake"><AlertCircle className="w-5 h-5 mr-3 shrink-0" />{authError}</div>}
+
+            <div className="grid grid-cols-1 gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Full Name</label>
+                <input type="text" required placeholder="Srinivasa Ramanujan" value={regName} onChange={(e) => setRegName(e.target.value)} className="w-full px-8 py-5 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all font-bold text-lg text-slate-800 placeholder:text-slate-200 hover:border-slate-300" />
               </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Mobile Number</label>
+                <input type="tel" required placeholder="+91 98765 43210" value={regMobile} onChange={(e) => setRegMobile(e.target.value)} className="w-full px-8 py-5 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all font-bold text-lg text-slate-800 placeholder:text-slate-200 hover:border-slate-300" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Temple/Center</label>
+                <input type="text" required placeholder="NVCC Pune / Akurdi Center" value={regTemple} onChange={(e) => setRegTemple(e.target.value)} className="w-full px-8 py-5 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all font-bold text-lg text-slate-800 placeholder:text-slate-200 hover:border-slate-300" />
+              </div>
+              <div className="space-y-2 grayscale opacity-40">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 font-outfit">Email (Verified)</label>
+                <input type="email" readOnly value={session.user.email} className="w-full px-8 py-5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-500" />
+              </div>
+            </div>
 
-              <button disabled={isSubmitting} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-extrabold py-6 rounded-2xl transition-all shadow-xl shadow-orange-100 active:scale-[0.98] disabled:opacity-70 flex justify-center items-center gap-3 text-xl tracking-tight">
-                {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : "Complete My Registration"}
-              </button>
-           </form>
+            <button disabled={isSubmitting} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-extrabold py-6 rounded-2xl transition-all shadow-xl shadow-orange-100 active:scale-[0.98] disabled:opacity-70 flex justify-center items-center gap-3 text-xl tracking-tight">
+              {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : "Complete My Registration"}
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -906,7 +978,7 @@ export default function AdminPanel() {
                     <p className="text-white/80 font-medium text-sm mt-1">You are missing travel desk alerts. Enable push notifications to receive instant mobile updates.</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => subscribePush().catch(e => setSubmitMessage({ type: "error", text: "Permission Blocked: Enable in settings" }))}
                   className="bg-white text-purple-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-xl active:scale-95 whitespace-nowrap"
                 >
@@ -918,7 +990,7 @@ export default function AdminPanel() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
               {/* BC Class Card */}
               {canUploadVideos && (
-                <button 
+                <button
                   onClick={() => navigateToView("bc-class")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-orange-500 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -940,7 +1012,7 @@ export default function AdminPanel() {
 
               {/* User Roles Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("users")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-blue-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -962,7 +1034,7 @@ export default function AdminPanel() {
 
               {/* YouTube Channels Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("youtube-channels")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -984,7 +1056,7 @@ export default function AdminPanel() {
 
               {/* Usage Insights Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("usage-analytics")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-emerald-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -1005,7 +1077,7 @@ export default function AdminPanel() {
               )}
               {/* Attendance Machine Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("attendance-machines")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-cyan-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -1027,7 +1099,7 @@ export default function AdminPanel() {
 
               {/* Notification Center Card */}
               {isManager && (
-                <button 
+                <button
                   onClick={() => navigateToView("notifications")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-purple-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -1048,7 +1120,7 @@ export default function AdminPanel() {
               )}
               {/* Attendance Tracing Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("attendance-tracing")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -1070,7 +1142,7 @@ export default function AdminPanel() {
 
               {/* BCDB Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("bcdb")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -1092,7 +1164,7 @@ export default function AdminPanel() {
 
               {/* Policy Manual Card */}
               {isSuperAdmin && (
-                <button 
+                <button
                   onClick={() => navigateToView("policies")}
                   className="group relative bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border-2 border-slate-200 hover:border-indigo-600 shadow-xl hover:shadow-2xl transition-all duration-300 text-left overflow-hidden h-auto sm:h-[260px] flex sm:block items-center gap-4 sm:gap-0"
                 >
@@ -1119,20 +1191,20 @@ export default function AdminPanel() {
         {activeView === "bc-class" && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <button 
+              <button
                 onClick={() => navigateToView("home")}
                 className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
               >
                 <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
               </button>
               <div className="flex p-1 bg-white rounded-2xl shadow-sm border border-slate-100">
-                <button 
+                <button
                   onClick={() => setUploadMode('single')}
                   className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${uploadMode === 'single' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}
                 >
                   Single Upload
                 </button>
-                <button 
+                <button
                   onClick={() => setUploadMode('bulk')}
                   className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${uploadMode === 'bulk' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}
                 >
@@ -1212,9 +1284,9 @@ export default function AdminPanel() {
                     <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                       <div className="relative flex-1 sm:w-64">
                         <Search className="absolute left-4 top-3 h-4 w-4 text-slate-300" />
-                        <input 
-                          type="text" 
-                          placeholder="Search records..." 
+                        <input
+                          type="text"
+                          placeholder="Search records..."
                           value={lectureSearch}
                           onChange={(e) => setLectureSearch(e.target.value)}
                           className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl focus:bg-white focus:border-orange-400 outline-none transition-all text-sm font-bold"
@@ -1245,24 +1317,24 @@ export default function AdminPanel() {
                             <tr className="border-b border-slate-50">
                               <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Preview</th>
                               <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest px-4">Lecture Info</th>
-                            <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {loadingLectures ? (
-                             <tr><td colSpan={3} className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-devo-100" /></td></tr>
-                          ) : paginatedLectures.length === 0 ? (
-                             <tr><td colSpan={3} className="py-20 text-center font-bold text-slate-300">No lectures found</td></tr>
-                          ) : paginatedLectures.map(l => (
-                            <tr key={l.id} className="group hover:bg-slate-50/50 transition-colors">
-                              <td className="py-4 px-2">
+                              <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {loadingLectures ? (
+                              <tr><td colSpan={3} className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-devo-100" /></td></tr>
+                            ) : paginatedLectures.length === 0 ? (
+                              <tr><td colSpan={3} className="py-20 text-center font-bold text-slate-300">No lectures found</td></tr>
+                            ) : paginatedLectures.map(l => (
+                              <tr key={l.id} className="group hover:bg-slate-50/50 transition-colors">
+                                <td className="py-4 px-2">
                                   <div className="w-20 aspect-video rounded-lg overflow-hidden bg-slate-100 relative border-2 border-slate-300">
                                     {getCleanId(l.youtube_id) ? (
-                                      <Image 
-                                        src={`https://i.ytimg.com/vi/${getCleanId(l.youtube_id)}/mqdefault.jpg`} 
+                                      <Image
+                                        src={`https://i.ytimg.com/vi/${getCleanId(l.youtube_id)}/mqdefault.jpg`}
                                         alt={l.title}
                                         fill
-                                        className="object-cover" 
+                                        className="object-cover"
                                         unoptimized
                                       />
                                     ) : (
@@ -1270,60 +1342,60 @@ export default function AdminPanel() {
                                         <FileVideo className="w-6 h-6 text-slate-400" />
                                       </div>
                                     )}
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Play className="w-5 h-5 text-white fill-current" />
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Play className="w-5 h-5 text-white fill-current" />
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="py-4 px-4 min-w-[200px]">
-                                <p className="font-bold text-devo-950 text-sm line-clamp-1">{l.title}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-xs font-bold text-devo-400">{l.speaker_name}</span>
-                                  <span className="w-1 h-1 rounded-full bg-slate-200" />
-                                  <span className="text-xs font-medium text-slate-400">{new Date(l.date).toLocaleDateString()}</span>
-                                </div>
-                              </td>
-                              <td className="py-4 px-4 text-right">
-                                <button 
-                                  onClick={() => deleteLecture(l.id)}
-                                  className="p-2.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                                </td>
+                                <td className="py-4 px-4 min-w-[200px]">
+                                  <p className="font-bold text-devo-950 text-sm line-clamp-1">{l.title}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs font-bold text-devo-400">{l.speaker_name}</span>
+                                    <span className="w-1 h-1 rounded-full bg-slate-200" />
+                                    <span className="text-xs font-medium text-slate-400">{new Date(l.date).toLocaleDateString()}</span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-right">
+                                  <button
+                                    onClick={() => deleteLecture(l.id)}
+                                    className="p-2.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                    {/* Ultra-Compact Mobile List (Pure Detail) */}
-                    <div className="md:hidden flex flex-col gap-2 mt-4">
-                      {loadingLectures ? (
-                         <div className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-devo-100" /></div>
-                      ) : paginatedLectures.length === 0 ? (
-                         <div className="py-20 text-center font-bold text-slate-300">No lectures found</div>
-                      ) : paginatedLectures.map(l => (
-                        <div key={`mobile-list-detail-${l.id}`} className="flex items-center justify-between gap-4 p-4 bg-white border-2 border-slate-300 rounded-2xl shadow-sm relative group overflow-hidden">
-                           <div className="flex-1 min-w-0 pr-4">
-                             <p className="font-black text-devo-950 text-sm leading-tight line-clamp-2 mb-2">{l.title}</p>
-                             <div className="flex items-center gap-2 mt-1 px-3 py-1 bg-slate-50 border border-slate-100 rounded-lg w-fit">
-                               <span className="text-[10px] font-black text-devo-600 truncate max-w-[120px]">{l.speaker_name}</span>
-                               <span className="w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
-                               <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">{new Date(l.date).toLocaleDateString()}</span>
-                             </div>
-                           </div>
-                           <button 
-                             onClick={() => deleteLecture(l.id)}
-                             className="p-3 text-red-500 bg-red-50 hover:bg-red-500 hover:text-white border-2 border-transparent active:border-red-100 rounded-xl transition-all shadow-sm"
-                             title="Delete"
-                           >
-                             <Trash2 className="w-5 h-5" />
-                           </button>
-                        </div>
-                      ))}
+                      {/* Ultra-Compact Mobile List (Pure Detail) */}
+                      <div className="md:hidden flex flex-col gap-2 mt-4">
+                        {loadingLectures ? (
+                          <div className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-devo-100" /></div>
+                        ) : paginatedLectures.length === 0 ? (
+                          <div className="py-20 text-center font-bold text-slate-300">No lectures found</div>
+                        ) : paginatedLectures.map(l => (
+                          <div key={`mobile-list-detail-${l.id}`} className="flex items-center justify-between gap-4 p-4 bg-white border-2 border-slate-300 rounded-2xl shadow-sm relative group overflow-hidden">
+                            <div className="flex-1 min-w-0 pr-4">
+                              <p className="font-black text-devo-950 text-sm leading-tight line-clamp-2 mb-2">{l.title}</p>
+                              <div className="flex items-center gap-2 mt-1 px-3 py-1 bg-slate-50 border border-slate-100 rounded-lg w-fit">
+                                <span className="text-[10px] font-black text-devo-600 truncate max-w-[120px]">{l.speaker_name}</span>
+                                <span className="w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
+                                <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">{new Date(l.date).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => deleteLecture(l.id)}
+                              className="p-3 text-red-500 bg-red-50 hover:bg-red-500 hover:text-white border-2 border-transparent active:border-red-100 rounded-xl transition-all shadow-sm"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
                   ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
                       {loadingLectures ? (
@@ -1332,39 +1404,39 @@ export default function AdminPanel() {
                         <div className="col-span-full py-20 text-center font-bold text-slate-300">No lectures found</div>
                       ) : paginatedLectures.map(l => (
                         <div key={`grid-${l.id}`} className="flex flex-col gap-3 p-4 bg-white border-2 border-slate-300 rounded-2xl shadow-sm relative group hover:border-orange-400 focus-within:border-orange-400 transition-all">
-                           <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-100 relative shadow-sm border-2 border-slate-300">
-                              {getCleanId(l.youtube_id) ? (
-                                <Image 
-                                  src={`https://i.ytimg.com/vi/${getCleanId(l.youtube_id)}/mqdefault.jpg`} 
-                                  alt={l.title}
-                                  fill
-                                  className="object-cover" 
-                                  unoptimized
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-slate-200">
-                                  <FileVideo className="w-8 h-8 text-slate-400" />
-                                </div>
-                              )}
-                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                               <Play className="w-10 h-10 text-white fill-current opacity-80" />
-                             </div>
-                          </div>
-                          
-                          <div className="flex flex-col flex-1 min-w-0">
-                             <h3 className="font-black text-devo-950 text-sm sm:text-base leading-snug line-clamp-2">{l.title}</h3>
-                             <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-auto pt-3 gap-2">
-                               <span className="text-[10px] sm:text-[11px] font-black text-devo-600 truncate bg-orange-50 border border-orange-100 px-2 py-1 rounded-md inline-block w-fit">{l.speaker_name}</span>
-                               <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(l.date).toLocaleDateString()}</span>
-                             </div>
+                          <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-100 relative shadow-sm border-2 border-slate-300">
+                            {getCleanId(l.youtube_id) ? (
+                              <Image
+                                src={`https://i.ytimg.com/vi/${getCleanId(l.youtube_id)}/mqdefault.jpg`}
+                                alt={l.title}
+                                fill
+                                className="object-cover"
+                                unoptimized
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-slate-200">
+                                <FileVideo className="w-8 h-8 text-slate-400" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                              <Play className="w-10 h-10 text-white fill-current opacity-80" />
+                            </div>
                           </div>
 
-                          <button 
-                            onClick={() => deleteLecture(l.id)} 
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <h3 className="font-black text-devo-950 text-sm sm:text-base leading-snug line-clamp-2">{l.title}</h3>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-auto pt-3 gap-2">
+                              <span className="text-[10px] sm:text-[11px] font-black text-devo-600 truncate bg-orange-50 border border-orange-100 px-2 py-1 rounded-md inline-block w-fit">{l.speaker_name}</span>
+                              <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(l.date).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => deleteLecture(l.id)}
                             className="absolute top-2 right-2 p-2 bg-white/90 backdrop-blur-sm text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-md border-2 border-slate-300 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 z-10"
                             title="Delete Lecture"
                           >
-                             <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       ))}
@@ -1375,48 +1447,48 @@ export default function AdminPanel() {
                   <div className="mt-8 pt-6 border-t border-slate-300 flex flex-col sm:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-black text-slate-400 uppercase">Rows:</span>
-                      <select 
+                      <select
                         value={lecturesPerPage}
                         onChange={(e) => { setLecturesPerPage(Number(e.target.value)); setLecturePage(1); }}
                         className="bg-slate-50 border-2 border-slate-300 rounded-lg px-2 py-1 text-xs font-bold font-outfit focus:bg-white focus:border-orange-400"
                       >
                         {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
-                      <span className="text-[10px] font-bold text-slate-400 italic">Showing {(lecturePage-1)*lecturesPerPage + 1}-{Math.min(lecturePage*lecturesPerPage, filteredLectures.length)} of {filteredLectures.length}</span>
+                      <span className="text-[10px] font-bold text-slate-400 italic">Showing {(lecturePage - 1) * lecturesPerPage + 1}-{Math.min(lecturePage * lecturesPerPage, filteredLectures.length)} of {filteredLectures.length}</span>
                     </div>
 
                     <div className="flex items-center gap-3">
-                       <button 
+                      <button
                         disabled={lecturePage === 1}
                         onClick={() => setLecturePage(p => p - 1)}
                         className="p-3 rounded-2xl bg-white border-2 border-slate-300 text-devo-600 disabled:opacity-30 disabled:pointer-events-none hover:border-orange-400 transition-all shadow-sm"
-                       >
+                      >
                         <ChevronLeft className="w-4 h-4" />
-                       </button>
-                       
-                       <div className="flex items-center gap-1">
-                          {generatePagination(lecturePage, totalLecturePages).map((p, i) => (
-                            typeof p === 'number' ? (
-                              <button 
-                                key={i} 
-                                onClick={() => setLecturePage(p)}
-                                className={`w-10 h-10 rounded-xl text-xs font-black transition-all border-2 ${lecturePage === p ? 'bg-devo-950 text-white border-devo-950 shadow-lg' : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-500'}`}
-                              >
-                                {p}
-                              </button>
-                            ) : (
-                              <span key={i} className="px-1 text-slate-300 font-bold">...</span>
-                            )
-                          ))}
-                       </div>
+                      </button>
 
-                       <button 
+                      <div className="flex items-center gap-1">
+                        {generatePagination(lecturePage, totalLecturePages).map((p, i) => (
+                          typeof p === 'number' ? (
+                            <button
+                              key={i}
+                              onClick={() => setLecturePage(p)}
+                              className={`w-10 h-10 rounded-xl text-xs font-black transition-all border-2 ${lecturePage === p ? 'bg-devo-950 text-white border-devo-950 shadow-lg' : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-500'}`}
+                            >
+                              {p}
+                            </button>
+                          ) : (
+                            <span key={i} className="px-1 text-slate-300 font-bold">...</span>
+                          )
+                        ))}
+                      </div>
+
+                      <button
                         disabled={lecturePage === totalLecturePages}
                         onClick={() => setLecturePage(p => p + 1)}
                         className="p-3 rounded-2xl bg-white border-2 border-slate-300 text-devo-600 disabled:opacity-30 disabled:pointer-events-none hover:border-orange-400 transition-all shadow-sm"
-                       >
+                      >
                         <ChevronRight className="w-4 h-4" />
-                       </button>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1428,7 +1500,7 @@ export default function AdminPanel() {
         {/* VIEW: User Management */}
         {activeView === "users" && isSuperAdmin && (
           <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 pb-20">
-            <button 
+            <button
               onClick={() => setActiveView("home")}
               className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
             >
@@ -1458,19 +1530,19 @@ export default function AdminPanel() {
                 <h2 className="text-3xl font-outfit font-black text-devo-950 flex items-center gap-4">
                   <Users className="w-8 h-8 text-blue-600" /> Member Access
                 </h2>
-                
+
                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                   <div className="relative flex-1 sm:w-64">
+                  <div className="relative flex-1 sm:w-64">
                     <Search className="absolute left-4 top-3 h-4 w-4 text-slate-300" />
-                    <input 
-                      type="text" 
-                      placeholder="Find member..." 
+                    <input
+                      type="text"
+                      placeholder="Find member..."
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                       className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl focus:bg-white focus:border-blue-400 outline-none transition-all text-sm font-bold"
                     />
                   </div>
-                  <select 
+                  <select
                     value={roleFilter}
                     onChange={(e) => setRoleFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
                     className="bg-slate-50 border-2 border-slate-300 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest focus:bg-white focus:border-blue-400 outline-none"
@@ -1508,49 +1580,49 @@ export default function AdminPanel() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loadingUsers ? (
-                         <tr><td colSpan={4} className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-100" /></td></tr>
+                        <tr><td colSpan={4} className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-100" /></td></tr>
                       ) : filteredUsers.length === 0 ? (
-                         <tr><td colSpan={4} className="py-20 text-center font-bold text-slate-300">No members match search</td></tr>
+                        <tr><td colSpan={4} className="py-20 text-center font-bold text-slate-300">No members match search</td></tr>
                       ) : paginatedUsers.map((u: any) => (
                         <tr key={u.id} className="group hover:bg-blue-50/30 transition-colors">
                           <td className="px-6 py-6 font-bold text-slate-600 text-sm">
-                             <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-lg ${u.role === 1 ? 'bg-red-500' : 'bg-devo-600'}`}>
-                                  {u.full_name ? u.full_name[0].toUpperCase() : u.email?.[0]?.toUpperCase() || 'U'}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="font-black text-devo-950 text-base leading-none mb-1">{u.full_name || 'Incomplete Profile'}</p>
-                                  <p className="text-[11px] font-bold text-devo-600 uppercase tracking-widest">{u.temple || 'No Center'}</p>
-                                  <p className="text-[10px] font-medium text-slate-400 mt-1">{u.mobile || 'No Mobile'}</p>
-                                </div>
-                             </div>
+                            <div className="flex items-center gap-4">
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-lg ${u.role === 1 ? 'bg-red-500' : 'bg-devo-600'}`}>
+                                {u.full_name ? u.full_name[0].toUpperCase() : u.email?.[0]?.toUpperCase() || 'U'}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-black text-devo-950 text-base leading-none mb-1">{u.full_name || 'Incomplete Profile'}</p>
+                                <p className="text-[11px] font-bold text-devo-600 uppercase tracking-widest">{u.temple || 'No Center'}</p>
+                                <p className="text-[10px] font-medium text-slate-400 mt-1">{u.mobile || 'No Mobile'}</p>
+                              </div>
+                            </div>
                           </td>
                           <td className="px-6 py-6 font-bold text-slate-600 text-sm">
-                             {u.email}
-                             <div className="text-[10px] font-black text-slate-300 mt-1 uppercase tracking-tighter">Joined: {new Date(u.created_at).toLocaleDateString()}</div>
+                            {u.email}
+                            <div className="text-[10px] font-black text-slate-300 mt-1 uppercase tracking-tighter">Joined: {new Date(u.created_at).toLocaleDateString()}</div>
                           </td>
                           <td className="px-6 py-6">
-                             <span className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-sm ${roleColors[u.role] || 'bg-slate-50'}`}>
-                               {roleNames[u.role] || 'Member'}
-                             </span>
+                            <span className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-sm ${roleColors[u.role] || 'bg-slate-50'}`}>
+                              {roleNames[u.role] || 'Member'}
+                            </span>
                           </td>
                           <td className="px-6 py-6 text-right">
-                             <div className="flex items-center justify-end gap-2">
-                               <select 
-                                  value={u.role} 
-                                  onChange={(e) => updateUserRole(u.id, parseInt(e.target.value))}
-                                  className="bg-white border-2 border-slate-300 rounded-xl px-4 py-2 text-xs font-bold outline-none cursor-pointer hover:border-blue-400 focus:border-blue-500 transition-all shadow-sm"
-                               >
-                                  {Object.entries(roleNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                               </select>
-                               <button 
-                                 onClick={() => deleteUser(u.id)}
-                                 className="p-3 text-red-500 hover:text-white border-2 border-slate-300 hover:bg-red-600 rounded-xl transition-all shadow-sm"
-                                 title="Delete User Permanently"
-                               >
-                                  <Trash2 className="w-4 h-4" />
-                               </button>
-                             </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <select
+                                value={u.role}
+                                onChange={(e) => updateUserRole(u.id, parseInt(e.target.value))}
+                                className="bg-white border-2 border-slate-300 rounded-xl px-4 py-2 text-xs font-bold outline-none cursor-pointer hover:border-blue-400 focus:border-blue-500 transition-all shadow-sm"
+                              >
+                                {Object.entries(roleNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                              </select>
+                              <button
+                                onClick={() => deleteUser(u.id)}
+                                className="p-3 text-red-500 hover:text-white border-2 border-slate-300 hover:bg-red-600 rounded-xl transition-all shadow-sm"
+                                title="Delete User Permanently"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1561,46 +1633,46 @@ export default function AdminPanel() {
                 {/* Mobile Rendering Strategy */}
                 <div className="lg:hidden mt-4">
                   {loadingUsers ? (
-                     <div className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-100" /></div>
+                    <div className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-100" /></div>
                   ) : filteredUsers.length === 0 ? (
-                     <div className="py-20 text-center font-bold text-slate-300">No members match search</div>
+                    <div className="py-20 text-center font-bold text-slate-300">No members match search</div>
                   ) : userViewMode === "list" ? (
                     <div className="flex flex-col gap-2">
-                       {paginatedUsers.map((u: any) => (
-                         <div key={`mobile-user-list-final-${u.id}`} className="flex flex-col gap-3 p-3.5 bg-white border-2 border-slate-300 rounded-2xl shadow-sm relative group">
-                            <div className="flex items-start justify-between gap-4">
-                               <div className="flex-1 min-w-0">
-                                 <p className="font-black text-devo-950 text-sm leading-tight truncate">{u.full_name || 'Incomplete Profile'}</p>
-                                 <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{u.email}</p>
-                               </div>
-                               <div className="flex items-center gap-2">
-                                  {u.id !== session?.user?.id && (
-                                    <button 
-                                      onClick={() => deleteUser(u.id)}
-                                      className="p-2 text-red-500 bg-red-50 hover:bg-red-500 hover:text-white border-2 border-transparent active:border-red-100 rounded-xl transition-all"
-                                      title="Remove Member"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  )}
-                               </div>
+                      {paginatedUsers.map((u: any) => (
+                        <div key={`mobile-user-list-final-${u.id}`} className="flex flex-col gap-3 p-3.5 bg-white border-2 border-slate-300 rounded-2xl shadow-sm relative group">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-black text-devo-950 text-sm leading-tight truncate">{u.full_name || 'Incomplete Profile'}</p>
+                              <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{u.email}</p>
                             </div>
-                            
-                            <div className="flex items-center gap-2 pt-2 border-t border-slate-50">
-                               <select 
-                                  value={u.role} 
-                                  disabled={u.id === session?.user?.id}
-                                  onChange={(e) => updateUserRole(u.id, parseInt(e.target.value))}
-                                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-blue-400 transition-all appearance-none cursor-pointer disabled:opacity-50"
-                               >
-                                  {Object.entries(roleNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                               </select>
-                               <div className="bg-blue-50 border border-blue-100 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase text-devo-600 truncate max-w-[120px]">
-                                 {u.temple || 'No Center'}
-                               </div>
+                            <div className="flex items-center gap-2">
+                              {u.id !== session?.user?.id && (
+                                <button
+                                  onClick={() => deleteUser(u.id)}
+                                  className="p-2 text-red-500 bg-red-50 hover:bg-red-500 hover:text-white border-2 border-transparent active:border-red-100 rounded-xl transition-all"
+                                  title="Remove Member"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
-                         </div>
-                       ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-slate-50">
+                            <select
+                              value={u.role}
+                              disabled={u.id === session?.user?.id}
+                              onChange={(e) => updateUserRole(u.id, parseInt(e.target.value))}
+                              className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-blue-400 transition-all appearance-none cursor-pointer disabled:opacity-50"
+                            >
+                              {Object.entries(roleNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                            </select>
+                            <div className="bg-blue-50 border border-blue-100 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase text-devo-600 truncate max-w-[120px]">
+                              {u.temple || 'No Center'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     /* Visual Card View */
@@ -1616,7 +1688,7 @@ export default function AdminPanel() {
                                 <h3 className="font-black text-devo-950 text-lg leading-tight truncate">{u.full_name || 'Incomplete Profile'}</h3>
                               </div>
                               <p className="text-sm font-bold text-slate-500 truncate mt-0.5">{u.email}</p>
-                              
+
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <span className={`px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${roleColors[u.role] || 'bg-slate-50'}`}>
                                   {roleNames[u.role] || 'Member'}
@@ -1627,19 +1699,19 @@ export default function AdminPanel() {
                           </div>
 
                           <div className="pt-4 border-t border-slate-200 mt-0 flex flex-col sm:flex-row gap-2">
-                            <select 
-                               value={u.role} 
-                               onChange={(e) => updateUserRole(u.id, parseInt(e.target.value))}
-                               className="flex-1 bg-slate-50 border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-bold outline-none cursor-pointer hover:border-blue-400 focus:bg-white transition-all shadow-sm"
+                            <select
+                              value={u.role}
+                              onChange={(e) => updateUserRole(u.id, parseInt(e.target.value))}
+                              className="flex-1 bg-slate-50 border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-bold outline-none cursor-pointer hover:border-blue-400 focus:bg-white transition-all shadow-sm"
                             >
-                               {Object.entries(roleNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                              {Object.entries(roleNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                             </select>
-                            <button 
+                            <button
                               onClick={() => deleteUser(u.id)}
                               className="p-3 bg-white text-red-500 hover:text-white border-2 border-slate-300 hover:border-red-600 hover:bg-red-600 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 font-bold"
                             >
-                               <Trash2 className="w-5 h-5" />
-                               <span className="sm:hidden">Delete</span>
+                              <Trash2 className="w-5 h-5" />
+                              <span className="sm:hidden">Delete</span>
                             </button>
                           </div>
                         </div>
@@ -1653,8 +1725,8 @@ export default function AdminPanel() {
               <div className="mt-8 pt-8 border-t border-slate-300 flex flex-col sm:flex-row justify-between items-center gap-6">
                 <div className="flex items-center gap-4">
                   <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Rows per page:</span>
-                  <select 
-                    value={usersPerPage} 
+                  <select
+                    value={usersPerPage}
                     onChange={(e) => setUsersPerPage(Number(e.target.value))}
                     className="bg-slate-50 border-2 border-slate-300 rounded-xl px-4 py-2 text-xs font-bold outline-none cursor-pointer hover:border-blue-400 transition-all"
                   >
@@ -1665,8 +1737,8 @@ export default function AdminPanel() {
                 <div className="flex items-center gap-1">
                   {generatePagination(userPage, totalUserPages).map((p, i) => (
                     typeof p === 'number' ? (
-                      <button 
-                        key={i} 
+                      <button
+                        key={i}
                         onClick={() => setUserPage(p)}
                         className={`w-10 h-10 rounded-xl text-xs font-black transition-all border-2 ${userPage === p ? 'bg-devo-950 text-white border-devo-950 shadow-lg' : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-500'}`}
                       >
@@ -1679,14 +1751,14 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <button 
+                  <button
                     disabled={userPage === 1}
                     onClick={() => setUserPage(p => p - 1)}
                     className="p-3 rounded-2xl bg-white border-2 border-slate-300 text-devo-600 disabled:opacity-30 disabled:pointer-events-none hover:border-devo-400 transition-all shadow-sm"
                   >
                     <ArrowRight className="w-4 h-4 rotate-180" />
                   </button>
-                  <button 
+                  <button
                     disabled={userPage >= totalUserPages}
                     onClick={() => setUserPage(p => p + 1)}
                     className="p-3 rounded-2xl bg-white border-2 border-slate-300 text-devo-600 disabled:opacity-30 disabled:pointer-events-none hover:border-devo-400 transition-all shadow-sm"
@@ -1708,14 +1780,14 @@ export default function AdminPanel() {
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-0.5">Media Source Management</p>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button 
+                <button
                   onClick={fetchYtChannels}
                   className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
                   title="Refresh Channels"
                 >
                   <List className="w-4 h-4" />
                 </button>
-                <button 
+                <button
                   onClick={() => { setActiveYtChannel({ is_active: true, banner_style: "linear-gradient(135deg, #f97316 0%, #fbbf24 100%)", order_index: (ytChannels.length + 1) * 10 }); setYtModalOpen(true); }}
                   className="flex-grow sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-black text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg active:scale-95"
                 >
@@ -1729,92 +1801,90 @@ export default function AdminPanel() {
                 <div className="col-span-full py-20 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-indigo-500" /></div>
               ) : ytChannels.map((channel, index) => (
                 <div key={channel.id} className="bg-white p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm hover:shadow-md border border-slate-200 hover:border-indigo-400 flex flex-col gap-4 sm:gap-5 group transition-all relative overflow-hidden">
-                   <div className="flex items-center gap-4 sm:gap-5">
-                     {/* Reorder Controls */}
-                     <div className="flex flex-col gap-1 pr-2 border-r border-slate-100">
-                       <button 
-                         disabled={index === 0} 
-                         onClick={() => handleYtChannelSwap(index, index - 1)}
-                         className="p-1 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
-                       >
-                         <ChevronLeft className="w-5 h-5 rotate-90" />
-                       </button>
-                       <button 
-                         disabled={index === ytChannels.length - 1}
-                         onClick={() => handleYtChannelSwap(index, index + 1)}
-                         className="p-1 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
-                       >
-                         <ChevronLeft className="w-5 h-5 -rotate-90" />
-                       </button>
-                     </div>
+                  <div className="flex items-center gap-4 sm:gap-5">
+                    {/* Reorder Controls */}
+                    <div className="flex flex-col gap-1 pr-2 border-r border-slate-100">
+                      <button
+                        disabled={index === 0}
+                        onClick={() => handleYtChannelSwap(index, index - 1)}
+                        className="p-1 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
+                      >
+                        <ChevronLeft className="w-5 h-5 rotate-90" />
+                      </button>
+                      <button
+                        disabled={index === ytChannels.length - 1}
+                        onClick={() => handleYtChannelSwap(index, index + 1)}
+                        className="p-1 text-slate-300 hover:text-indigo-600 disabled:opacity-20 transition-all hover:bg-slate-50 rounded"
+                      >
+                        <ChevronLeft className="w-5 h-5 -rotate-90" />
+                      </button>
+                    </div>
 
-                     <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden shadow-inner border-2 border-white shrink-0 ${!channel.is_active && 'grayscale opacity-40'}`}>
-                        {channel.custom_logo ? (
-                          <Image src={channel.custom_logo} alt={channel.name} width={64} height={64} className="object-cover" unoptimized />
-                        ) : (
-                          <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300 font-black text-[10px]">{channel.order_index}</div>
+                    <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden shadow-inner border-2 border-white shrink-0 ${!channel.is_active && 'grayscale opacity-40'}`}>
+                      {channel.custom_logo ? (
+                        <Image src={channel.custom_logo} alt={channel.name} width={64} height={64} className="object-cover" unoptimized />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300 font-black text-[10px]">{channel.order_index}</div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0 pr-10">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-devo-950 text-sm sm:text-base leading-tight truncate">{channel.name}</h3>
+                        <span className="text-[9px] font-black bg-slate-50 px-1.5 py-0.5 rounded text-slate-400">#{channel.order_index}</span>
+                      </div>
+                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 font-mono mt-0.5 truncate">{channel.channel_id}</p>
+
+                      {/* Sync Status & Timestamp */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                            channel.sync_status === 'completed' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                              channel.sync_status === 'error' ? 'bg-rose-50 border-rose-100 text-rose-600' :
+                                'bg-slate-50 border-slate-100 text-slate-400'
+                          }`}>
+                          {channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? (
+                            <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Syncing...</>
+                          ) : channel.sync_status === 'completed' ? (
+                            <><CheckCircle className="w-2.5 h-2.5" /> Completed</>
+                          ) : channel.sync_status === 'error' ? (
+                            <><AlertCircle className="w-2.5 h-2.5" /> Failed</>
+                          ) : (
+                            "Never Synced"
+                          )}
+                        </div>
+                        {channel.last_sync_at && (
+                          <div className="flex items-center gap-1 text-[8px] font-bold text-slate-400 whitespace-nowrap">
+                            <Clock className="w-2 h-2" /> {new Date(channel.last_sync_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </div>
                         )}
                       </div>
-                      
-                      <div className="flex-1 min-w-0 pr-10">
-                         <div className="flex items-center gap-2">
-                            <h3 className="font-black text-devo-950 text-sm sm:text-base leading-tight truncate">{channel.name}</h3>
-                            <span className="text-[9px] font-black bg-slate-50 px-1.5 py-0.5 rounded text-slate-400">#{channel.order_index}</span>
-                         </div>
-                         <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 font-mono mt-0.5 truncate">{channel.channel_id}</p>
-                         
-                         {/* Sync Status & Timestamp */}
-                         <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${
-                              channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? 'bg-amber-50 border-amber-100 text-amber-600' :
-                              channel.sync_status === 'completed' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                              channel.sync_status === 'error' ? 'bg-rose-50 border-rose-100 text-rose-600' :
-                              'bg-slate-50 border-slate-100 text-slate-400'
-                            }`}>
-                              {channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? (
-                                <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Syncing...</>
-                              ) : channel.sync_status === 'completed' ? (
-                                <><CheckCircle className="w-2.5 h-2.5" /> Completed</>
-                              ) : channel.sync_status === 'error' ? (
-                                <><AlertCircle className="w-2.5 h-2.5" /> Failed</>
-                              ) : (
-                                "Never Synced"
-                              )}
-                            </div>
-                            {channel.last_sync_at && (
-                              <div className="flex items-center gap-1 text-[8px] font-bold text-slate-400 whitespace-nowrap">
-                                <Clock className="w-2 h-2" /> {new Date(channel.last_sync_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                              </div>
-                            )}
-                         </div>
-                      </div>
+                    </div>
 
-                      <div className="absolute top-4 right-4 flex gap-1">
-                         <button 
-                           onClick={() => handleSyncChannel(channel.channel_id)}
-                           disabled={syncingChannels.has(channel.channel_id)}
-                           className={`p-2 rounded-lg border transition-all shadow-sm ${
-                             syncingChannels.has(channel.channel_id) 
-                             ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
-                             : 'bg-white text-indigo-600 border-slate-100 hover:border-indigo-600 hover:bg-indigo-50'
-                           }`}
-                           title="Sync Metadata"
-                         >
-                           <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
-                         </button>
-                         <button onClick={() => { setActiveYtChannel(channel); setYtModalOpen(true); }} className="p-2 bg-white text-slate-400 hover:text-indigo-600 rounded-lg border border-slate-100 hover:border-indigo-600 transition-all shadow-sm">
-                           <Settings className="w-3.5 h-3.5" />
-                         </button>
-                         <button onClick={() => deleteYtChannel(channel.id)} className="p-2 bg-white text-slate-400 hover:text-red-500 rounded-lg border border-slate-100 hover:border-red-500 transition-all shadow-sm">
-                           <Trash2 className="w-3.5 h-3.5" />
-                         </button>
-                      </div>
-                   </div>
-                   {!channel.is_active && <span className="absolute bottom-3 right-3 px-1.5 py-0.5 bg-slate-50 text-slate-300 text-[6px] font-black uppercase rounded tracking-widest border border-slate-100">Inactive</span>}
+                    <div className="absolute top-4 right-4 flex gap-1">
+                      <button
+                        onClick={() => handleSyncChannel(channel.channel_id)}
+                        disabled={syncingChannels.has(channel.channel_id)}
+                        className={`p-2 rounded-lg border transition-all shadow-sm ${syncingChannels.has(channel.channel_id)
+                            ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                            : 'bg-white text-indigo-600 border-slate-100 hover:border-indigo-600 hover:bg-indigo-50'
+                          }`}
+                        title="Sync Metadata"
+                      >
+                        <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button onClick={() => { setActiveYtChannel(channel); setYtModalOpen(true); }} className="p-2 bg-white text-slate-400 hover:text-indigo-600 rounded-lg border border-slate-100 hover:border-indigo-600 transition-all shadow-sm">
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteYtChannel(channel.id)} className="p-2 bg-white text-slate-400 hover:text-red-500 rounded-lg border border-slate-100 hover:border-red-500 transition-all shadow-sm">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {!channel.is_active && <span className="absolute bottom-3 right-3 px-1.5 py-0.5 bg-slate-50 text-slate-300 text-[6px] font-black uppercase rounded tracking-widest border border-slate-100">Inactive</span>}
                 </div>
               ))}
             </div>
-            
+
             {/* Modal Logic */}
             {ytModalOpen && (
               <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
@@ -1823,7 +1893,7 @@ export default function AdminPanel() {
                     <h2 className="text-xl sm:text-2xl font-black text-devo-950 tracking-tight">{activeYtChannel?.id ? 'Adjust' : 'Register'} Channel</h2>
                     <button onClick={() => setYtModalOpen(false)} className="p-2 hover:bg-white rounded-full text-slate-400 transition-all shadow-sm"><X className="w-6 h-6" /></button>
                   </div>
-                  
+
                   <div className="px-6 py-6 sm:p-8 space-y-5 sm:space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
                     <div className="space-y-1">
                       <label className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Display Index (Portal Order)</label>
@@ -1880,344 +1950,344 @@ export default function AdminPanel() {
         {/* VIEW: Usage Analytics - PREMIUM HIGH-FIDELITY */}
         {activeView === "usage-analytics" && isSuperAdmin && (
           <div className="space-y-6 animate-in slide-in-from-left-4 duration-500 pb-32 max-w-7xl">
-             <div className="flex flex-col gap-1">
-                <h1 className="text-2xl font-outfit font-black text-slate-900 tracking-tight">Admin — <span className="text-indigo-600">Analytics</span></h1>
-                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wide">Daily summary and member presence.</p>
-             </div>
+            <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-outfit font-black text-slate-900 tracking-tight">Admin — <span className="text-indigo-600">Analytics</span></h1>
+              <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wide">Daily summary and member presence.</p>
+            </div>
 
-             {/* Stat Cards Row - More Compact */}
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-tr from-indigo-600 to-indigo-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-indigo-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
-                  <LayoutGrid className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
+            {/* Stat Cards Row - More Compact */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-tr from-indigo-600 to-indigo-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-indigo-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
+                <LayoutGrid className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 opacity-70" />
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Total Days</span>
+                </div>
+                <h3 className="text-3xl sm:text-4xl font-black">{stats?.totalDaysActive || "0"}</h3>
+              </div>
+
+              <div className="bg-gradient-to-tr from-purple-600 to-fuchsia-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-purple-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
+                <Users className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
+                <div className="flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5 opacity-70" />
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Visitors</span>
+                </div>
+                <h3 className="text-3xl sm:text-4xl font-black">{stats?.visitorsInView || "0"}</h3>
+              </div>
+
+              <div className="bg-gradient-to-tr from-emerald-600 to-teal-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-emerald-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
+                <Activity className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
+                <div className="flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 opacity-70" />
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Avg / Day</span>
+                </div>
+                <h3 className="text-3xl sm:text-4xl font-black">{stats?.avgVisitorsPerDay || "0"}</h3>
+              </div>
+
+              <div className="bg-gradient-to-tr from-rose-600 to-orange-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-rose-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
+                <ArrowRight className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 rotate-[-45deg] transition-transform" strokeWidth={3} />
+                <div className="flex items-center gap-2">
+                  <FileVideo className="w-3.5 h-3.5 opacity-70" />
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Best Count</span>
+                </div>
+                <div>
+                  <h3 className="text-3xl sm:text-4xl font-black">{stats?.busiestCount || "0"}</h3>
+                </div>
+              </div>
+            </div>
+
+            {/* Activity Trend - Premium Line Graph with Axes */}
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-xl space-y-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <Activity className="w-5 h-5 text-indigo-600" />
+                  <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Activity Analytics</h2>
+                </div>
+                <div className="hidden sm:flex items-center gap-6">
                   <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 opacity-70" />
-                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Total Days</span>
+                    <div className="w-3 h-3 rounded-full bg-indigo-600 shadow-sm" />
+                    <span className="text-[9px] font-black uppercase text-slate-400">Total Visitors</span>
                   </div>
-                  <h3 className="text-3xl sm:text-4xl font-black">{stats?.totalDaysActive || "0"}</h3>
+                </div>
+              </div>
+
+              {/* Custom SVG Line Graph with Area Gradient & Proper Axes */}
+              <div className="relative h-[240px] sm:h-[300px] w-full group">
+                {/* Y-Axis Labels */}
+                <div className="absolute left-0 h-full flex flex-col justify-between text-[8px] font-black text-slate-300 py-4 z-10 pointer-events-none">
+                  <span>{Math.max(...(history || []).map(h => h.count), 1)}</span>
+                  <span>{Math.floor(Math.max(...(history || []).map(h => h.count), 1) / 2)}</span>
+                  <span>0</span>
                 </div>
 
-                <div className="bg-gradient-to-tr from-purple-600 to-fuchsia-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-purple-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
-                  <Users className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
-                  <div className="flex items-center gap-2">
-                    <Users className="w-3.5 h-3.5 opacity-70" />
-                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Visitors</span>
-                  </div>
-                  <h3 className="text-3xl sm:text-4xl font-black">{stats?.visitorsInView || "0"}</h3>
-                </div>
+                <div className="ml-8 h-full relative">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 1000 200" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#4f46e5" />
+                        <stop offset="100%" stopColor="#8b5cf6" />
+                      </linearGradient>
+                      <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.15" />
+                        <stop offset="100%" stopColor="#4f46e5" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
 
-                <div className="bg-gradient-to-tr from-emerald-600 to-teal-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-emerald-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
-                  <Activity className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-3.5 h-3.5 opacity-70" />
-                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Avg / Day</span>
-                  </div>
-                  <h3 className="text-3xl sm:text-4xl font-black">{stats?.avgVisitorsPerDay || "0"}</h3>
-                </div>
+                    {/* X & Y Axis Lines */}
+                    <line x1="0" y1="200" x2="1000" y2="200" stroke="#f1f5f9" strokeWidth="2" />
+                    <line x1="0" y1="0" x2="0" y2="200" stroke="#f1f5f9" strokeWidth="2" />
 
-                <div className="bg-gradient-to-tr from-rose-600 to-orange-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-rose-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
-                  <ArrowRight className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 rotate-[-45deg] transition-transform" strokeWidth={3} />
-                  <div className="flex items-center gap-2">
-                    <FileVideo className="w-3.5 h-3.5 opacity-70" />
-                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Best Count</span>
-                  </div>
-                  <div>
-                    <h3 className="text-3xl sm:text-4xl font-black">{stats?.busiestCount || "0"}</h3>
+                    {/* The Main Line Path (Smooth Spline) */}
+                    <path
+                      d={(history || []).slice(0, 15).reverse().reduce((acc, curr, i, arr) => {
+                        const maxCount = Math.max(...(history || []).map(h => h.count), 1);
+                        const x = (i / (Math.min(history.length, 15) - 1)) * 1000;
+                        const y = 200 - (curr.count / maxCount) * 180 - 10;
+
+                        if (i === 0) return `M ${x} ${y}`;
+
+                        // Calculate Cubic Bezier midpoints
+                        const prev = arr[i - 1];
+                        const prevMax = Math.max(...(history || []).map(h => h.count), 1);
+                        const px = ((i - 1) / (Math.min(history.length, 15) - 1)) * 1000;
+                        const py = 200 - (prev.count / prevMax) * 180 - 10;
+
+                        const cx1 = px + (x - px) / 2;
+                        const cy1 = py;
+                        const cx2 = px + (x - px) / 2;
+                        const cy2 = y;
+
+                        return `${acc} C ${cx1} ${cy1} ${cx2} ${cy2} ${x} ${y}`;
+                      }, "")}
+                      fill="none"
+                      stroke="url(#lineGrad)"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="drop-shadow-xl"
+                    />
+
+                    {/* Area Fill (Smooth Spline) */}
+                    <path
+                      d={(history || []).slice(0, 15).reverse().reduce((acc, curr, i, arr) => {
+                        const maxCount = Math.max(...(history || []).map(h => h.count), 1);
+                        const x = (i / (Math.min(history.length, 15) - 1)) * 1000;
+                        const y = 200 - (curr.count / maxCount) * 180 - 10;
+
+                        if (i === 0) return `M ${x} 200 L ${x} ${y}`;
+
+                        const prev = arr[i - 1];
+                        const prevMax = Math.max(...(history || []).map(h => h.count), 1);
+                        const px = ((i - 1) / (Math.min(history.length, 15) - 1)) * 1000;
+                        const py = 200 - (prev.count / prevMax) * 180 - 10;
+
+                        const cx1 = px + (x - px) / 2;
+                        const cy1 = py;
+                        const cx2 = px + (x - px) / 2;
+                        const cy2 = y;
+
+                        const main = `${acc} C ${cx1} ${cy1} ${cx2} ${cy2} ${x} ${y}`;
+                        if (i === Math.min(history.length, 15) - 1) return `${main} L ${x} 200 Z`;
+                        return main;
+                      }, "")}
+                      fill="url(#areaGrad)"
+                      className="opacity-40"
+                    />
+                  </svg>
+
+                  {/* Interactive Points & X-Axis */}
+                  <div className="absolute inset-0 flex justify-between pointer-events-none">
+                    {(history || []).slice(0, 15).reverse().map((day, i) => {
+                      const maxCount = Math.max(...(history || []).map(h => h.count), 1);
+                      const topPercent = 100 - (day.count / maxCount) * 90 - 5;
+                      return (
+                        <div key={day.date} className="relative flex-1 flex flex-col items-center group/p">
+                          <div
+                            style={{ top: `${topPercent}%` }}
+                            className="absolute w-3 h-3 bg-white border-2 border-indigo-600 rounded-full shadow-[0_0_10px_rgba(79,70,229,0.3)] z-20 transition-all group-hover/p:scale-[2] group-hover/p:bg-indigo-600 pointer-events-auto cursor-pointer"
+                          />
+                          <div className="absolute top-[-35px] opacity-0 group-hover/p:opacity-100 transition-all translate-y-2 group-hover/p:translate-y-0 bg-slate-950 text-white text-[9px] font-black px-2 py-1 rounded-md z-30 pointer-events-none shadow-xl border border-white/10">
+                            {day.count}
+                          </div>
+                          <div className="absolute bottom-[-25px] text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap rotate-[-45deg] sm:rotate-0 origin-top-left transition-colors group-hover/p:text-indigo-600">
+                            {(i === 0 || i % 2 === 0 || i === Math.min(history.length, 15) - 1) ? day.date.split('-').slice(1).join('/') : ""}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-             </div>
+              </div>
+            </div>
 
-             {/* Activity Trend - Premium Line Graph with Axes */}
-             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-xl space-y-8">
+            {/* Daily Visitors Table Wrapper - Slimmed */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-6 sm:p-8 space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="flex items-center gap-3">
-                    <Activity className="w-5 h-5 text-indigo-600" />
-                    <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Activity Analytics</h2>
+                  <div className="space-y-0.5">
+                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Visitors Feed</h2>
+                    <p className="text-slate-400 font-bold text-[10px] uppercase">Member traffic log.</p>
                   </div>
-                  <div className="hidden sm:flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                       <div className="w-3 h-3 rounded-full bg-indigo-600 shadow-sm" />
-                       <span className="text-[9px] font-black uppercase text-slate-400">Total Visitors</span>
-                    </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rows per page:</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRowsPerPage(Number(e.target.value))}
+                      className="bg-slate-50 border-2 border-slate-100 px-4 py-2 rounded-xl text-xs font-black focus:outline-none focus:border-indigo-500"
+                    >
+                      {[5, 10, 20, 50].map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   </div>
                 </div>
-                
-                {/* Custom SVG Line Graph with Area Gradient & Proper Axes */}
-                <div className="relative h-[240px] sm:h-[300px] w-full group">
-                   {/* Y-Axis Labels */}
-                   <div className="absolute left-0 h-full flex flex-col justify-between text-[8px] font-black text-slate-300 py-4 z-10 pointer-events-none">
-                      <span>{Math.max(...(history || []).map(h => h.count), 1)}</span>
-                      <span>{Math.floor(Math.max(...(history || []).map(h => h.count), 1) / 2)}</span>
-                      <span>0</span>
-                   </div>
 
-                   <div className="ml-8 h-full relative">
-                      <svg className="w-full h-full overflow-visible" viewBox="0 0 1000 200" preserveAspectRatio="none">
-                         <defs>
-                           <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                             <stop offset="0%" stopColor="#4f46e5" />
-                             <stop offset="100%" stopColor="#8b5cf6" />
-                           </linearGradient>
-                           <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                             <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.15" />
-                             <stop offset="100%" stopColor="#4f46e5" stopOpacity="0" />
-                           </linearGradient>
-                         </defs>
+                <div className="overflow-x-auto overflow-visible">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-separate border-slate-50">
+                        <th className="pb-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-left">Date</th>
+                        <th className="pb-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-center">Visitors</th>
+                        <th className="pb-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {loadingAnalytics ? (
+                        <tr><td colSpan={3} className="py-20 text-center"><Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto" /></td></tr>
+                      ) : (history || []).slice((analyticsPage - 1) * rowsPerPage, analyticsPage * rowsPerPage).map((day) => (
+                        <React.Fragment key={day.date}>
+                          <tr className="group border-b border-separate border-slate-50 last:border-0">
+                            <td className="py-4 sm:py-8">
+                              <p className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">{day.date}</p>
+                              <p className="hidden sm:block text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                {new Date(day.date).toLocaleDateString([], { weekday: 'short', month: 'short', day: '2-digit', year: 'numeric' })}
+                              </p>
+                            </td>
+                            <td className="py-4 sm:py-8 text-center">
+                              <div className="inline-flex items-center gap-2 bg-indigo-50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-indigo-100">
+                                <Users className="w-3.5 h-3.5 text-indigo-600" />
+                                <span className="text-[10px] sm:text-xs font-black text-indigo-700">{day.count} <span className="opacity-60 ml-0.5">users</span></span>
+                              </div>
+                            </td>
+                            <td className="py-4 sm:py-8 text-right">
+                              <button
+                                onClick={() => day.date === expandedDate ? setExpandedDate(null) : fetchDetailedUsers(day.date)}
+                                className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl inline-flex items-center gap-2 sm:gap-3 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all ${day.date === expandedDate ? 'bg-slate-900 text-white shadow-xl' : 'border-2 border-slate-100 text-slate-400 hover:border-indigo-600 hover:text-indigo-600'}`}
+                              >
+                                <span className="hidden sm:inline">{day.date === expandedDate ? "Hide Users" : "View Users"}</span>
+                                <span className="sm:hidden">{day.date === expandedDate ? "Hide" : "Users"}</span>
+                                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${day.date === expandedDate ? 'rotate-90' : ''}`} />
+                              </button>
+                            </td>
+                          </tr>
 
-                         {/* X & Y Axis Lines */}
-                         <line x1="0" y1="200" x2="1000" y2="200" stroke="#f1f5f9" strokeWidth="2" />
-                         <line x1="0" y1="0" x2="0" y2="200" stroke="#f1f5f9" strokeWidth="2" />
-
-                         {/* The Main Line Path (Smooth Spline) */}
-                         <path 
-                           d={(history || []).slice(0, 15).reverse().reduce((acc, curr, i, arr) => {
-                             const maxCount = Math.max(...(history || []).map(h => h.count), 1);
-                             const x = (i / (Math.min(history.length, 15) - 1)) * 1000;
-                             const y = 200 - (curr.count / maxCount) * 180 - 10;
-                             
-                             if (i === 0) return `M ${x} ${y}`;
-                             
-                             // Calculate Cubic Bezier midpoints
-                             const prev = arr[i-1];
-                             const prevMax = Math.max(...(history || []).map(h => h.count), 1);
-                             const px = ((i-1) / (Math.min(history.length, 15) - 1)) * 1000;
-                             const py = 200 - (prev.count / prevMax) * 180 - 10;
-                             
-                             const cx1 = px + (x - px) / 2;
-                             const cy1 = py;
-                             const cx2 = px + (x - px) / 2;
-                             const cy2 = y;
-                             
-                             return `${acc} C ${cx1} ${cy1} ${cx2} ${cy2} ${x} ${y}`;
-                           }, "")}
-                           fill="none"
-                           stroke="url(#lineGrad)"
-                           strokeWidth="5"
-                           strokeLinecap="round"
-                           strokeLinejoin="round"
-                           className="drop-shadow-xl"
-                         />
-
-                         {/* Area Fill (Smooth Spline) */}
-                         <path 
-                           d={(history || []).slice(0, 15).reverse().reduce((acc, curr, i, arr) => {
-                             const maxCount = Math.max(...(history || []).map(h => h.count), 1);
-                             const x = (i / (Math.min(history.length, 15) - 1)) * 1000;
-                             const y = 200 - (curr.count / maxCount) * 180 - 10;
-                             
-                             if (i === 0) return `M ${x} 200 L ${x} ${y}`;
-                             
-                             const prev = arr[i-1];
-                             const prevMax = Math.max(...(history || []).map(h => h.count), 1);
-                             const px = ((i-1) / (Math.min(history.length, 15) - 1)) * 1000;
-                             const py = 200 - (prev.count / prevMax) * 180 - 10;
-                             
-                             const cx1 = px + (x - px) / 2;
-                             const cy1 = py;
-                             const cx2 = px + (x - px) / 2;
-                             const cy2 = y;
-                             
-                             const main = `${acc} C ${cx1} ${cy1} ${cx2} ${cy2} ${x} ${y}`;
-                             if (i === Math.min(history.length, 15) - 1) return `${main} L ${x} 200 Z`;
-                             return main;
-                           }, "")}
-                           fill="url(#areaGrad)"
-                           className="opacity-40"
-                         />
-                      </svg>
-
-                      {/* Interactive Points & X-Axis */}
-                      <div className="absolute inset-0 flex justify-between pointer-events-none">
-                         {(history || []).slice(0, 15).reverse().map((day, i) => {
-                           const maxCount = Math.max(...(history || []).map(h => h.count), 1);
-                           const topPercent = 100 - (day.count / maxCount) * 90 - 5;
-                           return (
-                             <div key={day.date} className="relative flex-1 flex flex-col items-center group/p">
-                               <div 
-                                 style={{ top: `${topPercent}%` }}
-                                 className="absolute w-3 h-3 bg-white border-2 border-indigo-600 rounded-full shadow-[0_0_10px_rgba(79,70,229,0.3)] z-20 transition-all group-hover/p:scale-[2] group-hover/p:bg-indigo-600 pointer-events-auto cursor-pointer"
-                               />
-                               <div className="absolute top-[-35px] opacity-0 group-hover/p:opacity-100 transition-all translate-y-2 group-hover/p:translate-y-0 bg-slate-950 text-white text-[9px] font-black px-2 py-1 rounded-md z-30 pointer-events-none shadow-xl border border-white/10">
-                                  {day.count}
-                               </div>
-                               <div className="absolute bottom-[-25px] text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap rotate-[-45deg] sm:rotate-0 origin-top-left transition-colors group-hover/p:text-indigo-600">
-                                  {(i === 0 || i % 2 === 0 || i === Math.min(history.length, 15) - 1) ? day.date.split('-').slice(1).join('/') : ""}
-                               </div>
-                             </div>
-                           )
-                         })}
-                      </div>
-                   </div>
-                </div>
-             </div>
-
-             {/* Daily Visitors Table Wrapper - Slimmed */}
-             <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl overflow-hidden">
-                <div className="p-6 sm:p-8 space-y-6">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div className="space-y-0.5">
-                      <h2 className="text-xl font-black text-slate-900 tracking-tight">Visitors Feed</h2>
-                      <p className="text-slate-400 font-bold text-[10px] uppercase">Member traffic log.</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rows per page:</span>
-                       <select 
-                         value={rowsPerPage} 
-                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRowsPerPage(Number(e.target.value))}
-                         className="bg-slate-50 border-2 border-slate-100 px-4 py-2 rounded-xl text-xs font-black focus:outline-none focus:border-indigo-500"
-                       >
-                         {[5, 10, 20, 50].map(v => <option key={v} value={v}>{v}</option>)}
-                       </select>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto overflow-visible">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-separate border-slate-50">
-                          <th className="pb-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-left">Date</th>
-                          <th className="pb-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-center">Visitors</th>
-                          <th className="pb-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {loadingAnalytics ? (
-                          <tr><td colSpan={3} className="py-20 text-center"><Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto" /></td></tr>
-                        ) : (history || []).slice((analyticsPage - 1) * rowsPerPage, analyticsPage * rowsPerPage).map((day) => (
-                           <React.Fragment key={day.date}>
-                             <tr className="group border-b border-separate border-slate-50 last:border-0">
-                               <td className="py-4 sm:py-8">
-                                 <p className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">{day.date}</p>
-                                 <p className="hidden sm:block text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                   {new Date(day.date).toLocaleDateString([], { weekday: 'short', month: 'short', day: '2-digit', year: 'numeric' })}
-                                 </p>
-                               </td>
-                               <td className="py-4 sm:py-8 text-center">
-                                 <div className="inline-flex items-center gap-2 bg-indigo-50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-indigo-100">
-                                   <Users className="w-3.5 h-3.5 text-indigo-600" />
-                                   <span className="text-[10px] sm:text-xs font-black text-indigo-700">{day.count} <span className="opacity-60 ml-0.5">users</span></span>
-                                 </div>
-                               </td>
-                               <td className="py-4 sm:py-8 text-right">
-                                 <button 
-                                   onClick={() => day.date === expandedDate ? setExpandedDate(null) : fetchDetailedUsers(day.date)}
-                                   className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl inline-flex items-center gap-2 sm:gap-3 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all ${day.date === expandedDate ? 'bg-slate-900 text-white shadow-xl' : 'border-2 border-slate-100 text-slate-400 hover:border-indigo-600 hover:text-indigo-600'}`}
-                                 >
-                                   <span className="hidden sm:inline">{day.date === expandedDate ? "Hide Users" : "View Users"}</span>
-                                   <span className="sm:hidden">{day.date === expandedDate ? "Hide" : "Users"}</span>
-                                   <ChevronRight className={`w-3.5 h-3.5 transition-transform ${day.date === expandedDate ? 'rotate-90' : ''}`} />
-                                 </button>
-                               </td>
-                             </tr>
-                            
-                            {/* EXPANDED VIEW: Dark Purple Portal */}
-                            {day.date === expandedDate && (
-                              <tr>
-                                <td colSpan={3} className="py-2">
-                                   <div className="bg-[#3b1b6d] rounded-[1.5rem] p-4 sm:p-6 shadow-2xl relative overflow-hidden animate-in slide-in-from-top-2 duration-300">
-                                      <div className="relative z-10 space-y-6">
-                                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                            <div className="flex items-center gap-3">
-                                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/10 rounded-xl flex items-center justify-center text-white shrink-0">
-                                                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                                              </div>
-                                              <div>
-                                                <h4 className="text-xs sm:text-sm font-black text-white leading-tight">Presence for {day.date}</h4>
-                                                <p className="text-indigo-300 font-bold text-[7px] sm:text-[8px] uppercase tracking-widest leading-none mt-1">{expandedUsers.length} total members</p>
-                                              </div>
-                                            </div>
-                                         </div>
-
-                                         <div className="overflow-x-auto">
-                                            <table className="w-full text-left">
-                                              <thead className="border-b border-white/10">
-                                                <tr>
-                                                  <th className="pb-3 text-[9px] font-black uppercase tracking-widest text-indigo-300/60">Member</th>
-                                                  <th className="pb-3 text-[9px] font-black uppercase tracking-widest text-indigo-300/60 hidden sm:table-cell">Details</th>
-                                                  <th className="pb-3 text-[9px] font-black uppercase tracking-widest text-indigo-300/60 text-right">Time</th>
-                                                </tr>
-                                              </thead>
-                                              <tbody className="divide-y divide-white/5">
-                                                {loadingExpanded ? (
-                                                  <tr><td colSpan={3} className="py-12 text-center"><Loader2 className="w-8 h-8 animate-spin text-white opacity-40 mx-auto" /></td></tr>
-                                                ) : expandedUsers.slice((expandedPage - 1) * expandedRowsPerPage, expandedPage * expandedRowsPerPage).map(user => (
-                                                  <tr key={user.id} className="group hover:bg-white/5 transition-colors">
-                                                    <td className="py-4 font-black text-xs text-white leading-tight">
-                                                      {user.name}
-                                                      <p className="text-[8px] font-bold text-indigo-400 sm:hidden">{user.email}</p>
-                                                    </td>
-                                                    <td className="py-4 font-medium text-[10px] text-indigo-200 opacity-60 hidden sm:table-cell">{user.email}</td>
-                                                    <td className="py-4 text-right">
-                                                       <div className="text-right">
-                                                          <p className="text-[10px] font-black text-indigo-200">{new Date(user.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                                       </div>
-                                                    </td>
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                         </div>
-
-                                         {/* Expansion Pagination */}
-                                         <div className="pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                            <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest order-2 sm:order-1">Page <span className="text-white">{expandedPage}</span> of {totalExpandedPages || 1}</p>
-                                            <div className="flex gap-2 order-1 sm:order-2 w-full sm:w-auto">
-                                              <button 
-                                                onClick={() => setExpandedPage((prev: any) => Math.max(prev - 1, 1))}
-                                                disabled={expandedPage === 1}
-                                                className="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-20 transition-all shadow-md active:scale-95 border border-white/5"
-                                              >
-                                                Prev
-                                              </button>
-                                              <button 
-                                                onClick={() => setExpandedPage((prev: any) => Math.min(prev + 1, totalExpandedPages))}
-                                                disabled={expandedPage === totalExpandedPages || totalExpandedPages === 0}
-                                                className="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-20 transition-all shadow-md active:scale-95 border border-white/5"
-                                              >
-                                                Next
-                                              </button>
-                                            </div>
-                                         </div>
+                          {/* EXPANDED VIEW: Dark Purple Portal */}
+                          {day.date === expandedDate && (
+                            <tr>
+                              <td colSpan={3} className="py-2">
+                                <div className="bg-[#3b1b6d] rounded-[1.5rem] p-4 sm:p-6 shadow-2xl relative overflow-hidden animate-in slide-in-from-top-2 duration-300">
+                                  <div className="relative z-10 space-y-6">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/10 rounded-xl flex items-center justify-center text-white shrink-0">
+                                          <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        </div>
+                                        <div>
+                                          <h4 className="text-xs sm:text-sm font-black text-white leading-tight">Presence for {day.date}</h4>
+                                          <p className="text-indigo-300 font-bold text-[7px] sm:text-[8px] uppercase tracking-widest leading-none mt-1">{expandedUsers.length} total members</p>
+                                        </div>
                                       </div>
-                                   </div>
-                                </td>
-                              </tr>
-                            )}
-                           </React.Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                                    </div>
 
-                  {/* Main Pagination */}
-                  <div className="pt-10 flex flex-col sm:flex-row justify-between items-center gap-6 border-t border-slate-50">
-                    <button 
-                      onClick={() => setAnalyticsPage((prev: any) => Math.max(prev - 1, 1))}
-                      disabled={analyticsPage === 1}
-                      className="w-full sm:w-auto px-8 py-3 rounded-2xl border-2 border-slate-100 font-extrabold text-slate-400 hover:border-indigo-600 disabled:opacity-30 disabled:border-slate-50"
-                    >
-                      Previous
-                    </button>
-                    <div className="flex items-center gap-2">
-                      {generatePagination(analyticsPage, totalAnalyticsPages).map((p, i) => (
-                        <button 
-                          key={i}
-                          onClick={() => typeof p === 'number' && setAnalyticsPage(p)}
-                          className={`w-10 h-10 rounded-xl font-black text-xs transition-all ${p === analyticsPage ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
-                        >
-                          {p}
-                        </button>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left">
+                                        <thead className="border-b border-white/10">
+                                          <tr>
+                                            <th className="pb-3 text-[9px] font-black uppercase tracking-widest text-indigo-300/60">Member</th>
+                                            <th className="pb-3 text-[9px] font-black uppercase tracking-widest text-indigo-300/60 hidden sm:table-cell">Details</th>
+                                            <th className="pb-3 text-[9px] font-black uppercase tracking-widest text-indigo-300/60 text-right">Time</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                          {loadingExpanded ? (
+                                            <tr><td colSpan={3} className="py-12 text-center"><Loader2 className="w-8 h-8 animate-spin text-white opacity-40 mx-auto" /></td></tr>
+                                          ) : expandedUsers.slice((expandedPage - 1) * expandedRowsPerPage, expandedPage * expandedRowsPerPage).map(user => (
+                                            <tr key={user.id} className="group hover:bg-white/5 transition-colors">
+                                              <td className="py-4 font-black text-xs text-white leading-tight">
+                                                {user.name}
+                                                <p className="text-[8px] font-bold text-indigo-400 sm:hidden">{user.email}</p>
+                                              </td>
+                                              <td className="py-4 font-medium text-[10px] text-indigo-200 opacity-60 hidden sm:table-cell">{user.email}</td>
+                                              <td className="py-4 text-right">
+                                                <div className="text-right">
+                                                  <p className="text-[10px] font-black text-indigo-200">{new Date(user.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+
+                                    {/* Expansion Pagination */}
+                                    <div className="pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                      <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest order-2 sm:order-1">Page <span className="text-white">{expandedPage}</span> of {totalExpandedPages || 1}</p>
+                                      <div className="flex gap-2 order-1 sm:order-2 w-full sm:w-auto">
+                                        <button
+                                          onClick={() => setExpandedPage((prev: any) => Math.max(prev - 1, 1))}
+                                          disabled={expandedPage === 1}
+                                          className="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-20 transition-all shadow-md active:scale-95 border border-white/5"
+                                        >
+                                          Prev
+                                        </button>
+                                        <button
+                                          onClick={() => setExpandedPage((prev: any) => Math.min(prev + 1, totalExpandedPages))}
+                                          disabled={expandedPage === totalExpandedPages || totalExpandedPages === 0}
+                                          className="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-20 transition-all shadow-md active:scale-95 border border-white/5"
+                                        >
+                                          Next
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
-                    </div>
-                    <button 
-                      onClick={() => setAnalyticsPage((prev: any) => Math.min(prev + 1, totalAnalyticsPages))}
-                      disabled={analyticsPage === totalAnalyticsPages}
-                      className="w-full sm:w-auto px-8 py-3 rounded-2xl border-2 border-slate-100 font-extrabold text-slate-400 hover:border-indigo-600 disabled:opacity-30 disabled:border-slate-50"
-                    >
-                      Next
-                    </button>
-                  </div>
+                    </tbody>
+                  </table>
                 </div>
-             </div>
+
+                {/* Main Pagination */}
+                <div className="pt-10 flex flex-col sm:flex-row justify-between items-center gap-6 border-t border-slate-50">
+                  <button
+                    onClick={() => setAnalyticsPage((prev: any) => Math.max(prev - 1, 1))}
+                    disabled={analyticsPage === 1}
+                    className="w-full sm:w-auto px-8 py-3 rounded-2xl border-2 border-slate-100 font-extrabold text-slate-400 hover:border-indigo-600 disabled:opacity-30 disabled:border-slate-50"
+                  >
+                    Previous
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {generatePagination(analyticsPage, totalAnalyticsPages).map((p, i) => (
+                      <button
+                        key={i}
+                        onClick={() => typeof p === 'number' && setAnalyticsPage(p)}
+                        className={`w-10 h-10 rounded-xl font-black text-xs transition-all ${p === analyticsPage ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setAnalyticsPage((prev: any) => Math.min(prev + 1, totalAnalyticsPages))}
+                    disabled={analyticsPage === totalAnalyticsPages}
+                    className="w-full sm:w-auto px-8 py-3 rounded-2xl border-2 border-slate-100 font-extrabold text-slate-400 hover:border-indigo-600 disabled:opacity-30 disabled:border-slate-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2225,7 +2295,7 @@ export default function AdminPanel() {
         {(activeView === "attendance-machines" && isSuperAdmin) && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <button 
+              <button
                 onClick={() => navigateToView("home")}
                 className="flex items-center gap-2 text-cyan-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
               >
@@ -2238,38 +2308,44 @@ export default function AdminPanel() {
 
             {/* Sub-Tabs Switcher */}
             <div className="flex p-1 bg-slate-100 rounded-2xl w-fit mb-8">
-              <button 
+              <button
                 onClick={() => setAttendanceSubView("devices")}
                 className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${attendanceSubView === "devices" ? 'bg-white text-cyan-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 Device Management
               </button>
-              <button 
+              <button
                 onClick={() => setAttendanceSubView("mappings")}
                 className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${attendanceSubView === "mappings" ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 User Mapping Hub
               </button>
+              <button
+                onClick={() => setAttendanceSubView("vm-incharge")}
+                className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${attendanceSubView === "vm-incharge" ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                VM Role Assign
+              </button>
             </div>
 
             {attendanceSubView === "devices" ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Instructions and Global Settings */}
-              <div className="lg:col-span-1 space-y-6">
-                {/* Quick Setup Guide */}
-                <div className="bg-gradient-to-br from-cyan-600 to-blue-700 p-6 sm:p-8 rounded-[2rem] shadow-xl text-white">
-                   <h3 className="text-lg font-black mb-4 flex items-center gap-2">
-                     <Shield className="w-5 h-5" /> Quick Setup Guide
-                   </h3>
-                   <div className="space-y-4 text-xs font-bold opacity-90 leading-relaxed">
+                {/* Instructions and Global Settings */}
+                <div className="lg:col-span-1 space-y-6">
+                  {/* Quick Setup Guide */}
+                  <div className="bg-gradient-to-br from-cyan-600 to-blue-700 p-6 sm:p-8 rounded-[2rem] shadow-xl text-white">
+                    <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+                      <Shield className="w-5 h-5" /> Quick Setup Guide
+                    </h3>
+                    <div className="space-y-4 text-xs font-bold opacity-90 leading-relaxed">
                       <div className="flex gap-3">
                         <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">1</span>
                         <p>Add the device <strong>Serial Number</strong> below to authorize it.</p>
                       </div>
                       <div className="flex gap-3">
                         <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">2</span>
-                        <p>Set <strong>Server Address</strong> to: <br/> 
-                           <code className="bg-black/20 p-1 rounded mt-1 inline-block select-all">https://ashram-connect-nine.vercel.app</code>
+                        <p>Set <strong>Server Address</strong> to: <br />
+                          <code className="bg-black/20 p-1 rounded mt-1 inline-block select-all">https://ashram-connect-nine.vercel.app</code>
                         </p>
                       </div>
                       <div className="flex gap-3">
@@ -2279,21 +2355,21 @@ export default function AdminPanel() {
                       <div className="mt-4 p-3 bg-black/20 rounded-xl text-[10px] italic">
                         <strong>Note:</strong> Multiple machines use this same URL. Our server automatically identifies each one by its unique <strong>Serial Number (SN)</strong>, so there is never any confusion.
                       </div>
-                   </div>
-                   <button 
-                     onClick={() => {
+                    </div>
+                    <button
+                      onClick={() => {
                         navigator.clipboard.writeText("https://ashram-connect-nine.vercel.app");
                         setSubmitMessage({ type: "success", text: "Server URL copied to clipboard!" });
                         setTimeout(() => setSubmitMessage(null), 3000);
-                     }}
-                     className="mt-6 w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/20"
-                   >
-                     Copy Server URL
-                   </button>
+                      }}
+                      className="mt-6 w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/20"
+                    >
+                      Copy Server URL
+                    </button>
                   </div>
 
-      {/* FOOTER: Global Role Pill */}
-                 <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
+                  {/* FOOTER: Global Role Pill */}
+                  <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
                     <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
                       <Clock className="w-5 h-5 text-orange-500" /> Prasadam Count Settings
                     </h3>
@@ -2302,20 +2378,20 @@ export default function AdminPanel() {
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Time</label>
-                            <input 
-                              type="time" 
-                              value={attendanceSettings.prasadam_start_time || "02:00:00"} 
-                              onChange={(e) => setAttendanceSettings({...attendanceSettings, prasadam_start_time: e.target.value})} 
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" 
+                            <input
+                              type="time"
+                              value={attendanceSettings.prasadam_start_time || "02:00:00"}
+                              onChange={(e) => setAttendanceSettings({ ...attendanceSettings, prasadam_start_time: e.target.value })}
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold"
                             />
                           </div>
                           <div className="space-y-1">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
-                            <input 
-                              type="time" 
-                              value={attendanceSettings.prasadam_end_time || "07:30:00"} 
-                              onChange={(e) => setAttendanceSettings({...attendanceSettings, prasadam_end_time: e.target.value})} 
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" 
+                            <input
+                              type="time"
+                              value={attendanceSettings.prasadam_end_time || "07:30:00"}
+                              onChange={(e) => setAttendanceSettings({ ...attendanceSettings, prasadam_end_time: e.target.value })}
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold"
                             />
                           </div>
                         </div>
@@ -2325,16 +2401,16 @@ export default function AdminPanel() {
                           <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                             {attendanceMachines.map(m => (
                               <label key={m.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors border border-transparent has-[:checked]:border-orange-200 has-[:checked]:bg-orange-50">
-                                <input 
-                                  type="checkbox" 
+                                <input
+                                  type="checkbox"
                                   className="w-4 h-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                                   checked={(attendanceSettings.prasadam_machine_ids || []).includes(m.id)}
                                   onChange={(e) => {
                                     const current = attendanceSettings.prasadam_machine_ids || [];
-                                    const next = e.target.checked 
+                                    const next = e.target.checked
                                       ? [...current, m.id]
                                       : current.filter((id: string) => id !== m.id);
-                                    setAttendanceSettings({...attendanceSettings, prasadam_machine_ids: next});
+                                    setAttendanceSettings({ ...attendanceSettings, prasadam_machine_ids: next });
                                   }}
                                 />
                                 <div>
@@ -2351,17 +2427,17 @@ export default function AdminPanel() {
 
                         <div className="space-y-1">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sync Base Date</label>
-                          <input 
-                            type="date" 
-                            value={attendanceSettings.sync_from_date} 
-                            onChange={(e) => setAttendanceSettings({...attendanceSettings, sync_from_date: e.target.value})} 
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" 
+                          <input
+                            type="date"
+                            value={attendanceSettings.sync_from_date}
+                            onChange={(e) => setAttendanceSettings({ ...attendanceSettings, sync_from_date: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold"
                           />
                         </div>
 
-                        <button 
+                        <button
                           onClick={handleUpdateSettings}
-                          disabled={isUpdatingSettings} 
+                          disabled={isUpdatingSettings}
                           className="w-full bg-slate-900 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-orange-600 transition-colors shadow-lg mt-4 flex items-center justify-center gap-2"
                         >
                           {isUpdatingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -2369,14 +2445,14 @@ export default function AdminPanel() {
                         </button>
                       </div>
                     )}
-                 </div>
+                  </div>
 
-                {/* Add New Machine */}
-                <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
-                   <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
-                     <Plus className="w-5 h-5 text-cyan-500" /> Authorize New Machine
-                   </h3>
-                   <form onSubmit={handleAddMachine} className="space-y-4">
+                  {/* Add New Machine */}
+                  <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
+                    <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
+                      <Plus className="w-5 h-5 text-cyan-500" /> Authorize New Machine
+                    </h3>
+                    <form onSubmit={handleAddMachine} className="space-y-4">
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Serial Number</label>
                         <input type="text" required placeholder="e.g. NCD8253500015" value={newMachineSN} onChange={(e) => setNewMachineSN(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold uppercase" />
@@ -2398,60 +2474,60 @@ export default function AdminPanel() {
                       <button disabled={isSubmitting} className="w-full bg-cyan-600 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-black transition-colors shadow-lg">
                         {isSubmitting ? "Adding..." : "Add Machine"}
                       </button>
-                   </form>
-                </div>
-              </div>
-
-              {/* Machine List */}
-              <div className="lg:col-span-2">
-                <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h3 className="font-black text-xl text-devo-950 uppercase tracking-tight">Authorized Devices</h3>
-                    <div className="px-4 py-1 bg-cyan-50 text-cyan-600 rounded-full text-[10px] font-black uppercase">{attendanceMachines.length} Active</div>
+                    </form>
                   </div>
-                  
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-white border-b border-slate-100">
-                          <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Device Info</th>
-                          <th className="px-8 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Window</th>
-                          <th className="px-8 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                          <th className="px-8 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {attendanceMachines.map((m) => (
-                          <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
-                            <td className="px-8 py-6">
-                              <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${m.is_active ? 'bg-cyan-50 text-cyan-600' : 'bg-slate-100 text-slate-400'}`}>
-                                  <HardDrive className="w-5 h-5" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-black text-devo-950 text-base">{m.serial_number}</div>
-                                  <div className="flex items-center gap-1 group/edit">
-                                    <input 
-                                      type="text" 
-                                      className="text-slate-400 text-xs font-bold bg-transparent border-none p-0 focus:ring-0 w-full hover:text-slate-600 focus:text-slate-900 transition-colors cursor-text"
-                                      value={m.description || ""}
-                                      placeholder="Add description..."
-                                      onBlur={(e) => updateMachineSettings(m.id, { description: e.target.value })}
-                                      onChange={(e) => {
-                                        const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, description: e.target.value } : item);
-                                        setAttendanceMachines(updated);
-                                      }}
-                                    />
-                                    <Settings className="w-3 h-3 text-slate-300 opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                </div>
+
+                {/* Machine List */}
+                <div className="lg:col-span-2">
+                  <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
+                    <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <h3 className="font-black text-xl text-devo-950 uppercase tracking-tight">Authorized Devices</h3>
+                      <div className="px-4 py-1 bg-cyan-50 text-cyan-600 rounded-full text-[10px] font-black uppercase">{attendanceMachines.length} Active</div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-white border-b border-slate-100">
+                            <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Device Info</th>
+                            <th className="px-8 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Window</th>
+                            <th className="px-8 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                            <th className="px-8 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {attendanceMachines.map((m) => (
+                            <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
+                              <td className="px-8 py-6">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${m.is_active ? 'bg-cyan-50 text-cyan-600' : 'bg-slate-100 text-slate-400'}`}>
+                                    <HardDrive className="w-5 h-5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-black text-devo-950 text-base">{m.serial_number}</div>
+                                    <div className="flex items-center gap-1 group/edit">
+                                      <input
+                                        type="text"
+                                        className="text-slate-400 text-xs font-bold bg-transparent border-none p-0 focus:ring-0 w-full hover:text-slate-600 focus:text-slate-900 transition-colors cursor-text"
+                                        value={m.description || ""}
+                                        placeholder="Add description..."
+                                        onBlur={(e) => updateMachineSettings(m.id, { description: e.target.value })}
+                                        onChange={(e) => {
+                                          const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, description: e.target.value } : item);
+                                          setAttendanceMachines(updated);
+                                        }}
+                                      />
+                                      <Settings className="w-3 h-3 text-slate-300 opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-8 py-6">
-                               <div className="flex items-center justify-center gap-2">
-                                  <input 
-                                    type="time" 
-                                    value={m.ingestion_start || "02:00:00"} 
+                              </td>
+                              <td className="px-8 py-6">
+                                <div className="flex items-center justify-center gap-2">
+                                  <input
+                                    type="time"
+                                    value={m.ingestion_start || "02:00:00"}
                                     className="px-2 py-1 text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-cyan-600"
                                     onChange={(e) => {
                                       const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, ingestion_start: e.target.value } : item);
@@ -2460,9 +2536,9 @@ export default function AdminPanel() {
                                     onBlur={(e) => updateMachineSettings(m.id, { ingestion_start: e.target.value })}
                                   />
                                   <span className="text-slate-300 font-bold">-</span>
-                                  <input 
-                                    type="time" 
-                                    value={m.ingestion_end || "11:00:00"} 
+                                  <input
+                                    type="time"
+                                    value={m.ingestion_end || "11:00:00"}
                                     className="px-2 py-1 text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-cyan-600"
                                     onChange={(e) => {
                                       const updated = attendanceMachines.map(item => item.id === m.id ? { ...item, ingestion_end: e.target.value } : item);
@@ -2470,241 +2546,381 @@ export default function AdminPanel() {
                                     }}
                                     onBlur={(e) => updateMachineSettings(m.id, { ingestion_end: e.target.value })}
                                   />
-                               </div>
-                            </td>
-                            <td className="px-8 py-6 text-center">
-                              <button 
-                                onClick={() => updateMachineSettings(m.id, { is_active: !m.is_active })}
-                                className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${m.is_active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
-                              >
-                                {m.is_active ? "Enabled" : "Disabled"}
-                              </button>
-                            </td>
-                            <td className="px-8 py-6 text-right">
-                              <button onClick={() => deleteMachine(m.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                                <Trash2 className="w-5 h-5" />
-                              </button>
-                            </td>
-          </tr>
-        ))}
-        {attendanceMachines.length === 0 && (
-          <tr>
-            <td colSpan={3} className="px-8 py-20 text-center text-slate-300 font-bold italic">No machines registered</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-</div>
-</div>
-</div>
-) : (
-  /** 
-   * NEW VIEW: USER MAPPING HUB
-   */
-  <div className="space-y-12">
-    {/* Header Controls */}
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-       <div className="md:col-span-4 space-y-2">
-         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Search Email or ID</label>
-         <div className="relative">
-           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-           <input 
-             type="text" 
-             placeholder="Find mapping..." 
-             className="w-full pl-11 pr-4 py-4 bg-white border border-slate-200 rounded-2xl font-bold shadow-sm focus:border-indigo-600 transition-all"
-             value={mappingSearch}
-             onChange={(e) => setMappingSearch(e.target.value)}
-           />
-         </div>
-       </div>
+                                </div>
+                              </td>
+                              <td className="px-8 py-6 text-center">
+                                <button
+                                  onClick={() => updateMachineSettings(m.id, { is_active: !m.is_active })}
+                                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${m.is_active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
+                                >
+                                  {m.is_active ? "Enabled" : "Disabled"}
+                                </button>
+                              </td>
+                              <td className="px-8 py-6 text-right">
+                                <button onClick={() => deleteMachine(m.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {attendanceMachines.length === 0 && (
+                            <tr>
+                              <td colSpan={3} className="px-8 py-20 text-center text-slate-300 font-bold italic">No machines registered</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : attendanceSubView === "mappings" ? (
+              /** 
+               * NEW VIEW: USER MAPPING HUB
+               */
+              <div className="space-y-12">
+                {/* Header Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+                  <div className="md:col-span-4 space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Search Email or ID</label>
+                    <div className="relative">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Find mapping..."
+                        className="w-full pl-11 pr-4 py-4 bg-white border border-slate-200 rounded-2xl font-bold shadow-sm focus:border-indigo-600 transition-all"
+                        value={mappingSearch}
+                        onChange={(e) => setMappingSearch(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-       <div className="md:col-span-8 flex flex-wrap gap-4 items-center justify-end">
-          <label className="relative flex flex-col items-center justify-center px-8 py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-indigo-600 cursor-pointer group transition-all">
-            <div className="flex items-center gap-3">
-              {isUploadingMapping ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <FileSpreadsheet className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />}
-              <span className="text-xs font-black uppercase tracking-widest text-slate-400 group-hover:text-indigo-600">Bulk Excel Mapping</span>
-            </div>
-            <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleBulkMappingUpload} />
-          </label>
-          
-          <button 
-            onClick={() => {
-              const wb = XLSX.utils.book_new();
-              
-              // Sheet 1: The Template
-              const templateData = [["Machine Serial Number", "ZK User ID", "User Email"]];
-              const wsTemplate = XLSX.utils.aoa_to_sheet(templateData);
-              XLSX.utils.book_append_sheet(wb, wsTemplate, "Mapping Template");
+                  <div className="md:col-span-8 flex flex-wrap gap-4 items-center justify-end">
+                    <label className="relative flex flex-col items-center justify-center px-8 py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl hover:border-indigo-600 cursor-pointer group transition-all">
+                      <div className="flex items-center gap-3">
+                        {isUploadingMapping ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <FileSpreadsheet className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />}
+                        <span className="text-xs font-black uppercase tracking-widest text-slate-400 group-hover:text-indigo-600">Bulk Excel Mapping</span>
+                      </div>
+                      <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleBulkMappingUpload} />
+                    </label>
 
-              // Sheet 2: Reference Data (Helper)
-              const refData = [["MACHINE LIST (Copy Serial Number)", "DESCRIPTION"]];
-              attendanceMachines.forEach(m => {
-                refData.push([m.serial_number, m.description || ""]);
-              });
+                    <button
+                      onClick={() => {
+                        const wb = XLSX.utils.book_new();
 
-              const wsRef = XLSX.utils.aoa_to_sheet(refData);
-              XLSX.utils.book_append_sheet(wb, wsRef, "Reference Data");
+                        // Sheet 1: The Template
+                        const templateData = [["Machine Serial Number", "ZK User ID", "User Email"]];
+                        const wsTemplate = XLSX.utils.aoa_to_sheet(templateData);
+                        XLSX.utils.book_append_sheet(wb, wsTemplate, "Mapping Template");
 
-              XLSX.writeFile(wb, "attendance_mapping_template.xlsx");
-            }}
-            className="p-4 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-2xl border border-slate-100 transition-all"
-            title="Download Template"
-          >
-            <Download className="w-5 h-5" />
-          </button>
-       </div>
-    </div>
+                        // Sheet 2: Reference Data (Helper)
+                        const refData = [["MACHINE LIST (Copy Serial Number)", "DESCRIPTION"]];
+                        attendanceMachines.forEach(m => {
+                          refData.push([m.serial_number, m.description || ""]);
+                        });
 
-    {/* Quick Add Form */}
-    <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-8 rounded-[2.5rem] shadow-2xl text-white">
-      <h3 className="text-lg font-black mb-6 flex items-center gap-2">
-        <UserPlus className="w-6 h-6" /> Single Mapping Entry
-      </h3>
+                        const wsRef = XLSX.utils.aoa_to_sheet(refData);
+                        XLSX.utils.book_append_sheet(wb, wsRef, "Reference Data");
 
-      {submitMessage && (
-        <div className={`mb-8 p-5 rounded-2xl flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${
-          submitMessage.type === 'success' 
-          ? 'bg-emerald-100/10 border-2 border-emerald-500/30 text-emerald-50' 
-          : 'bg-rose-100/10 border-2 border-rose-500/30 text-rose-50'
-        }`}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-            submitMessage.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-          }`}>
-            {submitMessage.type === 'success' ? <CheckCircle className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                        XLSX.writeFile(wb, "attendance_mapping_template.xlsx");
+                      }}
+                      className="p-4 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-2xl border border-slate-100 transition-all"
+                      title="Download Template"
+                    >
+                      <Download className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Add Form */}
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-8 rounded-[2.5rem] shadow-2xl text-white">
+                  <h3 className="text-lg font-black mb-6 flex items-center gap-2">
+                    <UserPlus className="w-6 h-6" /> Single Mapping Entry
+                  </h3>
+
+                  {submitMessage && (
+                    <div className={`mb-8 p-5 rounded-2xl flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${submitMessage.type === 'success'
+                        ? 'bg-emerald-100/10 border-2 border-emerald-500/30 text-emerald-50'
+                        : 'bg-rose-100/10 border-2 border-rose-500/30 text-rose-50'
+                      }`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${submitMessage.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                        }`}>
+                        {submitMessage.type === 'success' ? <CheckCircle className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-black tracking-tight">{submitMessage.type === 'success' ? 'Success!' : 'Mapping Error'}</p>
+                        <p className="text-xs font-bold opacity-80">{submitMessage.text}</p>
+                      </div>
+                      <button onClick={() => setSubmitMessage(null)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                        <X className="w-4 h-4 opacity-50" />
+                      </button>
+                    </div>
+                  )}
+                  <form onSubmit={handleAddMapping} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Select Machine</label>
+                      <select
+                        value={mappingMachineId}
+                        onChange={(e) => setMappingMachineId(e.target.value)}
+                        className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all"
+                      >
+                        <option value="" className="text-black">Select Machine</option>
+                        {attendanceMachines.map(m => (
+                          <option key={m.id} value={m.id} className="text-black">{m.description} ({m.serial_number})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Machine User ID</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 101"
+                        value={mappingZKId}
+                        onChange={(e) => setMappingZKId(e.target.value)}
+                        className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all placeholder:text-white/40"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">System User Email</label>
+                      <input
+                        type="email"
+                        placeholder="user@example.com"
+                        value={mappingEmail}
+                        onChange={(e) => setMappingEmail(e.target.value)}
+                        list="user-emails"
+                        className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all placeholder:text-white/40"
+                      />
+                      <datalist id="user-emails">
+                        {users.map(u => (
+                          <option key={u.id} value={u.email}>{u.full_name}</option>
+                        ))}
+                      </datalist>
+                    </div>
+                    <button disabled={isSubmitting} className="px-8 py-4 bg-white text-indigo-600 font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-slate-900 hover:text-white transition-all shadow-xl">
+                      {isSubmitting ? "Processing..." : "Create Mapping"}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Grouped Mapping View */}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                  {attendanceMachines.map(m => {
+                    const machineMappings = attendanceMappings.filter(amp =>
+                      amp.machine_id === m.id &&
+                      (amp.user_email.toLowerCase().includes(mappingSearch.toLowerCase()) ||
+                        amp.zk_user_id.toString().includes(mappingSearch))
+                    );
+
+                    if (mappingSearch && machineMappings.length === 0) return null;
+
+                    return (
+                      <div key={m.id} className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col">
+                        <div className="p-6 sm:p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                          <div>
+                            <h4 className="text-lg font-black text-devo-950">{m.description}</h4>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{m.serial_number}</div>
+                          </div>
+                          <div className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-400">
+                            {machineMappings.length} MAPPINGS
+                          </div>
+                        </div>
+
+                        <div className="overflow-x-auto flex-1">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="bg-slate-50/50">
+                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">User ID</th>
+                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Account (Name / Email)</th>
+                                <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {machineMappings.map(amp => {
+                                const userData = users.find(u => u.email?.toLowerCase() === amp.user_email?.toLowerCase());
+                                return (
+                                  <tr key={amp.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-8 py-4 font-black text-indigo-600 text-sm">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px]">#{amp.zk_user_id}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-4">
+                                      <div className="flex flex-col">
+                                        <div className="font-bold text-slate-900 text-sm">{userData?.full_name || "—"}</div>
+                                        <div className="font-bold text-slate-400 text-[10px] tracking-tight">{amp.user_email}</div>
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-4 text-right">
+                                      <button onClick={() => deleteMapping(amp.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {machineMappings.length === 0 && (
+                                <tr>
+                                  <td colSpan={3} className="px-8 py-10 text-center text-slate-400 italic text-xs font-bold">No mappings found</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <div className="bg-gradient-to-r from-cyan-600 to-blue-700 p-8 rounded-[2.5rem] shadow-2xl text-white">
+                  <h3 className="text-lg font-black mb-6 flex items-center gap-2">
+                    <Monitor className="w-6 h-6" /> Assign Virtual Machine Incharge
+                  </h3>
+                  {submitMessage && (
+                    <div className={`mb-8 p-5 rounded-2xl flex items-center gap-4 ${submitMessage.type === 'success'
+                      ? 'bg-emerald-100/10 border-2 border-emerald-500/30 text-emerald-50'
+                      : 'bg-rose-100/10 border-2 border-rose-500/30 text-rose-50'
+                      }`}>
+                      {submitMessage.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                      <p className="text-xs font-bold">{submitMessage.text}</p>
+                    </div>
+                  )}
+                  <form onSubmit={assignVirtualMachineIncharge} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Virtual Machine</label>
+                      <select
+                        value={vmMachineId}
+                        onChange={(e) => setVmMachineId(e.target.value)}
+                        className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all"
+                      >
+                        <option value="" className="text-black">Select Virtual Machine</option>
+                        {attendanceMachines.filter((m) => !!m.is_virtual).map((m) => (
+                          <option key={m.id} value={m.id} className="text-black">
+                            {m.description || m.serial_number}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Incharge User</label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setVmUserDropdownOpen((prev) => !prev)}
+                          className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm text-left outline-none hover:bg-white/20 transition-all"
+                        >
+                          {vmInchargeUserId
+                            ? (() => {
+                              const selectedUser = users.find((u) => u.id === vmInchargeUserId);
+                              return selectedUser ? `${selectedUser.full_name || selectedUser.email} (${selectedUser.email})` : "Select User";
+                            })()
+                            : "Select User"}
+                        </button>
+
+                        {vmUserDropdownOpen && (
+                          <div className="absolute z-30 mt-2 w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-2">
+                            <input
+                              type="text"
+                              placeholder="Search by name or email"
+                              value={vmInchargeSearch}
+                              onChange={(e) => setVmInchargeSearch(e.target.value)}
+                              className="w-full mb-2 px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-black outline-none focus:border-indigo-500"
+                            />
+                            <div className="max-h-52 overflow-y-auto">
+                              {users
+                                .filter((u) => {
+                                  const q = vmInchargeSearch.trim().toLowerCase();
+                                  if (!q) return true;
+                                  return (
+                                    (u.full_name || "").toLowerCase().includes(q) ||
+                                    (u.email || "").toLowerCase().includes(q)
+                                  );
+                                })
+                                .map((u) => (
+                                  <button
+                                    key={u.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setVmInchargeUserId(u.id);
+                                      setVmUserDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-slate-700"
+                                  >
+                                    <div className="text-xs font-black">{u.full_name || u.email}</div>
+                                    <div className="text-[10px] font-bold text-slate-400">{u.email}</div>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      disabled={isSubmitting || !vmMachineId || !vmInchargeUserId}
+                      className={`px-8 py-4 font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl ${isSubmitting || !vmMachineId || !vmInchargeUserId
+                        ? "bg-white/50 text-indigo-300 cursor-not-allowed"
+                        : "bg-white text-indigo-600 hover:bg-slate-900 hover:text-white"
+                        }`}
+                    >
+                      {isSubmitting ? "Assigning..." : "Assign Role 7"}
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
+                  <div className="p-6 sm:p-8 bg-slate-50 border-b border-slate-100">
+                    <h4 className="text-lg font-black text-devo-950">Current Virtual Machine Incharge Assignments</h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-slate-50/50">
+                          <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Machine</th>
+                          <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Incharge</th>
+                          <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {vmInchargeAssignments.map((row) => {
+                          const machine = attendanceMachines.find((m) => m.id === row.machine_id);
+                          const inchargeUser = users.find((u) => u.id === row.incharge_user_id);
+                          return (
+                            <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-8 py-4">
+                                <div className="font-bold text-slate-900 text-sm">{machine?.description || machine?.serial_number || "Unknown Machine"}</div>
+                                <div className="font-bold text-slate-400 text-[10px] tracking-tight">{machine?.serial_number || "-"}</div>
+                              </td>
+                              <td className="px-8 py-4">
+                                <div className="font-bold text-slate-900 text-sm">{inchargeUser?.full_name || row.incharge_user_email}</div>
+                                <div className="font-bold text-slate-400 text-[10px] tracking-tight">{row.incharge_user_email}</div>
+                              </td>
+                              <td className="px-8 py-4 text-right">
+                                <button onClick={() => deleteVirtualMachineInchargeAssignment(row.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {vmInchargeAssignments.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="px-8 py-10 text-center text-slate-400 italic text-xs font-bold">No virtual machine incharge assignments found</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="flex-1">
-             <p className="text-sm font-black tracking-tight">{submitMessage.type === 'success' ? 'Success!' : 'Mapping Error'}</p>
-             <p className="text-xs font-bold opacity-80">{submitMessage.text}</p>
-          </div>
-          <button onClick={() => setSubmitMessage(null)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-            <X className="w-4 h-4 opacity-50" />
-          </button>
-        </div>
-      )}
-      <form onSubmit={handleAddMapping} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-        <div className="space-y-1">
-          <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Select Machine</label>
-          <select 
-            value={mappingMachineId} 
-            onChange={(e) => setMappingMachineId(e.target.value)}
-            className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all"
-          >
-            <option value="" className="text-black">Select Machine</option>
-            {attendanceMachines.map(m => (
-              <option key={m.id} value={m.id} className="text-black">{m.description} ({m.serial_number})</option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">Machine User ID</label>
-          <input 
-            type="text" 
-            placeholder="e.g. 101" 
-            value={mappingZKId}
-            onChange={(e) => setMappingZKId(e.target.value)}
-            className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all placeholder:text-white/40" 
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black opacity-80 uppercase tracking-widest ml-1">System User Email</label>
-          <input 
-            type="email" 
-            placeholder="user@example.com" 
-            value={mappingEmail}
-            onChange={(e) => setMappingEmail(e.target.value)}
-            list="user-emails"
-            className="w-full px-4 py-4 bg-white/10 border border-white/20 rounded-2xl font-bold text-sm outline-none focus:bg-white focus:text-indigo-900 transition-all placeholder:text-white/40" 
-          />
-          <datalist id="user-emails">
-            {users.map(u => (
-              <option key={u.id} value={u.email}>{u.full_name}</option>
-            ))}
-          </datalist>
-        </div>
-        <button disabled={isSubmitting} className="px-8 py-4 bg-white text-indigo-600 font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-slate-900 hover:text-white transition-all shadow-xl">
-           {isSubmitting ? "Processing..." : "Create Mapping"}
-        </button>
-      </form>
-    </div>
-
-    {/* Grouped Mapping View */}
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-      {attendanceMachines.map(m => {
-        const machineMappings = attendanceMappings.filter(amp => 
-          amp.machine_id === m.id && 
-          (amp.user_email.toLowerCase().includes(mappingSearch.toLowerCase()) || 
-           amp.zk_user_id.toString().includes(mappingSearch))
-        );
-        
-        if (mappingSearch && machineMappings.length === 0) return null;
-
-        return (
-          <div key={m.id} className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col">
-            <div className="p-6 sm:p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-               <div>
-                 <h4 className="text-lg font-black text-devo-950">{m.description}</h4>
-                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{m.serial_number}</div>
-               </div>
-               <div className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-400">
-                 {machineMappings.length} MAPPINGS
-               </div>
-            </div>
-            
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50/50">
-                    <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">User ID</th>
-                    <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Account (Name / Email)</th>
-                    <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                   {machineMappings.map(amp => {
-                     const userData = users.find(u => u.email?.toLowerCase() === amp.user_email?.toLowerCase());
-                     return (
-                       <tr key={amp.id} className="hover:bg-slate-50/50 transition-colors">
-                         <td className="px-8 py-4 font-black text-indigo-600 text-sm">
-                           <div className="flex items-center gap-2">
-                              <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px]">#{amp.zk_user_id}</span>
-                           </div>
-                         </td>
-                         <td className="px-8 py-4">
-                           <div className="flex flex-col">
-                             <div className="font-bold text-slate-900 text-sm">{userData?.full_name || "—"}</div>
-                             <div className="font-bold text-slate-400 text-[10px] tracking-tight">{amp.user_email}</div>
-                           </div>
-                         </td>
-                         <td className="px-8 py-4 text-right">
-                           <button onClick={() => deleteMapping(amp.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
-                             <Trash2 className="w-4 h-4" />
-                           </button>
-                         </td>
-                       </tr>
-                     );
-                   })}
-                   {machineMappings.length === 0 && (
-                     <tr>
-                       <td colSpan={3} className="px-8 py-10 text-center text-slate-400 italic text-xs font-bold">No mappings found</td>
-                     </tr>
-                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  </div>
-)}
-</div>
         )}
 
         {/* VIEW: Notification Center (Broadcast) */}
         {activeView === "notifications" && isManager && (
           <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 pb-20">
-            <button 
+            <button
               onClick={() => navigateToView("home")}
               className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
             >
@@ -2724,15 +2940,15 @@ export default function AdminPanel() {
                 <form onSubmit={handleBroadcast} className="space-y-6">
                   {submitMessage && (
                     <div className={`p-4 rounded-2xl flex items-start gap-4 border ${submitMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
-                       {submitMessage.type === 'success' ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
-                       <p className="text-sm font-bold">{submitMessage.text}</p>
+                      {submitMessage.type === 'success' ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+                      <p className="text-sm font-bold">{submitMessage.text}</p>
                     </div>
                   )}
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Notification Title</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       required
                       placeholder="e.g. Schedule Update"
                       value={bcTitle}
@@ -2743,7 +2959,7 @@ export default function AdminPanel() {
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Message Body</label>
-                    <textarea 
+                    <textarea
                       required
                       placeholder="Enter the message you want users to see on their device..."
                       rows={4}
@@ -2756,24 +2972,24 @@ export default function AdminPanel() {
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Target Audience</label>
                     <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-2xl">
-                       <button 
+                      <button
                         type="button"
                         onClick={() => setBcTarget("all")}
                         className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${bcTarget === 'all' ? 'bg-white text-devo-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                         Everyone
-                       </button>
-                       <button 
+                        Everyone
+                      </button>
+                      <button
                         type="button"
                         onClick={() => setBcTarget("bcdb")}
                         className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${bcTarget === 'bcdb' ? 'bg-white text-devo-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                         BCDB Only
-                       </button>
-                       <button 
+                        BCDB Only
+                      </button>
+                      <button
                         type="button"
                         onClick={() => setBcTarget("manual")}
                         className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${bcTarget === 'manual' ? 'bg-white text-devo-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                         Select Users
-                       </button>
+                        Select Users
+                      </button>
                     </div>
                   </div>
 
@@ -2781,7 +2997,7 @@ export default function AdminPanel() {
                     <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                       <div className="relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
+                        <input
                           type="text"
                           placeholder="Search users to include..."
                           value={userSearchTerm}
@@ -2789,13 +3005,13 @@ export default function AdminPanel() {
                           className="w-full pl-12 pr-6 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-purple-400 outline-none transition-all text-xs font-bold"
                         />
                       </div>
-                      
+
                       <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2 custom-scrollbar">
-                         {users.filter(u => u.full_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email?.toLowerCase().includes(userSearchTerm.toLowerCase())).map(u => (
-                           <label key={u.id} className={`flex items-center gap-4 p-3 rounded-xl border-2 transition-all cursor-pointer ${selectedUserIds.has(u.id) ? 'bg-purple-50 border-purple-200' : 'bg-white border-slate-50 hover:border-slate-100'}`}>
-                             <input 
-                              type="checkbox" 
-                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500" 
+                        {users.filter(u => u.full_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email?.toLowerCase().includes(userSearchTerm.toLowerCase())).map(u => (
+                          <label key={u.id} className={`flex items-center gap-4 p-3 rounded-xl border-2 transition-all cursor-pointer ${selectedUserIds.has(u.id) ? 'bg-purple-50 border-purple-200' : 'bg-white border-slate-50 hover:border-slate-100'}`}>
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                               checked={selectedUserIds.has(u.id)}
                               onChange={(e) => {
                                 const next = new Set(selectedUserIds);
@@ -2803,23 +3019,23 @@ export default function AdminPanel() {
                                 else next.delete(u.id);
                                 setSelectedUserIds(next);
                               }}
-                             />
-                             <div className="flex-1 min-w-0">
-                               <p className="text-xs font-black text-devo-950 truncate">{u.full_name || 'Anonymous'}</p>
-                               <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-tighter">{u.email}</p>
-                             </div>
-                             {u.role === 1 && <Shield className="w-3 h-3 text-purple-400" />}
-                           </label>
-                         ))}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-devo-950 truncate">{u.full_name || 'Anonymous'}</p>
+                              <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-tighter">{u.email}</p>
+                            </div>
+                            {u.role === 1 && <Shield className="w-3 h-3 text-purple-400" />}
+                          </label>
+                        ))}
                       </div>
                       <div className="flex justify-between items-center px-2">
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{selectedUserIds.size} Users Selected</p>
-                         <button 
-                          type="button" 
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{selectedUserIds.size} Users Selected</p>
+                        <button
+                          type="button"
                           onClick={() => setSelectedUserIds(new Set())}
                           className="text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline">
-                           Clear All
-                         </button>
+                          Clear All
+                        </button>
                       </div>
                     </div>
                   )}
@@ -2833,7 +3049,7 @@ export default function AdminPanel() {
                     </p>
                   </div>
 
-                  <button 
+                  <button
                     disabled={isBroadcasting || !bcTitle || !bcBody || (bcTarget === 'manual' && selectedUserIds.size === 0)}
                     className="w-full py-5 bg-devo-950 hover:bg-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-slate-200 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3 active:scale-95"
                   >
@@ -2853,7 +3069,7 @@ export default function AdminPanel() {
                 <h3 className="text-lg sm:text-xl font-black font-outfit text-devo-950 mb-6 flex items-center gap-3">
                   <Clock className="w-5 h-5 text-slate-400" /> Recent Activity
                 </h3>
-                
+
                 <NotificationsHistoryList limit={10} />
               </div>
             </div>
@@ -2863,7 +3079,7 @@ export default function AdminPanel() {
         {/* VIEW: Attendance Tracing */}
         {activeView === "attendance-tracing" && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
-            <button 
+            <button
               onClick={() => navigateToView("home")}
               className="flex items-center gap-2 text-devo-600 font-black uppercase tracking-widest text-xs hover:gap-3 transition-all"
             >
@@ -2876,24 +3092,24 @@ export default function AdminPanel() {
         {/* VIEW: BCDB Portal */}
         {activeView === "bcdb" && (
           <div className="space-y-6 sm:space-y-10 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
-             <div className="px-1">
-               <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-xs hover:gap-3 transition-all bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
-                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
-               </button>
-             </div>
-             <BCDBManager session={session} isAdmin={isSuperAdmin} />
+            <div className="px-1">
+              <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-xs hover:gap-3 transition-all bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
+                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
+              </button>
+            </div>
+            <BCDBManager session={session} isAdmin={isSuperAdmin} />
           </div>
         )}
 
         {/* VIEW: Policy Manual Admin */}
         {activeView === "policies" && (
           <div className="space-y-6 sm:space-y-10 animate-in slide-in-from-bottom-4 duration-500 max-w-none">
-             <div className="px-1">
-               <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-xs hover:gap-3 transition-all bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
-                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
-               </button>
-             </div>
-             <AdminPolicyManager />
+            <div className="px-1">
+              <button onClick={() => navigateToView("home")} className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-xs hover:gap-3 transition-all bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
+                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
+              </button>
+            </div>
+            <AdminPolicyManager />
           </div>
         )}
       </div>
@@ -2916,7 +3132,7 @@ export default function AdminPanel() {
 
   async function handleSyncChannel(channelId: string) {
     if (syncingChannels.has(channelId)) return;
-    
+
     setSyncingChannels(prev => new Set(prev).add(channelId));
     try {
       const res = await fetch("/api/admin/youtube/sync", {
@@ -2926,7 +3142,7 @@ export default function AdminPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
+
       // Refresh channels to get updated status and timestamp
       fetchYtChannels();
     } catch (err: any) {
@@ -3014,13 +3230,13 @@ export default function AdminPanel() {
     // Swap indices
     const idx1 = ch1.order_index;
     const idx2 = ch2.order_index;
-    
+
     // Optimistic Update UI
     const updated = [...ytChannels];
     updated[index1] = { ...ch1, order_index: idx2 };
     updated[index2] = { ...ch2, order_index: idx1 };
     // Re-sort locally
-    updated.sort((a,b) => (a.order_index || 0) - (b.order_index || 0));
+    updated.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
     setYtChannels(updated);
 
     try {
