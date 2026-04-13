@@ -226,7 +226,12 @@ export default function AdminPanel() {
       });
       const data = await res.json();
       if (data.machines) setAttendanceMachines(data.machines);
-      if (data.settings) setAttendanceSettings(data.settings);
+      if (data.settings) {
+        setAttendanceSettings({
+          ...data.settings,
+          prasadam_machine_ids: data.settings.prasadam_machine_ids || []
+        });
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -284,9 +289,15 @@ export default function AdminPanel() {
           data: attendanceSettings 
         })
       });
-      if (res.ok) setSubmitMessage({ type: "success", text: "Settings updated successfully!" });
-    } catch (err) {
+      if (res.ok) {
+        alert("Settings saved successfully!");
+      } else {
+        const errData = await res.json();
+        alert("Failed to save settings: " + (errData.error || res.statusText));
+      }
+    } catch (err: any) {
       console.error(err);
+      alert("Network error: " + err.message);
     } finally {
       setIsUpdatingSettings(false);
     }
@@ -2282,22 +2293,83 @@ export default function AdminPanel() {
                   </div>
 
       {/* FOOTER: Global Role Pill */}
-                <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
-                   <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
-                     <Calendar className="w-5 h-5 text-slate-400" /> Sync Start Date
-                   </h3>
-                   {attendanceSettings && (
-                     <form onSubmit={handleUpdateSettings} className="space-y-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ignore Records Older than:</label>
-                          <input type="date" value={attendanceSettings.sync_from_date} onChange={(e) => setAttendanceSettings({...attendanceSettings, sync_from_date: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                 <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">
+                    <h3 className="text-lg font-black text-devo-950 mb-6 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-orange-500" /> Prasadam Count Settings
+                    </h3>
+                    {attendanceSettings && (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Time</label>
+                            <input 
+                              type="time" 
+                              value={attendanceSettings.prasadam_start_time || "02:00:00"} 
+                              onChange={(e) => setAttendanceSettings({...attendanceSettings, prasadam_start_time: e.target.value})} 
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" 
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
+                            <input 
+                              type="time" 
+                              value={attendanceSettings.prasadam_end_time || "07:30:00"} 
+                              onChange={(e) => setAttendanceSettings({...attendanceSettings, prasadam_end_time: e.target.value})} 
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" 
+                            />
+                          </div>
                         </div>
-                        <button disabled={isUpdatingSettings} className="w-full bg-slate-900 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-cyan-600 transition-colors shadow-lg">
-                          {isUpdatingSettings ? "Updating..." : "Save Sync Date"}
+
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Machines for Count</label>
+                          <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                            {attendanceMachines.map(m => (
+                              <label key={m.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors border border-transparent has-[:checked]:border-orange-200 has-[:checked]:bg-orange-50">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                                  checked={(attendanceSettings.prasadam_machine_ids || []).includes(m.id)}
+                                  onChange={(e) => {
+                                    const current = attendanceSettings.prasadam_machine_ids || [];
+                                    const next = e.target.checked 
+                                      ? [...current, m.id]
+                                      : current.filter((id: string) => id !== m.id);
+                                    setAttendanceSettings({...attendanceSettings, prasadam_machine_ids: next});
+                                  }}
+                                />
+                                <div>
+                                  <div className="text-xs font-black text-slate-900">{m.description || 'Unnamed Machine'}</div>
+                                  <div className="text-[9px] font-bold text-slate-400 uppercase">{m.serial_number}</div>
+                                </div>
+                              </label>
+                            ))}
+                            {attendanceMachines.length === 0 && (
+                              <div className="text-[10px] italic text-slate-400 py-4 text-center">No machines available</div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sync Base Date</label>
+                          <input 
+                            type="date" 
+                            value={attendanceSettings.sync_from_date} 
+                            onChange={(e) => setAttendanceSettings({...attendanceSettings, sync_from_date: e.target.value})} 
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" 
+                          />
+                        </div>
+
+                        <button 
+                          onClick={handleUpdateSettings}
+                          disabled={isUpdatingSettings} 
+                          className="w-full bg-slate-900 text-white font-black text-xs py-4 rounded-xl uppercase tracking-widest hover:bg-orange-600 transition-colors shadow-lg mt-4 flex items-center justify-center gap-2"
+                        >
+                          {isUpdatingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          {isUpdatingSettings ? "Saving Settings..." : "Save All Attendance Settings"}
                         </button>
-                     </form>
-                   )}
-                </div>
+                      </div>
+                    )}
+                 </div>
 
                 {/* Add New Machine */}
                 <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-slate-200">

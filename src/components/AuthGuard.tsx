@@ -61,14 +61,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   function handleRedirect(currentSession: any) {
-    const isPublicRoute = pathname === "/login" || pathname === "/auth/callback";
+    const isPublicRoute = pathname === "/login" || pathname === "/auth/callback" || pathname === "/prasadam-count";
     
     if (!currentSession && !isPublicRoute) {
       router.push("/login");
     }
   }
 
-  const isPublicRoute = pathname === "/login" || pathname === "/auth/callback";
+  const isPublicRoute = pathname === "/login" || pathname === "/auth/callback" || pathname === "/prasadam-count";
 
   // 1. Loading States (Centralized)
   const isChecking = authLoading || (session && profileLoading);
