@@ -118,6 +118,8 @@ export default function AttendanceTracing({
     new Date().toISOString().split("T")[0],
   );
   const [historyRange, setHistoryRange] = useState<"week" | "month">("month");
+  const reportRequestIdRef = React.useRef(0);
+  const reportAbortRef = React.useRef<AbortController | null>(null);
 
   // Sync profile data when forceUserView is active
   useEffect(() => {
@@ -126,6 +128,12 @@ export default function AttendanceTracing({
       setViewMode("history");
     }
   }, [forceUserView, profile?.email]);
+
+  useEffect(() => {
+    return () => {
+      reportAbortRef.current?.abort();
+    };
+  }, []);
 
   // Harinam dropdown open state: tracks email-date key
   const [openHarinamKey, setOpenHarinamKey] = useState<string | null>(null);
@@ -336,6 +344,10 @@ export default function AttendanceTracing({
 
   const fetchReport = async () => {
     if (!session) return;
+    const requestId = ++reportRequestIdRef.current;
+    reportAbortRef.current?.abort();
+    const controller = new AbortController();
+    reportAbortRef.current = controller;
     setLoading(true);
     try {
       let startStr: string, endStr: string;
@@ -367,9 +379,11 @@ export default function AttendanceTracing({
         `/api/attendance/report?startDate=${startStr}&endDate=${endStr}`,
         {
           headers: { Authorization: `Bearer ${session.access_token}` },
+          signal: controller.signal,
         },
       );
       const data = await res.json();
+      if (requestId !== reportRequestIdRef.current) return;
       if (data.report) setReport(data.report);
       if (data.machines) {
         setMachines(data.machines);
@@ -379,10 +393,13 @@ export default function AttendanceTracing({
           setSelectedMachineId(firstMachine.id);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
       console.error("Report fetch error:", err);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 

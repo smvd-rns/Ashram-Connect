@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
+import { useVmInchargeAccess } from "@/hooks/useVmInchargeAccess";
 import Navbar from "@/components/Navbar";
 import AttendanceTracing from "@/components/AttendanceTracing";
 import AttendanceExceptionForm from "@/components/AttendanceExceptionForm";
@@ -13,7 +14,6 @@ import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 export default function PersonalAttendancePage() {
   const [session, setSession] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);
-  const [hasVmInchargeAccess, setHasVmInchargeAccess] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,6 +30,7 @@ export default function PersonalAttendancePage() {
   }, []);
 
   const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
+  const hasVmInchargeAccess = useVmInchargeAccess(session);
   const role = Number(profile?.role);
   const isAttendanceIncharge = role === 3;
   const isVirtualMachineIncharge = hasVmInchargeAccess;
@@ -37,25 +38,6 @@ export default function PersonalAttendancePage() {
   const canViewFullAttendance = isBcdb || isSuperAdmin;
 
   const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    const checkVmAccess = async () => {
-      if (!session?.access_token) {
-        setHasVmInchargeAccess(false);
-        return;
-      }
-      try {
-        const res = await fetch("/api/attendance/virtual-machine", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const data = await res.json().catch(() => ({}));
-        setHasVmInchargeAccess(res.ok && !!data?.machine);
-      } catch {
-        setHasVmInchargeAccess(false);
-      }
-    };
-    checkVmAccess();
-  }, [session?.access_token]);
 
   if (initializing || (session && loadingProfile)) {
     return (
