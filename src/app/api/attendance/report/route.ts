@@ -192,6 +192,58 @@ export async function GET(req: NextRequest) {
           user.assigned_machines.push("harinam_virtual");
        }
     });
+
+    // --- VIRTUAL MACHINE ATTENDANCE (P/A) INTEGRATION ---
+    const virtualMachineIds = machinesList
+      .filter((m: any) => !!m.is_virtual)
+      .map((m: any) => m.id);
+
+    if (virtualMachineIds.length > 0) {
+      let vmAttendanceList: any[] = [];
+      let hasMoreVmAttendance = true;
+      let vmPage = 0;
+
+      while (hasMoreVmAttendance) {
+        const { data: chunk, error: vmError } = await supabase
+          .from("virtual_machine_attendance")
+          .select("*")
+          .in("machine_id", virtualMachineIds)
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .range(vmPage * limit, (vmPage + 1) * limit - 1);
+
+        if (vmError) throw vmError;
+
+        if (chunk && chunk.length > 0) {
+          vmAttendanceList = [...vmAttendanceList, ...chunk];
+        }
+
+        if (!chunk || chunk.length < limit) {
+          hasMoreVmAttendance = false;
+        } else {
+          vmPage++;
+        }
+      }
+
+      const machineById = new Map((machinesList || []).map((m: any) => [m.id, m]));
+
+      (vmAttendanceList || []).forEach((record: any) => {
+        const email = (record.user_email || "").toLowerCase().trim();
+        if (!email || !matrix[email]) return;
+        const machine = machineById.get(record.machine_id);
+        if (!machine) return;
+        const date = record.date;
+        const sessionName = machine.description || machine.serial_number;
+        if (!matrix[email].dates[date]) matrix[email].dates[date] = {};
+        matrix[email].dates[date][sessionName] = [
+          {
+            is_manual: true,
+            vm_status: record.status,
+            ...record,
+          },
+        ];
+      });
+    }
     // --- ATTENDANCE EXCEPTIONS INTEGRATION ---
     const { data: exceptionsList, error: exceptionsError } = await supabase
       .from("attendance_exceptions")

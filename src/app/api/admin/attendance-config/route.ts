@@ -28,12 +28,19 @@ export async function POST(req: NextRequest) {
     const { action, data } = body;
 
     if (action === "add_machine") {
-      const { serial_number, description, ingestion_start, ingestion_end, p_start, p_end, l_start, l_end } = data;
+      const { serial_number, description, is_virtual, ingestion_start, ingestion_end, p_start, p_end, l_start, l_end } = data;
+
+      // Auto-generate a virtual serial number if it's a virtual session and none provided
+      const finalSerialNumber = (is_virtual && !serial_number)
+        ? `VIRT_${Math.random().toString(36).substring(2, 9).toUpperCase()}`
+        : serial_number.toUpperCase();
+
       const { data: newMachine, error } = await supabase
         .from("attendance_machines")
-        .insert([{ 
-          serial_number: serial_number.toUpperCase(), 
+        .insert([{
+          serial_number: finalSerialNumber,
           description,
+          is_virtual: is_virtual || false,
           ingestion_start: ingestion_start || "02:00:00",
           ingestion_end: ingestion_end || "11:00:00",
           p_start: p_start || "04:00:00",
@@ -43,7 +50,7 @@ export async function POST(req: NextRequest) {
         }])
         .select()
         .single();
-      
+
       if (error) throw error;
       return NextResponse.json({ machine: newMachine });
     }
@@ -52,12 +59,12 @@ export async function POST(req: NextRequest) {
       const { sync_from_date, prasadam_start_time, prasadam_end_time, prasadam_machine_ids } = data;
       const { data: updatedSettings, error } = await supabase
         .from("attendance_settings")
-        .update({ 
-          sync_from_date, 
-          prasadam_start_time, 
-          prasadam_end_time, 
+        .update({
+          sync_from_date,
+          prasadam_start_time,
+          prasadam_end_time,
           prasadam_machine_ids,
-          updated_at: new Date().toISOString() 
+          updated_at: new Date().toISOString()
         })
         .eq("id", "global")
         .select()
@@ -68,31 +75,82 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "update_machine") {
-       const { id, ...updates } = data;
-       
-       // Filter out undefined values to support partial updates
-       const filteredUpdates: any = {};
-       const allowedFields = [
-         "ingestion_start", "ingestion_end", 
-         "p_start", "p_end", 
-         "l_start", "l_end", 
-         "description", "is_active", "serial_number"
-       ];
-       allowedFields.forEach(field => {
-         if (updates[field] !== undefined) {
-           filteredUpdates[field] = updates[field];
-         }
-       });
+      const { id, ...updates } = data;
 
-       const { data: updatedMachine, error } = await supabase
-         .from("attendance_machines")
-         .update(filteredUpdates)
-         .eq("id", id)
-         .select()
-         .single();
-       
-       if (error) throw error;
-       return NextResponse.json({ machine: updatedMachine });
+      // Filter out undefined values to support partial updates
+      const filteredUpdates: any = {};
+      const allowedFields = [
+        "ingestion_start", "ingestion_end",
+        "p_start", "p_end",
+        "l_start", "l_end",
+        "description", "is_active", "serial_number", "is_virtual"
+      ];
+      allowedFields.forEach(field => {
+        if (updates[field] !== undefined) {
+          filteredUpdates[field] = updates[field];
+        }
+      });
+
+      const { data: updatedMachine, error } = await supabase
+        .from("attendance_machines")
+        .update(filteredUpdates)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return NextResponse.json({ machine: updatedMachine });
+    }
+
+    if (action === "bulk_assign_users") {
+      const { machineId, userEmails, assign } = data;
+      const { data: profiles, error: fetchError } = await supabase
+        .from("profiles")
+        .select("email, assigned_machines")
+        .in("email", userEmails);
+
+      if (fetchError) throw fetchError;
+
+      const updates = profiles.map(profile => {
+        let machines = profile.assigned_machines || [];
+        if (assign) {
+          if (!machines.includes(machineId)) machines = [...machines, machineId];
+        } else {
+          machines = machines.filter((id: string) => id !== machineId);
+        }
+        return supabase.from("profiles").update({ assigned_machines: machines }).eq("email", profile.email);
+      });
+
+      await Promise.all(updates);
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "toggle_manual_attendance") {
+      const { machineId, userEmail, date, currentStatus } = data;
+
+      if (currentStatus === "present") {
+        // Remove manual log
+        const { error } = await supabase
+          .from("physical_attendance")
+          .delete()
+          .eq("user_email", userEmail)
+          .eq("check_date", date)
+          .eq("serial_number", machineId);
+        if (error) throw error;
+      } else {
+        // Add manual log
+        const { error } = await supabase
+          .from("physical_attendance")
+          .insert([{
+            user_email: userEmail,
+            check_date: date,
+            serial_number: machineId,
+            check_time: "00:00:00", // Placeholder for manual
+            is_manual: true
+          }]);
+        if (error) throw error;
+      }
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

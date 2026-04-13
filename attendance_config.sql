@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.attendance_machines (
     serial_number TEXT UNIQUE NOT NULL,
     description TEXT,
     is_active BOOLEAN DEFAULT true,
+    is_virtual BOOLEAN DEFAULT false,
     
     -- Machine Time: When to accept logs from the device (Ingestion Window)
     ingestion_start TIME DEFAULT '02:00:00',

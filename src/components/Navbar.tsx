@@ -15,8 +15,9 @@ export default function Navbar() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showDesktopMore, setShowDesktopMore] = useState(false);
+  const [hasVmInchargeAccess, setHasVmInchargeAccess] = useState(false);
   const role = Number(profile?.role);
-  const canOpenAttendance = isBcdb || role === 1 || role === 3;
+  const canOpenAttendance = isBcdb || role === 1 || role === 3 || hasVmInchargeAccess;
 
   // New imports for mobile bar
   const HomeIcon = ({ active }: { active?: boolean }) => (
@@ -52,6 +53,25 @@ export default function Navbar() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const checkVmAccess = async () => {
+      if (!session?.access_token) {
+        setHasVmInchargeAccess(false);
+        return;
+      }
+      try {
+        const res = await fetch("/api/attendance/virtual-machine", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        setHasVmInchargeAccess(res.ok && !!data?.machine);
+      } catch {
+        setHasVmInchargeAccess(false);
+      }
+    };
+    checkVmAccess();
+  }, [session?.access_token]);
 
   const getInitials = () => {
     if (profile?.full_name) {
