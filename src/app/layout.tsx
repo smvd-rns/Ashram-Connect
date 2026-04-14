@@ -4,6 +4,8 @@ import "./globals.css";
 import AuthGuard from "@/components/AuthGuard";
 import PolicyModal from "@/components/PolicyModal";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import { MediaProvider } from "@/context/MediaContext";
+import IdktPlayer from "@/components/idkt/IdktPlayer";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -29,7 +31,10 @@ export default function RootLayout({
           {/* Main Content Area */}
           <main className="w-full pt-0 md:pt-16 lg:pt-8 pb-24 md:pb-8 flex-grow">
             <AuthGuard>
-              {children}
+              <MediaProvider>
+                {children}
+                <IdktPlayer />
+              </MediaProvider>
             </AuthGuard>
           </main>
           
