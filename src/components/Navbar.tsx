@@ -65,6 +65,7 @@ export default function Navbar() {
   const isHome = pathname === "/";
   const isClass = pathname === "/class";
   const isAttendance = pathname === "/attendance";
+  const isIdkt = pathname === "/iskcon-desire-tree";
 
   return (
     <>
@@ -113,6 +114,16 @@ export default function Navbar() {
             </NextLink>
           )}
 
+          <NextLink 
+            href="/iskcon-desire-tree" 
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isIdkt ? 'bg-orange-600 text-white border-orange-600 shadow-orange-200' : 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-white'}`}
+          >
+            <div className="flex items-center justify-center relative">
+               <Music className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-inherit">Desire Tree</span>
+          </NextLink>
+
           {/* Desktop "More" Dropdown */}
           <div className="relative">
              <button 
@@ -127,15 +138,7 @@ export default function Navbar() {
                <>
                  <div className="fixed inset-0 z-10" onClick={() => setShowDesktopMore(false)} />
                  <div className="absolute top-full right-0 mt-3 w-64 bg-white/95 backdrop-blur-3xl rounded-3xl border border-slate-200/50 shadow-2xl p-2 z-20 animate-in zoom-in-95 fade-in duration-200">
-                    <NextLink 
-                      href="/iskcon-desire-tree" 
-                      onClick={() => setShowDesktopMore(false)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/iskcon-desire-tree' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'}`}
-                    >
-                      <Music className="w-4 h-4" />
-                      <span className="text-[10px] font-black uppercase tracking-widest flex-1">ISKCON Desire Tree</span>
-                      <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/iskcon-desire-tree' ? 'opacity-100' : 'opacity-0'}`} />
-                    </NextLink>
+
 
                     <NextLink 
                       href="/notifications" 
@@ -252,14 +255,14 @@ export default function Navbar() {
           <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>BC Class</span>
         </NextLink>
 
-        {canOpenAttendance && (
-          <NextLink href="/attendance" className="flex flex-col items-center gap-1 group flex-1">
-            <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isAttendance ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
-               <CalendarDays className="w-6 h-6" />
-            </div>
-            <span className={`text-[9px] font-black uppercase tracking-widest ${isAttendance ? 'text-devo-600' : 'text-slate-400'}`}>Attendance</span>
-          </NextLink>
-        )}
+
+
+        <NextLink href="/iskcon-desire-tree" className="flex flex-col items-center gap-1 group flex-1">
+          <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isIdkt ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
+             <Music className="w-6 h-6" />
+          </div>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${isIdkt ? 'text-devo-600' : 'text-slate-400'}`}>Desire Tree</span>
+        </NextLink>
 
         <button 
           onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -281,15 +284,18 @@ export default function Navbar() {
           />
           <div className="absolute bottom-[84px] left-4 right-4 bg-white/95 backdrop-blur-3xl rounded-[2rem] border border-slate-200/50 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-500">
             <div className="flex flex-col py-2">
-              <NextLink 
-                href="/iskcon-desire-tree" 
-                onClick={() => setShowMoreMenu(false)}
-                className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/iskcon-desire-tree' ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}
-              >
-                <Music className={`w-4 h-4 ${pathname === '/iskcon-desire-tree' ? 'text-orange-600' : 'text-slate-400'}`} />
-                <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/iskcon-desire-tree' ? 'text-orange-900' : 'text-slate-600'}`}>ISKCON Desire Tree</span>
-                <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 ${pathname === '/iskcon-desire-tree' ? 'opacity-100' : 'opacity-0'}`} />
-              </NextLink>
+              {canOpenAttendance && (
+                <NextLink 
+                  href="/attendance" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/attendance' ? 'bg-orange-50/50 text-orange-900 border-l-4 border-orange-600' : 'hover:bg-slate-50 text-slate-600'}`}
+                >
+                  <CalendarDays className={`w-4 h-4 ${pathname === '/attendance' ? 'text-orange-600' : 'text-slate-400'}`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/attendance' ? 'text-orange-900' : 'text-slate-600'}`}>My Attendance</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-orange-600 ${pathname === '/attendance' ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
+
 
               <NextLink 
                 href="/notifications" 

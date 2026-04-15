@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
 import DirectoryView from "@/components/DirectoryView";
 import AccessDenied from "@/components/AccessDenied";
+import Navbar from "@/components/Navbar";
 import { Loader2 } from "lucide-react";
 
 export default function DirectoryPage() {
@@ -33,12 +34,20 @@ export default function DirectoryPage() {
   }
 
   if (!isBcdb) {
-    return <AccessDenied />;
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Navbar />
+        <AccessDenied />
+      </div>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-20">
-      <DirectoryView />
-    </main>
+    <div className="min-h-screen bg-slate-50">
+      <Navbar />
+      <main className="pb-20">
+        <DirectoryView />
+      </main>
+    </div>
   );
 }
