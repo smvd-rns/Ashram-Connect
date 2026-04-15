@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { supabaseIdkt, supabaseIdktAdmin } from "@/lib/supabaseIdkt";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const role = Number(searchParams.get("role") || 0);
 
     // Use admin client for admins to bypass RLS filtering on is_hidden
-    const client = (role === 1 && supabaseAdmin) ? supabaseAdmin : supabase;
+    const client = (role === 1 && supabaseIdktAdmin) ? supabaseIdktAdmin : supabaseIdkt;
 
     let dbQuery = client
       .from("idkt_items")
