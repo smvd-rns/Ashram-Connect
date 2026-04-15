@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedItems = items.map(normalizeItem);
-    const { error } = await supabaseIdktAdmin.from("idkt_items").upsert(normalizedItems, { onConflict: "full_path" });
+    const { error } = await supabaseIdktAdmin!.from("idkt_items").upsert(normalizedItems, { onConflict: "full_path" });
     if (error) throw error;
 
     return NextResponse.json({ success: true, imported: normalizedItems.length });

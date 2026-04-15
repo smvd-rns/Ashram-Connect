@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     }
 
     const buildQuery = () => {
-      let query = supabaseIdktAdmin.from("idkt_items").select("id, name, type, url, parent_path, full_path, size, last_modified, is_scanned, is_hidden, created_at, error_count, last_error");
+      let query = supabaseIdktAdmin!.from("idkt_items").select("id, name, type, url, parent_path, full_path, size, last_modified, is_scanned, is_hidden, created_at, error_count, last_error");
       if (rawPath !== "all" && normalizedPath !== "/") {
         query = query.or(`full_path.eq."${normalizedPath}",full_path.like."${normalizedPath}%"`);
       }
