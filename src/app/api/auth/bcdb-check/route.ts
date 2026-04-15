@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const email = searchParams.get("email");
+    const userId = searchParams.get("userId");
 
     const normalizedEmail = email?.toLowerCase().trim() || "";
     if (!normalizedEmail) return NextResponse.json({ isBcdb: false });
@@ -33,7 +34,21 @@ export async function GET(req: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ isBcdb: !!count });
+    const isVerified = !!count;
+
+    // If verified and a userId is provided, persist this to the profile so we don't have to check again
+    if (isVerified && userId) {
+      try {
+        await supabase
+          .from("profiles")
+          .update({ is_bcdb_verified: true })
+          .eq("id", userId);
+      } catch (updateErr) {
+        console.warn("Failed to update profile verification status:", updateErr);
+      }
+    }
+
+    return NextResponse.json({ isBcdb: isVerified });
   } catch (error: any) {
     console.error("BCDB Check Error:", error.message);
     return NextResponse.json({ isBcdb: false }, { status: 500 });
