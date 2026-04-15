@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseIdktAdmin } from "@/lib/supabaseIdkt";
 
 const BASE_URL = "https://audio.iskcondesiretree.com";
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"];
@@ -160,7 +160,7 @@ function parseIdktItemsFromHtml(html: string, currentPath: string) {
  */
 
 export async function POST(req: NextRequest) {
-  if (!supabaseAdmin) {
+  if (!supabaseIdktAdmin) {
     return NextResponse.json({ error: "Supabase service role key missing" }, { status: 500 });
   }
 
@@ -298,10 +298,10 @@ export async function POST(req: NextRequest) {
           
           // Update failure stats if not root
           if (normalizedPath !== "/") {
-            const { data: current } = await supabaseAdmin.from("idkt_items").select("error_count").eq("full_path", normalizedPath).single();
+            const { data: current } = await supabaseIdktAdmin.from("idkt_items").select("error_count").eq("full_path", normalizedPath).single();
             const newCount = (current?.error_count || 0) + 1;
             
-            await supabaseAdmin.from("idkt_items").update({
+            await supabaseIdktAdmin.from("idkt_items").update({
               error_count: newCount,
               last_error: errorMessage,
               is_scanned: newCount >= 3 // Give up after 3 tries
@@ -312,7 +312,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (items.length > 0) {
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseIdktAdmin
           .from("idkt_items")
           .upsert(items, { onConflict: "full_path" });
         if (error) throw error;
@@ -321,7 +321,7 @@ export async function POST(req: NextRequest) {
       // If this is the root or a new discovery, ensure the folder itself exists in DB
       // before marking it as scanned.
       if (normalizedPath === "/") {
-        const { error: rootError } = await supabaseAdmin.from("idkt_items").upsert({
+        const { error: rootError } = await supabaseIdktAdmin.from("idkt_items").upsert({
           name: "Home",
           type: "folder",
           url: "",
@@ -332,7 +332,7 @@ export async function POST(req: NextRequest) {
         if (rootError) throw rootError;
       } else {
         // Ensure folder row exists even if discovered from URL-only scans.
-        await supabaseAdmin.from("idkt_items").upsert({
+        await supabaseIdktAdmin.from("idkt_items").upsert({
           name: decodeURIComponent(normalizedPath.split("/").filter(Boolean).pop() || "Folder").replace(/_/g, " "),
           type: "folder",
           url: "",
@@ -344,7 +344,7 @@ export async function POST(req: NextRequest) {
         }, { onConflict: "full_path" });
 
         // Mark the current folder as scanned
-        await supabaseAdmin
+        await supabaseIdktAdmin
           .from("idkt_items")
           .update({ is_scanned: true })
           .eq("full_path", normalizedPath);
@@ -361,7 +361,7 @@ export async function POST(req: NextRequest) {
       const { parent_path, folder_name } = body;
       const full_path = parent_path === "/" ? `/${folder_name}/` : `${parent_path}${folder_name}/`;
       
-      const { error } = await supabaseAdmin.from("idkt_items").upsert({
+      const { error } = await supabaseIdktAdmin.from("idkt_items").upsert({
         name: folder_name.replace(/\//g, ""),
         type: "folder",
         url: "",
@@ -381,8 +381,8 @@ export async function POST(req: NextRequest) {
       const { priority_path } = body;
       
       // Return total counts and pending folders
-      const { count: total } = await supabaseAdmin.from("idkt_items").select("*", { count: 'exact', head: true });
-      const { count: pending } = await supabaseAdmin
+      const { count: total } = await supabaseIdktAdmin.from("idkt_items").select("*", { count: 'exact', head: true });
+      const { count: pending } = await supabaseIdktAdmin
         .from("idkt_items")
         .select("*", { count: 'exact', head: true })
         .eq("type", "folder")
@@ -393,7 +393,7 @@ export async function POST(req: NextRequest) {
 
       // 1. Try to find the first pending folder within the priority branch
       if (priority_path && priority_path !== "/") {
-        const { data } = await supabaseAdmin.from("idkt_items")
+        const { data } = await supabaseIdktAdmin.from("idkt_items")
           .select("full_path")
           .eq("is_scanned", false)
           .eq("type", "folder")
@@ -417,7 +417,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Global fallback (only for home-initiated Global Sync)
-        const { data } = await supabaseAdmin.from("idkt_items")
+        const { data } = await supabaseIdktAdmin.from("idkt_items")
           .select("full_path")
           .eq("type", "folder")
           .eq("is_scanned", false)

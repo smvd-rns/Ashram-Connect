@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseIdktAdmin } from "@/lib/supabaseIdkt";
 
 /**
  * IDKT MANAGEMENT API
@@ -7,7 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase";
  * Restricted to Super Admins (Role 1).
  */
 export async function POST(req: NextRequest) {
-  if (!supabaseAdmin) {
+  if (!supabaseIdktAdmin) {
     return NextResponse.json({ error: "Supabase service role key missing" }, { status: 500 });
   }
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (action === "delete") {
       if (type === "folder") {
         // Recursive Delete: Item itself + anything starting with its path
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseIdktAdmin
           .from("idkt_items")
           .delete()
           .or(`full_path.eq."${full_path}",full_path.like."${full_path}%"`);
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
         if (error) throw error;
       } else {
         // Single Item Delete
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseIdktAdmin
           .from("idkt_items")
           .delete()
           .eq("id", id);
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       
       if (type === "folder") {
         // Recursive Hide/Unhide
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseIdktAdmin
           .from("idkt_items")
           .update({ is_hidden })
           .or(`full_path.eq."${full_path}",full_path.like."${full_path}%"`);
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
         if (error) throw error;
       } else {
         // Single Item Hide/Unhide
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseIdktAdmin
           .from("idkt_items")
           .update({ is_hidden })
           .eq("id", id);

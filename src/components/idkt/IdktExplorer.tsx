@@ -21,6 +21,35 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
   const [manualPath, setManualPath] = useState("");
   const cancelSyncRef = React.useRef(false);
   const { playTrack, currentTrack, isPlaying } = useMedia();
+  
+  const getSpeakerName = (item: any) => {
+    if (item.type === "folder") return "Sub-Directory";
+    
+    const path = item.full_path || "";
+    if (path.includes("01_-_Srila_Prabhupada")) return "Srila Prabhupada";
+    
+    // Heuristic for speaker names in IDT paths
+    const segments = path.split("/");
+    for (const segment of segments) {
+      if (segment.includes("His_Holiness_") || segment.includes("His_Grace_") || segment.includes("Srila_")) {
+        return segment
+          .replace(/His_Holiness_/gi, "")
+          .replace(/His_Grace_/gi, "")
+          .replace(/Srila_/gi, "")
+          .replace(/_/g, " ")
+          .trim();
+      }
+      if (segment.includes("H.H._") || segment.includes("H.G._")) {
+         return segment
+          .replace(/H\.H\._/gi, "")
+          .replace(/H\.G\._/gi, "")
+          .replace(/_/g, " ")
+          .trim();
+      }
+    }
+    
+    return "Audio Lecture";
+  };
 
   const loadItems = async (path: string) => {
     setLoading(true);
@@ -194,6 +223,10 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
     }
   };
 
+
+
+
+
   const handleInjectFolder = async () => {
     if (!manualPath.trim()) return;
     setLoading(true);
@@ -254,48 +287,53 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
             </div>
             
             {Number(profile?.role) === 1 && (
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                <button 
-                  onClick={handleSync}
-                  disabled={syncing || deepSyncing}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-slate-800 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                  title="Sync this current directory only"
-                >
-                  {syncing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
-                  {syncing ? "Syncing..." : "Sync Here"}
-                </button>
+              <>
 
-                {deepSyncing ? (
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <button 
-                    onClick={stopDeepSync}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-600 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-red-700 transition-all shadow-lg active:scale-95"
+                    onClick={handleSync}
+                    disabled={syncing || deepSyncing}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-slate-800 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                    title="Sync this current directory only"
                   >
-                    <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Stop
+                    {syncing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                    {syncing ? "Syncing..." : "Sync Here"}
                   </button>
-                ) : (
-                  <>
-                    <button 
-                      onClick={() => handleDeepSync(null)}
-                      disabled={syncing}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-orange-600 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-orange-700 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                      title="Recursively scan all undiscovered folders globally"
-                    >
-                      <Search className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Global
-                    </button>
 
-                    {currentPath !== "/" && (
+
+
+                  {deepSyncing ? (
+                    <button 
+                      onClick={stopDeepSync}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-600 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-red-700 transition-all shadow-lg active:scale-95"
+                    >
+                      <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Stop
+                    </button>
+                  ) : (
+                    <>
                       <button 
-                        onClick={() => handleDeepSync(currentPath)}
+                        onClick={() => handleDeepSync(null)}
                         disabled={syncing}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-indigo-700 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                        title="Recursively scan folders inside this directory first"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-orange-600 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-orange-700 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                        title="Recursively scan all undiscovered folders globally"
                       >
-                        <Folder className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Deep
+                        <Search className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Global
                       </button>
-                    )}
-                  </>
-                )}
-              </div>
+
+                      {currentPath !== "/" && (
+                        <button 
+                          onClick={() => handleDeepSync(currentPath)}
+                          disabled={syncing}
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-indigo-700 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                          title="Recursively scan folders inside this directory first"
+                        >
+                          <Folder className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Deep
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -360,6 +398,8 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
           </div>
         </div>
       )}
+
+
 
       {/* Explorer Content */}
       <div className="bg-white/40 backdrop-blur-sm rounded-[2rem] sm:rounded-[3rem] border border-white/40 overflow-hidden shadow-sm">
@@ -445,7 +485,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                         )}
                       </div>
                       <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 sm:mt-1">
-                        {item.type === "folder" ? "Sub-Directory" : "Audio Lecture"}
+                        {getSpeakerName(item)}
                       </p>
                     </div>
                   </div>
