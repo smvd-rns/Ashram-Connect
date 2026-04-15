@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseIdktAdmin } from "@/lib/supabaseIdkt";
 
+export const dynamic = "force-dynamic";
+
 function normalizeFolderPath(path: string) {
   if (!path || path === "/") return "/";
   const withLeading = path.startsWith("/") ? path : `/${path}`;

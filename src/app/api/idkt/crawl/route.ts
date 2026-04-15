@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseIdktAdmin } from "@/lib/supabaseIdkt";
 
+export const dynamic = "force-dynamic";
+
 const BASE_URL = "https://audio.iskcondesiretree.com";
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"];
 type IdktItem = {
@@ -161,7 +163,7 @@ function parseIdktItemsFromHtml(html: string, currentPath: string) {
 
 export async function POST(req: NextRequest) {
   if (!supabaseIdktAdmin) {
-    return NextResponse.json({ error: "Supabase service role key missing" }, { status: 500 });
+    return NextResponse.json({ error: "Supabase client not initialized" }, { status: 500 });
   }
 
   try {

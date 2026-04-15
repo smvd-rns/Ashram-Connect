@@ -22,6 +22,10 @@ export async function GET(req: NextRequest) {
     // Use admin client for admins to bypass RLS filtering on is_hidden
     const client = (role === 1 && supabaseIdktAdmin) ? supabaseIdktAdmin : supabaseIdkt;
 
+    if (!client) {
+      return NextResponse.json({ error: "Supabase client not initialized" }, { status: 500 });
+    }
+
     let dbQuery = client
       .from("idkt_items")
       .select("*")
