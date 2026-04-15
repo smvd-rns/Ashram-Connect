@@ -150,15 +150,17 @@ export default function Navbar() {
                       <div className={`w-1 h-1 rounded-full bg-purple-500 ${pathname === '/notifications' ? 'opacity-100' : 'opacity-0'}`} />
                     </NextLink>
 
-                    <NextLink 
-                      href="/prasadam-count" 
-                      onClick={() => setShowDesktopMore(false)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/prasadam-count' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'}`}
-                    >
-                      <UserCheck className="w-4 h-4" />
-                      <span className="text-[10px] font-black uppercase tracking-widest flex-1">Prasadam Count</span>
-                      <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/prasadam-count' ? 'opacity-100' : 'opacity-0'}`} />
-                    </NextLink>
+                    {isBcdb && (
+                      <NextLink 
+                        href="/prasadam-count" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/prasadam-count' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                      >
+                        <UserCheck className="w-4 h-4" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Prasadam Count</span>
+                        <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/prasadam-count' ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
 
                     {isBcdb && (
                       <NextLink 
@@ -317,15 +319,17 @@ export default function Navbar() {
                 <div className={`w-1.5 h-1.5 rounded-full bg-purple-500 ${pathname === '/notifications' ? 'opacity-100' : 'opacity-0'}`} />
               </NextLink>
 
-              <NextLink 
-                href="/prasadam-count" 
-                onClick={() => setShowMoreMenu(false)}
-                className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/prasadam-count' ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}
-              >
-                <UserCheck className={`w-4 h-4 ${pathname === '/prasadam-count' ? 'text-orange-600' : 'text-slate-400'}`} />
-                <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/prasadam-count' ? 'text-orange-900' : 'text-slate-600'}`}>Prasadam Count</span>
-                <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 ${pathname === '/prasadam-count' ? 'opacity-100' : 'opacity-0'}`} />
-              </NextLink>
+              {isBcdb && (
+                <NextLink 
+                  href="/prasadam-count" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/prasadam-count' ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}
+                >
+                  <UserCheck className={`w-4 h-4 ${pathname === '/prasadam-count' ? 'text-orange-600' : 'text-slate-400'}`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/prasadam-count' ? 'text-orange-900' : 'text-slate-600'}`}>Prasadam Count</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 ${pathname === '/prasadam-count' ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
 
               {isBcdb && (
                 <NextLink 

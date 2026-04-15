@@ -33,6 +33,12 @@ export function useProfile(session: any) {
           return;
         }
 
+        // Database persistence check
+        if (profile?.is_bcdb_verified) {
+          setIsBcdb(true);
+          return;
+        }
+
         const normalizedEmail = email.toLowerCase().trim();
         const cached = bcdbCheckCache.get(normalizedEmail);
         const now = Date.now();
@@ -43,7 +49,8 @@ export function useProfile(session: any) {
 
         try {
           setIsTimeout(false);
-          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}`, {
+          const userId = session?.user?.id || "";
+          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}&userId=${userId}`, {
              signal: AbortSignal.timeout(10000) // Hard browser timeout
           });
           
@@ -75,6 +82,10 @@ export function useProfile(session: any) {
 
       if (data) {
         setProfile(data);
+        // Initialize state immediately from database flag to prevent UI flicker
+        if (data.is_bcdb_verified) {
+          setIsBcdb(true);
+        }
         await checkBcdb(data.email || session?.user?.email, data.role);
         setLoading(false);
         return;
