@@ -252,7 +252,9 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
 
   const navigateTo = (path: string) => {
     setSearchQuery("");
-    router.push(`${pathname}?path=${encodeURIComponent(path)}`);
+    // Force immediate load to prevent UI inertia on production/live environments
+    loadItems(path);
+    router.push(`${pathname}?path=${encodeURIComponent(path)}`, { scroll: false });
   };
 
   const breadcrumbs = currentPath === "/" ? ["Home"] : ["Home", ...currentPath.split("/").filter(Boolean)];
