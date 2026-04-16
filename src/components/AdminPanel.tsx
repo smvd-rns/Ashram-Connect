@@ -1634,7 +1634,7 @@ export default function AdminPanel() {
                               <div className={`absolute bottom-full left-0 mb-2 w-full bg-white border border-slate-200 rounded-xl shadow-2xl transition-all p-1.5 z-[2000] ${openRoleDropdownUserId === u.id ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
                                 {Object.entries(roleNames).map(([id, name]) => {
                                   const rId = parseInt(id);
-                                  const uRoles = Array.isArray(u.roles) ? u.roles : [u.role].filter(r => r != null);
+                                  const uRoles = Array.isArray(u.roles) ? u.roles : [u.role].filter((r: number | null): r is number => r != null);
                                   const isSelected = uRoles.includes(rId);
                                   return (
                                     <button
@@ -1675,7 +1675,7 @@ export default function AdminPanel() {
                               <p className="text-sm font-bold text-slate-500 truncate mt-0.5">{u.email}</p>
 
                               <div className="mt-2 flex flex-wrap gap-1.5">
-                                {(Array.isArray(u.roles) ? u.roles : [u.role].filter(r => r != null)).map(rId => (
+                                {(Array.isArray(u.roles) ? u.roles : [u.role].filter((r: number | null): r is number => r != null)).map(rId => (
                                   <span key={rId} className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${roleColors[Number(rId)] || 'bg-slate-50'}`}>
                                     {roleNames[Number(rId)] || 'Member'}
                                   </span>
@@ -1696,7 +1696,7 @@ export default function AdminPanel() {
                               <div className={`absolute bottom-full left-0 mb-2 w-full bg-white border border-slate-200 rounded-2xl shadow-2xl transition-all p-2 z-[2000] ${openRoleDropdownUserId === u.id ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
                                 {Object.entries(roleNames).map(([id, name]) => {
                                   const rId = parseInt(id);
-                                  const uRoles = Array.isArray(u.roles) ? u.roles : [u.role].filter(r => r != null);
+                                  const uRoles = Array.isArray(u.roles) ? u.roles : [u.role].filter((r: number | null): r is number => r != null);
                                   const isSelected = uRoles.includes(rId);
                                   return (
                                     <button
