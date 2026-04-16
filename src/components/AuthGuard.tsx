@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { useProfile } from "@/hooks/useProfile";
 import AccessDenied from "./AccessDenied";
 import NotificationManager from "./NotificationManager";
+import ProfileCompletion from "./ProfileCompletion";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  const { profile, loading: profileLoading } = useProfile(session);
+  const { profile, loading: profileLoading, refreshProfile } = useProfile(session);
 
   useEffect(() => {
     // 1. Initial Session Check
@@ -83,9 +84,18 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // 2. RBAC Logic (Authorized User Check)
   if (session && profile && pathname.startsWith("/admin")) {
-    if (profile.role !== 1) {
+    const roles = Array.isArray(profile.roles) ? profile.roles : [profile.role];
+    const isAuthorized = roles.includes(1) || roles.includes(5);
+    
+    if (!isAuthorized) {
       return <AccessDenied />;
     }
+  }
+
+  // 3. Profile Completion Requirement
+  const isProfileComplete = profile?.full_name && profile?.mobile && profile?.temple;
+  if (session && profile && !isProfileComplete && !isPublicRoute) {
+    return <ProfileCompletion session={session} refreshProfile={refreshProfile} />;
   }
 
   return (

@@ -15,8 +15,8 @@ export function useProfile(session: any) {
   const [isTimeout, setIsTimeout] = useState(false);
   const [lastCheckedId, setLastCheckedId] = useState<string | null>(null);
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    if (userId === lastCheckedId) {
+  const fetchProfile = useCallback(async (userId: string, force = false) => {
+    if (userId === lastCheckedId && !force) {
        setLoading(false);
        return;
     }
@@ -24,11 +24,16 @@ export function useProfile(session: any) {
     setLoading(true);
     setLastCheckedId(userId);
     try {
-      const checkBcdb = async (email: string, role?: number) => {
+      const checkBcdb = async (email: string, roleOrRoles?: number | number[]) => {
         if (!email) return;
 
-        // Admin override
-        if (role === 1 || role === 5) {
+        const rolesArr = Array.isArray(roleOrRoles) 
+          ? roleOrRoles 
+          : (roleOrRoles !== undefined ? [roleOrRoles] : []);
+
+        const hasAdminRole = rolesArr.includes(1) || rolesArr.includes(5);
+
+        if (hasAdminRole) {
           setIsBcdb(true);
           return;
         }
@@ -86,7 +91,7 @@ export function useProfile(session: any) {
         if (data.is_bcdb_verified) {
           setIsBcdb(true);
         }
-        await checkBcdb(data.email || session?.user?.email, data.role);
+        await checkBcdb(data.email || session?.user?.email, data.roles || data.role);
         setLoading(false);
         return;
       }
@@ -113,7 +118,7 @@ export function useProfile(session: any) {
           if (claimError) throw claimError;
           
           setProfile(updatedProfile);
-          await checkBcdb(updatedProfile.email || session?.user?.email, updatedProfile.role);
+          await checkBcdb(updatedProfile.email || session?.user?.email, updatedProfile.roles || updatedProfile.role);
           setLoading(false);
           return;
         }
@@ -125,7 +130,7 @@ export function useProfile(session: any) {
         .upsert({ 
           id: userId, 
           email: session?.user?.email, 
-          role: 6,
+          roles: [6],
           full_name: session?.user?.user_metadata?.full_name || "",
           updated_at: new Date().toISOString()
         }, { onConflict: 'id' })
@@ -134,7 +139,7 @@ export function useProfile(session: any) {
         
       if (createError) throw createError;
       setProfile(newProfile);
-      await checkBcdb(newProfile.email || session?.user?.email, newProfile.role);
+      await checkBcdb(newProfile.email || session?.user?.email, newProfile.roles || newProfile.role);
 
     } catch (err: any) {
       console.error("Profile Hook Error:", err.message || err);
@@ -152,12 +157,19 @@ export function useProfile(session: any) {
     }
   }, [session?.user?.id, fetchProfile]);
 
+  const uRoles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+  
   return { 
     profile, 
     isBcdb, 
+    isSuperAdmin: uRoles.includes(1),
+    isManager: uRoles.includes(1) || uRoles.includes(5),
+    isAttendanceIncharge: uRoles.includes(1) || uRoles.includes(3),
+    isVideoUploader: uRoles.includes(1) || uRoles.includes(2),
+    isVmIncharge: uRoles.includes(1) || uRoles.includes(7),
     loading, 
     error, 
     isTimeout,
-    refreshProfile: () => session?.user?.id && fetchProfile(session.user.id) 
+    refreshProfile: () => session?.user?.id && fetchProfile(session.user.id, true) 
   };
 }

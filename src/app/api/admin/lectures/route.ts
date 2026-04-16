@@ -8,11 +8,12 @@ async function canUpload(token: string) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, roles")
     .eq("id", user.id)
     .single();
 
-  return profile?.role === 1 || profile?.role === 2;
+  const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+  return roles.includes(1) || roles.includes(2);
 }
 
 export async function GET(request: Request) {

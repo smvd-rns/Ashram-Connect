@@ -29,11 +29,12 @@ export default function NotificationsHistoryList({ limit = 10 }: { limit?: numbe
         // Check role
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, roles")
           .eq("id", session.user.id)
           .single();
         
-        if (profile?.role === 1 || profile?.role === 5) {
+        const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+        if (roles.includes(1) || roles.includes(5)) {
           setIsManager(true);
         }
       }

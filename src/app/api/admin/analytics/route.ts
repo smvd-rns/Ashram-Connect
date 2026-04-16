@@ -21,11 +21,12 @@ export async function GET(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, roles")
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== 1) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+    if (!roles.includes(1)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     // 2. Fetch All Historical Daily Visits
     const { data: visitsData, error: visitError } = await supabase
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
       if (date === todayStr) {
         visitorsToday.push({ 
           id: v.user_id,
-          name: p?.full_name || "Guest",
+          name: p?.full_name || (p?.email ? p.email.split('@')[0] : "Guest"),
           email: p?.email || "Confidential",
           time: v.visited_at 
         });
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
           const p = profileMap[v.user_id] || {};
           return {
             id: v.user_id,
-            name: p.full_name || "Guest",
+            name: p.full_name || (p.email ? p.email.split('@')[0] : "Guest"),
             email: p.email || "Confidential",
             temple: p.temple || "Unknown",
             role: p.role || 6,
@@ -123,8 +124,8 @@ export async function GET(request: NextRequest) {
       history,
       todayList: visitorsToday.map(p => ({
         id: p.id,
-        name: p.full_name || "Unknown",
-        email: p.email || "Unknown",
+        name: p.name,
+        email: p.email,
         time: p.time
       }))
     });

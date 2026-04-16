@@ -11,6 +11,8 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
   const pathname = usePathname();
   
   const [items, setItems] = useState<any[]>([]);
+  const uRoles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+  const isSuperAdmin = uRoles.includes(1);
   const currentPath = searchParams.get("path") || "/";
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -55,8 +57,8 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
     setLoading(true);
     setError(null);
     try {
-      const role = Number(profile?.role || 0);
-      const res = await fetch(`/api/idkt/browse?path=${encodeURIComponent(path)}&role=${role}`);
+      const roleParam = isSuperAdmin ? 1 : (uRoles[0] || 6);
+      const res = await fetch(`/api/idkt/browse?path=${encodeURIComponent(path)}&role=${roleParam}`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to load library");
@@ -79,8 +81,8 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
     setLoading(true);
     setError(null);
     try {
-      const role = Number(profile?.role || 0);
-      const res = await fetch(`/api/idkt/search?q=${encodeURIComponent(query)}&role=${role}`);
+      const roleParam = isSuperAdmin ? 1 : (uRoles[0] || 6);
+      const res = await fetch(`/api/idkt/search?q=${encodeURIComponent(query)}&role=${roleParam}`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Search failed");
@@ -107,7 +109,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
           id: item.id,
           full_path: item.full_path,
           type: item.type,
-          userRole: profile.role
+          userRole: isSuperAdmin ? 1 : (uRoles[0] || 6)
         })
       });
       const data = await res.json();
@@ -125,7 +127,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
     if (searchQuery === "") {
       loadItems(currentPath);
     }
-  }, [currentPath, searchQuery, profile?.role]);
+  }, [currentPath, searchQuery, isSuperAdmin]);
 
   // Admin Sync Logic
   const handleSync = async () => {
@@ -288,7 +290,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
               />
             </div>
             
-            {Number(profile?.role) === 1 && (
+            {isSuperAdmin && (
               <>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -442,7 +444,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
               </div>
               <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight uppercase">No content found</h3>
               <p className="text-slate-400 font-bold text-[11px] sm:text-xs max-w-xs mx-auto">This folder hasn't been synced yet or there are no lectures matching your search.</p>
-              {Number(profile?.role) === 1 && (
+              {isSuperAdmin && (
                 <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
                   <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Manual Override</p>
                   <p className="text-[9px] sm:text-[10px] text-slate-500 mb-4 px-2 italic">Some top-level folders are hidden. Manually inject a sub-folder to bridge the gap.</p>
@@ -494,7 +496,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
 
                   <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                     {/* Admin Actions */}
-                    {Number(profile?.role) === 1 && (
+                    {isSuperAdmin && (
                       <div className="flex items-center gap-1 sm:gap-2 mr-2 border-r border-slate-100 pr-2 sm:pr-4">
                         <button 
                           onClick={(e) => {

@@ -23,13 +23,14 @@ export async function GET(req: NextRequest) {
     const { data: profile } = await safeQuery(async () => 
         await supabaseAdmin!
             .from("profiles")
-            .select("role")
+            .select("role, roles")
             .eq("id", user.id)
             .single(),
         "Travel Desk GET Profile"
     );
 
-    const isManager = profile?.role === 1 || profile?.role === 5;
+    const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+    const isManager = roles.includes(1) || roles.includes(5);
     
     // Use supabaseAdmin for managers to bypass RLS and see all data
     let dbQuery = (isManager ? supabaseAdmin! : supabase)
@@ -137,10 +138,11 @@ export async function PATCH(req: NextRequest) {
 
       // Check if user is Manager (Role 5) or Super Admin (Role 1)
       const { data: profile } = await safeQuery(async () => 
-        await supabaseAdmin!.from("profiles").select("role").eq("id", user.id).single(),
+        await supabaseAdmin!.from("profiles").select("role, roles").eq("id", user.id).single(),
         "Travel Desk PATCH Profile"
       );
-      if (profile?.role !== 1 && profile?.role !== 5) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+      if (!roles.includes(1) && !roles.includes(5)) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   
       const body = await req.json();
       const { id, status } = body;

@@ -12,13 +12,11 @@ import { useVmInchargeAccess } from "@/hooks/useVmInchargeAccess";
 export default function Navbar() {
   const pathname = usePathname();
   const [session, setSession] = useState<any>(null);
-  const { profile, isBcdb, refreshProfile } = useProfile(session);
+  const { profile, isBcdb, isManager, isSuperAdmin, isAttendanceIncharge, isVmIncharge, refreshProfile } = useProfile(session);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showDesktopMore, setShowDesktopMore] = useState(false);
-  const hasVmInchargeAccess = useVmInchargeAccess(session);
-  const role = Number(profile?.role);
-  const canOpenAttendance = isBcdb || role === 1 || role === 3 || hasVmInchargeAccess;
+  const canOpenAttendance = isBcdb || isSuperAdmin || isAttendanceIncharge || isVmIncharge;
 
   // New imports for mobile bar
   const HomeIcon = ({ active }: { active?: boolean }) => (
@@ -186,7 +184,7 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
-                    {(isBcdb || role === 1 || role === 5) && (
+                    {(isBcdb || isManager) && (
                       <NextLink 
                         href="/travel-desk" 
                         onClick={() => setShowDesktopMore(false)}
@@ -198,7 +196,7 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
-                    {role === 1 && (
+                    {isManager && (
                       <NextLink 
                         href="/admin" 
                         onClick={() => setShowDesktopMore(false)}
@@ -238,7 +236,7 @@ export default function Navbar() {
         </NextLink>
 
         <div className="flex items-center gap-2">
-          {role === 1 && (
+          {isManager && (
             <NextLink href="/admin" className={`p-2 active:scale-95 transition-all ${pathname.startsWith('/admin') ? 'text-devo-600' : 'text-slate-400 hover:text-devo-600'}`}>
               <Settings className="w-5 h-5" />
             </NextLink>
@@ -355,7 +353,7 @@ export default function Navbar() {
                 </NextLink>
               )}
 
-              {(isBcdb || role === 1 || role === 5) && (
+              {(isBcdb || isManager) && (
                 <NextLink 
                   href="/travel-desk" 
                   onClick={() => setShowMoreMenu(false)}
@@ -375,7 +373,7 @@ export default function Navbar() {
                 <span className="text-[11px] font-black uppercase tracking-widest flex-1 text-slate-600">My Profile</span>
               </button>
 
-              {role === 1 && (
+              {isManager && (
                 <NextLink 
                   href="/admin" 
                   onClick={() => setShowMoreMenu(false)}

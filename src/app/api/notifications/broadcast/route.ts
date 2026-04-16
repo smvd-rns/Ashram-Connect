@@ -27,11 +27,12 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: profile } = await safeQuery(async () => 
-      await supabaseAdmin!.from("profiles").select("role").eq("id", user.id).single(),
+      await supabaseAdmin!.from("profiles").select("role, roles").eq("id", user.id).single(),
       "Broadcast Profile Check"
     );
 
-    if (profile?.role !== 1 && profile?.role !== 5) {
+    const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+    if (!roles.includes(1) && !roles.includes(5)) {
       return NextResponse.json({ error: "Forbidden: Manager access required" }, { status: 403 });
     }
 

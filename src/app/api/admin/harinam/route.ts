@@ -18,12 +18,12 @@ export async function POST(req: NextRequest) {
     // Check Role
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, roles")
       .eq("id", user.id)
       .single();
 
-    const role = Number(profile?.role);
-    if (role !== 1 && role !== 3) {
+    const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+    if (!roles.includes(1) && !roles.includes(3)) {
       return NextResponse.json({ error: "Forbidden: only admin or attendance incharge" }, { status: 403 });
     }
 

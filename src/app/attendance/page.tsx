@@ -29,12 +29,9 @@ export default function PersonalAttendancePage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const { profile, isBcdb, loading: loadingProfile } = useProfile(session);
+  const { profile, isBcdb, isSuperAdmin, isAttendanceIncharge, loading: loadingProfile } = useProfile(session);
   const hasVmInchargeAccess = useVmInchargeAccess(session);
-  const role = Number(profile?.role);
-  const isAttendanceIncharge = role === 3;
   const isVirtualMachineIncharge = hasVmInchargeAccess;
-  const isSuperAdmin = role === 1;
   const canViewFullAttendance = isBcdb || isSuperAdmin;
 
   const [refreshKey, setRefreshKey] = useState(0);
