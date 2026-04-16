@@ -1640,7 +1640,7 @@ export default function AdminPanel() {
                                     <button
                                       key={id}
                                       onClick={() => {
-                                        const nextRoles = isSelected ? uRoles.filter(r => r !== rId) : [...uRoles, rId];
+                                        const nextRoles = isSelected ? uRoles.filter((r: any) => r !== rId) : [...uRoles, rId];
                                         updateUserRoles(u.id, nextRoles);
                                       }}
                                       className={`w-full text-left px-3 py-2 rounded-lg text-[9px] font-black uppercase tracking-tight flex items-center justify-between mb-1 last:mb-0 ${isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-500'}`}
