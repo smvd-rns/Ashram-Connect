@@ -1535,7 +1535,7 @@ export default function AdminPanel() {
                           </td>
                           <td className="px-6 py-6 border-slate-50">
                             <div className="flex flex-wrap gap-2">
-                              {(Array.isArray(u.roles) ? u.roles : [u.role].filter(r => r != null)).map(rId => (
+                              {(Array.isArray(u.roles) ? u.roles : [u.role].filter((r: any) => r != null)).map((rId: any) => (
                                 <span key={rId} className={`px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest shadow-sm ${roleColors[Number(rId)] || 'bg-slate-50'}`}>
                                   {roleNames[Number(rId)] || 'Member'}
                                 </span>
