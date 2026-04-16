@@ -1561,13 +1561,13 @@ export default function AdminPanel() {
                                   <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 py-2 border-b border-slate-50 mb-1">Select Roles</div>
                                   {Object.entries(roleNames).map(([id, name]) => {
                                     const rId = parseInt(id);
-                                    const uRoles = Array.isArray(u.roles) ? u.roles : [u.role].filter(r => r != null);
+                                    const uRoles = Array.isArray(u.roles) ? u.roles : [u.role].filter((r: any) => r != null);
                                     const isSelected = uRoles.includes(rId);
                                     return (
                                       <button
                                         key={id}
                                         onClick={() => {
-                                          const nextRoles = isSelected ? uRoles.filter(r => r !== rId) : [...uRoles, rId];
+                                          const nextRoles = isSelected ? uRoles.filter((r: any) => r !== rId) : [...uRoles, rId];
                                           updateUserRoles(u.id, nextRoles);
                                         }}
                                         className={`w-full text-left px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-between transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-600'}`}
