@@ -33,8 +33,9 @@ export default function NotificationManager({ session }: { session: any }) {
         if (!user) return;
 
         // 2. Fetch role for Manager override
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-        const isAdmin = profile?.role === 1 || profile?.role === 5;
+        const { data: profile } = await supabase.from('profiles').select('role, roles').eq('id', user.id).single();
+        const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
+        const isAdmin = roles.includes(1) || roles.includes(5);
 
         // 3. Privacy Filter
         const canSee = isAdmin || target_type === 'all' || recipient_ids?.includes(user.id);

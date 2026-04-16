@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { safeAuth, safeQuery } from "@/lib/resilient-db";
 
-// Helper to check for Manager or higher role (Role 1 or 5)
 async function checkManager(token: string) {
   const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Check Admin User");
   if (authError || !user) return false;
@@ -10,16 +9,16 @@ async function checkManager(token: string) {
   const { data: profile } = await safeQuery(async () => 
     await supabase
         .from("profiles")
-        .select("role")
+        .select("role, roles")
         .eq("id", user.id)
         .single(),
     "Check Admin Role"
   );
 
-  return profile?.role === 1 || profile?.role === 5;
+  const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r !== null && r !== undefined);
+  return roles.includes(1) || roles.includes(5);
 }
 
-// Helper to check for Super Admin role (Strictly Role 1)
 async function checkSuperAdmin(token: string) {
   const { data: { user }, error: authError } = await safeAuth(() => supabase.auth.getUser(token), "Check Admin User");
   if (authError || !user) return false;
@@ -27,13 +26,14 @@ async function checkSuperAdmin(token: string) {
   const { data: profile } = await safeQuery(async () => 
     await supabase
         .from("profiles")
-        .select("role")
+        .select("role, roles")
         .eq("id", user.id)
         .single(),
     "Check Admin Role"
   );
 
-  return profile?.role === 1;
+  const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r !== null && r !== undefined);
+  return roles.includes(1);
 }
 
 export async function GET(request: Request) {
@@ -77,17 +77,25 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Access Denied: Super Admin Only" }, { status: 403 });
     }
 
-    const { targetUserId, newRole } = await request.json();
+    const { targetUserId, newRoles, newRole } = await request.json();
 
-    if (!targetUserId || !newRole) {
+    if (!targetUserId || (!newRoles && !newRole)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     if (!supabaseAdmin) throw new Error("Admin Client not configured");
 
+    const updatePayload: any = {};
+    if (newRoles) updatePayload.roles = newRoles;
+    if (newRole) updatePayload.role = newRole;
+    // Auto-fallback: if sending roles array, also sync the first primary role to the old column for safety
+    if (Array.isArray(newRoles) && newRoles.length > 0) {
+       updatePayload.role = newRoles[0];
+    }
+
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .update({ role: newRole })
+      .update(updatePayload)
       .eq("id", targetUserId)
       .select();
 

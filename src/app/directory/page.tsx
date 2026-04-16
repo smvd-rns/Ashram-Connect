@@ -10,7 +10,7 @@ import { Loader2 } from "lucide-react";
 
 export default function DirectoryPage() {
   const [session, setSession] = useState<any>(null);
-  const { isBcdb, loading: profileLoading } = useProfile(session);
+  const { profile, isBcdb, isManager, isSuperAdmin, loading: profileLoading } = useProfile(session);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -33,7 +33,9 @@ export default function DirectoryPage() {
     );
   }
 
-  if (!isBcdb) {
+  const isAuthorized = isBcdb || isManager || isSuperAdmin;
+
+  if (!isAuthorized) {
     return (
       <div className="min-h-screen bg-slate-50">
         <Navbar />

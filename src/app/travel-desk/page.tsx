@@ -10,7 +10,7 @@ import Navbar from "@/components/Navbar";
 
 export default function TravelDeskPage() {
   const [session, setSession] = useState<any>(null);
-  const { profile, isBcdb, loading, error, isTimeout, refreshProfile } = useProfile(session);
+  const { profile, isBcdb, isManager, isSuperAdmin, loading, error, isTimeout, refreshProfile } = useProfile(session);
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -54,7 +54,7 @@ export default function TravelDeskPage() {
   }
 
   // Manager or Super Admin View
-  if (profile?.role === 1 || profile?.role === 5) {
+  if (isManager || isSuperAdmin) {
     return (
       <>
         <Navbar />
