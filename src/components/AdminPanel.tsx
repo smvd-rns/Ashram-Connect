@@ -1675,7 +1675,7 @@ export default function AdminPanel() {
                               <p className="text-sm font-bold text-slate-500 truncate mt-0.5">{u.email}</p>
 
                               <div className="mt-2 flex flex-wrap gap-1.5">
-                                {(Array.isArray(u.roles) ? u.roles : [u.role].filter((r: number | null): r is number => r != null)).map(rId => (
+                                {(Array.isArray(u.roles) ? u.roles : [u.role].filter((r: number | null): r is number => r != null)).map((rId: number) => (
                                   <span key={rId} className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${roleColors[Number(rId)] || 'bg-slate-50'}`}>
                                     {roleNames[Number(rId)] || 'Member'}
                                   </span>
@@ -1702,7 +1702,7 @@ export default function AdminPanel() {
                                     <button
                                       key={id}
                                       onClick={() => {
-                                        const nextRoles = isSelected ? uRoles.filter(r => r !== rId) : [...uRoles, rId];
+                                        const nextRoles = isSelected ? uRoles.filter((r: number) => r !== rId) : [...uRoles, rId];
                                         updateUserRoles(u.id, nextRoles);
                                       }}
                                       className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-between mb-1 last:mb-0 ${isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-600'}`}
