@@ -306,31 +306,24 @@ export default function OptimizedVideoPlayer({
       */}
       {playerReady && !timedOut && (
         <>
-          {/* Bottom Right Logo Shield — specifically targets the YouTube watermark while leaving full-screen open */}
+          {/* Bottom Right Logo Shield — target watermark area only */}
           <div 
-            className="absolute bottom-[35px] right-[48px] w-[60px] h-[30px] z-[9999] cursor-default pointer-events-auto bg-transparent"
+            className="absolute bottom-[52px] right-[56px] w-[56px] h-[26px] z-[9999] cursor-default pointer-events-auto bg-transparent"
             title="Temple Media Policy"
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
             onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
 
-          {/* Aggressive Full-Width Top Shield — Covers Title, Share, More, and all top navigation */}
+          {/* Bottom Left Shield — keep away from seek/progress controls */}
           <div 
-            className="absolute top-0 left-0 w-full h-[15%] z-[10000] cursor-default pointer-events-auto bg-transparent"
+            className="absolute bottom-[52px] left-0 w-[10%] h-[50px] z-[10000] cursor-default pointer-events-auto bg-transparent"
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
             onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
 
-          {/* Bottom Left Shield — covers the "Watch on YouTube" and "More videos" popup triggers */}
+          {/* Bottom Right Shield — keep away from seek/progress + settings/CC */}
           <div 
-            className="absolute bottom-[35px] left-0 w-[12%] h-[60px] z-[10000] cursor-default pointer-events-auto bg-transparent"
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-          />
-
-          {/* Bottom Right Shield — selectively covers the "More videos" thumbnail button */}
-          <div 
-            className="absolute bottom-[35px] right-[100px] w-[15%] h-[60px] z-[10000] cursor-default pointer-events-auto bg-transparent"
+            className="absolute bottom-[52px] right-[124px] w-[10%] h-[50px] z-[10000] cursor-default pointer-events-auto bg-transparent"
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
             onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
