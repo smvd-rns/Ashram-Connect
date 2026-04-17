@@ -10,7 +10,9 @@ interface OptimizedVideoPlayerProps {
   artist?: string;
   album?: string;
   thumbnail?: string;
+  initialTime?: number;
   onStateChange?: (state: number) => void;
+  onProgress?: (currentTime: number, duration: number) => void;
   className?: string;
 }
 
@@ -27,7 +29,9 @@ export default function OptimizedVideoPlayer({
   artist = "Devotional Library",
   album = "Spiritual Echoes",
   thumbnail,
+  initialTime = 0,
   onStateChange,
+  onProgress,
   className = ""
 }: OptimizedVideoPlayerProps) {
   const [playerReady, setPlayerReady] = useState(false);
@@ -126,6 +130,12 @@ export default function OptimizedVideoPlayer({
 
   // 2. Initialize/Update Player Instance
   const wasPlayingRef = useRef(false);
+  const seekPerformedRef = useRef(false);
+
+  useEffect(() => {
+    // Reset seek flag when videoId changes
+    seekPerformedRef.current = false;
+  }, [videoId]);
 
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
@@ -144,19 +154,27 @@ export default function OptimizedVideoPlayer({
         events: {
           onReady: () => {
              updateMediaSession();
+             if (initialTime > 0) {
+               playerInstance.current?.seekTo(initialTime, true);
+               seekPerformedRef.current = true;
+             }
           },
           onStateChange: (event: any) => {
             setCurrentState(event.data);
             if (onStateChange) onStateChange(event.data);
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
             const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
+            
             if (isPlaying) {
               updateMediaSession();
               wasPlayingRef.current = true;
+              
+              // Fallback seek: if onReady seek didn't work or was skipped, try here once
+              if (!seekPerformedRef.current && initialTime > 0) {
+                playerInstance.current?.seekTo(initialTime, true);
+                seekPerformedRef.current = true;
+              }
             } else if (isPaused) {
-              // ONLY mark as "user paused" when the tab is actually visible.
-              // If document.hidden is true, this pause was triggered by the browser
-              // (tab switch, screen lock) — we preserve wasPlayingRef so we can resume.
               if (!document.hidden) {
                 wasPlayingRef.current = false;
               }
@@ -221,6 +239,23 @@ export default function OptimizedVideoPlayer({
     };
   }, []);
 
+  // 5. Progress Tracking
+  useEffect(() => {
+    if (!onProgress || !playerInstance.current || currentState !== (window as any).YT?.PlayerState?.PLAYING) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (playerInstance.current?.getCurrentTime) {
+        const currentTime = playerInstance.current.getCurrentTime();
+        const duration = playerInstance.current.getDuration();
+        onProgress(currentTime, duration);
+      }
+    }, 5000); // Save every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [currentState, onProgress]);
+
   return (
     <div className={`relative w-full h-full bg-black overflow-hidden ${className}`}>
       {/* 
@@ -271,24 +306,31 @@ export default function OptimizedVideoPlayer({
       */}
       {playerReady && !timedOut && (
         <>
-          {/* Bottom Right Shield — covers YouTube logo watermark (larger for mobile tap accuracy) */}
+          {/* Bottom Right Logo Shield — specifically targets the YouTube watermark while leaving full-screen open */}
           <div 
-            className="absolute bottom-0 right-0 w-[22%] h-[18%] z-[9999] cursor-default pointer-events-auto"
+            className="absolute bottom-[35px] right-[48px] w-[60px] h-[30px] z-[9999] cursor-default pointer-events-auto bg-transparent"
             title="Temple Media Policy"
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
             onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
 
-          {/* Top Left Shield — covers title bar and channel name */}
+          {/* Aggressive Full-Width Top Shield — Covers Title, Share, More, and all top navigation */}
           <div 
-            className="absolute top-0 left-0 w-[75%] h-[22%] z-[9999] cursor-default pointer-events-auto"
+            className="absolute top-0 left-0 w-full h-[15%] z-[10000] cursor-default pointer-events-auto bg-transparent"
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
             onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />
 
-          {/* Bottom Bar Shield — covers the entire YouTube control/branding bar at the bottom */}
+          {/* Bottom Left Shield — covers the "Watch on YouTube" and "More videos" popup triggers */}
           <div 
-            className="absolute bottom-0 left-0 right-0 h-[14%] z-[9998] cursor-default pointer-events-auto"
+            className="absolute bottom-[35px] left-0 w-[12%] h-[60px] z-[10000] cursor-default pointer-events-auto bg-transparent"
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
+            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
+          />
+
+          {/* Bottom Right Shield — selectively covers the "More videos" thumbnail button */}
+          <div 
+            className="absolute bottom-[35px] right-[100px] w-[15%] h-[60px] z-[10000] cursor-default pointer-events-auto bg-transparent"
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
             onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
           />

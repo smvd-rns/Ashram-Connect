@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Play, Pause, SkipBack, SkipForward, Volume2, Music, X, Settings, MoreVertical } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Volume2, Music, X, Settings, Bookmark, Check } from "lucide-react";
 import { useMedia } from "@/context/MediaContext";
 
 export default function IdktPlayer() {
@@ -18,8 +18,12 @@ export default function IdktPlayer() {
     isMuted,
     seek,
     setVolume,
-    setIsMuted
+    setIsMuted,
+    savePosition
   } = useMedia();
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showMobileExtra, setShowMobileExtra] = useState(false);
@@ -51,18 +55,28 @@ export default function IdktPlayer() {
         </button>
 
         {/* Progress Bar */}
-        <div className="group relative w-full h-1 sm:h-1.5 bg-slate-100 rounded-full overflow-hidden cursor-pointer">
+        <div className="group relative w-full h-4 sm:h-2 bg-slate-100 rounded-full cursor-pointer flex items-center px-0.5 mt-1 sm:mt-0">
           <input
             type="range"
             min="0"
             max={duration || 0}
             value={progress}
             onChange={handleSeek}
-            className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+            className="absolute inset-x-0 -top-1 bottom-0 w-full opacity-0 z-20 cursor-pointer"
           />
+          <div className="relative w-full h-1.5 sm:h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div 
+              className="absolute top-0 left-0 h-full bg-linear-to-r from-orange-500 to-orange-400 rounded-full transition-all duration-100"
+              style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+            />
+          </div>
+          {/* Slider Thumb Handle */}
           <div 
-            className="absolute top-0 left-0 h-full bg-linear-to-r from-orange-400 to-amber-500 rounded-full transition-all duration-100"
-            style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+            className="absolute h-4 w-4 sm:h-3.5 sm:w-3.5 bg-white border-2 border-orange-500 rounded-full shadow-lg z-10 transition-all duration-100 pointer-events-none"
+            style={{ 
+              left: `calc(${(progress / (duration || 1)) * 100}% - 8px)`,
+              opacity: progress > 0 ? 1 : 0
+            }}
           />
         </div>
 
@@ -92,6 +106,31 @@ export default function IdktPlayer() {
             </button>
             <button className="text-slate-300 hover:text-orange-600 transition-colors p-1.5 sm:p-2 hidden xs:block">
               <SkipForward className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
+            </button>
+
+            {/* Manual Save Button */}
+            <button 
+              onClick={async () => {
+                setSaveStatus('saving');
+                await savePosition();
+                setSaveStatus('success');
+                setTimeout(() => setSaveStatus('idle'), 2000);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all active:scale-95 ${
+                saveStatus === 'success' 
+                  ? "bg-emerald-50 border-emerald-100 text-emerald-600" 
+                  : "bg-orange-50 border-orange-100 text-orange-600 hover:bg-orange-100"
+              }`}
+              title="Save current playback position"
+            >
+              {saveStatus === 'success' ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                <Bookmark className={`w-4 h-4 sm:w-5 sm:h-5 ${saveStatus === 'saving' ? 'animate-bounce' : ''}`} />
+              )}
+              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
+                {saveStatus === 'success' ? 'Saved!' : 'Save Spot'}
+              </span>
             </button>
           </div>
 

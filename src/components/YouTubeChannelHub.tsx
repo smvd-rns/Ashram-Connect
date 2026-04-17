@@ -23,6 +23,8 @@ interface VideoItem {
   playlistCount?: number;
   channelId?: string;
   channelTitle?: string;
+  lastPosition?: number;
+  duration?: number;
 }
 
 interface Channel {
@@ -37,7 +39,7 @@ interface Channel {
 const tabs = [
   { id: "videos", label: "Videos", icon: Play },
   { id: "playlists", label: "Playlists", icon: Layers },
-  { id: "favorites", label: "Favorites", icon: Heart },
+  { id: "favorites", label: "Watch Later", icon: Clock },
 ];
 
 export default function YouTubeChannelHub() {
@@ -222,11 +224,11 @@ export default function YouTubeChannelHub() {
           // If we have the video in current list, add to favoriteVideos
           const vid = videos.find((v: any) => v.id === videoId) || globalResults.find((v: any) => v.id === videoId) || fetchedVideoMetadata[videoId];
           if (vid) setFavoriteVideos(prev => [vid, ...prev]);
-          notify("Added to Spiritual Favorites!");
+          notify("Added to Watch Later!");
         } else {
           setFavorites(prev => prev.filter(id => id !== videoId));
           setFavoriteVideos(prev => prev.filter(v => v.id !== videoId));
-          notify("Removed from Favorites");
+          notify("Removed from Watch Later");
         }
       }
     } catch (err) {
@@ -408,6 +410,11 @@ export default function YouTubeChannelHub() {
 
   const activeVideo = (() => {
     if (!activeVideoId) return null;
+    
+    // 0. Check Watch Later list FIRST (This one has the progress/timing data)
+    const fromWatchLater = favoriteVideos.find((v: VideoItem) => v.id === activeVideoId);
+    if (fromWatchLater) return fromWatchLater;
+
     // 1. Check current channel videos
     const fromChannel = videos.find((v: VideoItem) => v.id === activeVideoId);
     if (fromChannel) return fromChannel;
@@ -430,6 +437,39 @@ export default function YouTubeChannelHub() {
     }
     return null;
   })();
+
+  const handleVideoProgress = useCallback(async (currentTime: number, duration: number) => {
+    if (!activeVideoId) return;
+    
+    // Only save if it's in Watch Later
+    if (!favorites.includes(activeVideoId)) return;
+
+    try {
+      const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+      if (!session) return;
+
+      await fetch("/api/user/favorites", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({ 
+          video_id: activeVideoId, 
+          last_position: currentTime, 
+          duration: duration,
+          is_update_only: true 
+        })
+      });
+      
+      // Update local cache
+      setFavoriteVideos(prev => prev.map(v => 
+        v.id === activeVideoId ? { ...v, lastPosition: currentTime, duration } : v
+      ));
+    } catch (err) {
+      console.error("Failed to save progress:", err);
+    }
+  }, [activeVideoId, favorites]);
 
   const handleVideoSelect = (vid: VideoItem) => {
     if (vid.type === "playlist") {
@@ -530,10 +570,10 @@ export default function YouTubeChannelHub() {
                 {/* Favorites Shortcut */}
                 <button 
                   onClick={() => router.push(`${pathname}?tab=favorites`)}
-                  className="flex-1 sm:flex-none h-[52px] sm:h-[60px] px-6 flex items-center justify-center gap-2.5 bg-white border-2 border-red-50 hover:border-red-100 rounded-[2rem] font-black text-[10px] uppercase tracking-widest text-red-500 shadow-xl transition-all hover:scale-[1.02] hover:bg-red-50/30 active:scale-95 whitespace-nowrap group"
+                  className="flex-1 sm:flex-none h-[52px] sm:h-[60px] px-6 flex items-center justify-center gap-2.5 bg-white border-2 border-orange-50 hover:border-orange-100 rounded-[2rem] font-black text-[10px] uppercase tracking-widest text-orange-600 shadow-xl transition-all hover:scale-[1.02] hover:bg-orange-50/30 active:scale-95 whitespace-nowrap group"
                 >
-                  <Heart className="w-4 h-4 fill-red-500 group-hover:scale-125 transition-transform" />
-                  <span>My Favorites</span>
+                  <Clock className="w-4 h-4 text-orange-500 group-hover:scale-125 transition-transform" />
+                  <span>Watch Later</span>
                 </button>
 
                 {/* Teachers Filter */}
@@ -926,12 +966,14 @@ export default function YouTubeChannelHub() {
                   key={activeVideoId}
                   videoId={activeVideoId}
                   title={activeVideo?.title || "Video"}
-                  artist={activeChannel?.name || "My Favorites"}
+                  artist={activeChannel?.name || "Watch Later"}
                   thumbnail={activeVideo?.thumbnail}
+                  initialTime={activeVideo?.lastPosition || 0}
                   onStateChange={(state: number) => {
                     if (state === -1) setLoading(true);
                     else setLoading(false);
                   }}
+                  onProgress={handleVideoProgress}
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900 px-6 text-center">
@@ -956,7 +998,7 @@ export default function YouTubeChannelHub() {
                       </span>
                       <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black ${isLive ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
                         <Radio className={`w-3.5 h-3.5 ${isLive ? "animate-pulse" : ""}`} />
-                        {isLive ? "LIVE" : activeTab.toUpperCase()}
+                        {isLive ? "LIVE" : (activeTab === "favorites" ? "WATCH LATER" : activeTab.toUpperCase())}
                       </span>
                     </div>
                   </div>
@@ -973,10 +1015,10 @@ export default function YouTubeChannelHub() {
                     </button>
                     <button 
                       onClick={(e) => activeVideoId && toggleFavorite(e, activeVideoId)}
-                      className={`p-3 rounded-xl transition-all group border ${activeVideoId && favorites.includes(activeVideoId) ? "bg-red-50 border-red-100 text-red-600" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100"}`}
-                      title={activeVideoId && favorites.includes(activeVideoId) ? "Remove from Favorites" : "Add to Favorites"}
+                      className={`p-3 rounded-xl transition-all group border ${activeVideoId && favorites.includes(activeVideoId) ? "bg-orange-50 border-orange-100 text-orange-600" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100"}`}
+                      title={activeVideoId && favorites.includes(activeVideoId) ? "Remove from Watch Later" : "Add to Watch Later"}
                     >
-                      <Heart className={`w-5 h-5 ${activeVideoId && favorites.includes(activeVideoId) ? "fill-red-600" : "group-hover:text-red-500"}`} />
+                      <Clock className={`w-5 h-5 ${activeVideoId && favorites.includes(activeVideoId) ? "text-orange-600" : "group-hover:text-orange-500"}`} />
                     </button>
                     <button 
                       onClick={handleShare}
@@ -989,7 +1031,7 @@ export default function YouTubeChannelHub() {
                 </div>
                 <p className="text-slate-400 text-sm font-medium leading-relaxed border-t border-slate-50 pt-4">
                   Distraction-free devotional viewing. All content is curated from
-                  approved spiritual channels. Your favorites appear here automatically for quick access.
+                  approved spiritual channels. Your watch later list appears here automatically for quick access.
                 </p>
               </div>
             )}
@@ -1057,6 +1099,16 @@ export default function YouTubeChannelHub() {
                           >
                             <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
                               <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
+                              
+                              {/* Watch Later Progress Bar */}
+                              {vid.lastPosition !== undefined && vid.lastPosition > 0 && vid.duration && (
+                                <div className="absolute bottom-0 left-0 right-0 h-1 sm:h-1.5 bg-black/40 z-10">
+                                  <div 
+                                    className="h-full bg-orange-500 transition-all duration-300"
+                                    style={{ width: `${Math.min(100, (vid.lastPosition / vid.duration) * 100)}%` }}
+                                  />
+                                </div>
+                              )}
                               
                               {/* Thumbnail Overlay Indicators */}
 

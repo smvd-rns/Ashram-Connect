@@ -1,11 +1,13 @@
 "use client";
 
 import React, { createContext, useContext, useState, useRef, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 interface Track {
   id: string;
   name: string;
   url: string;
+  lastPosition?: number;
 }
 
 interface MediaContextType {
@@ -24,6 +26,7 @@ interface MediaContextType {
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
   setIsMuted: (isMuted: boolean) => void;
+  savePosition: () => Promise<void>;
 }
 
 const MediaContext = createContext<MediaContextType | undefined>(undefined);
@@ -77,6 +80,12 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
       if (currentTrack?.id !== track.id) {
         audioRef.current.src = track.url;
         setCurrentTrack(track);
+        
+        // Resume logic: if track has a saved position, seek to it
+        if (track.lastPosition && track.lastPosition > 0) {
+          audioRef.current.currentTime = track.lastPosition;
+          setProgress(track.lastPosition);
+        }
       }
       audioRef.current.play().catch(console.error);
       setIsPlaying(true);
@@ -112,6 +121,35 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const savePosition = async () => {
+    if (!currentTrack || !audioRef.current) return;
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch("/api/user/audio-favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          audio_id: currentTrack.id,
+          last_position: audioRef.current.currentTime,
+          duration: audioRef.current.duration,
+          is_update_only: false // Save it even if it was not in watch later yet
+        })
+      });
+
+      if (!res.ok) {
+        console.error("Failed to save audio position");
+      }
+    } catch (err) {
+      console.error("Error saving audio position:", err);
+    }
+  };
+
   return (
     <MediaContext.Provider value={{ 
       currentTrack, 
@@ -128,7 +166,8 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
       setPlaybackSpeed,
       seek,
       setVolume,
-      setIsMuted
+      setIsMuted,
+      savePosition
     }}>
       {children}
     </MediaContext.Provider>
