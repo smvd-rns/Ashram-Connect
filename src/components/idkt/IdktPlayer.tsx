@@ -116,21 +116,18 @@ export default function IdktPlayer() {
                 setSaveStatus('success');
                 setTimeout(() => setSaveStatus('idle'), 2000);
               }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all active:scale-95 ${
+              className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border transition-all active:scale-95 shadow-sm ${
                 saveStatus === 'success' 
-                  ? "bg-emerald-50 border-emerald-100 text-emerald-600" 
+                  ? "bg-emerald-500 border-emerald-400 text-white" 
                   : "bg-orange-50 border-orange-100 text-orange-600 hover:bg-orange-100"
               }`}
-              title="Save current playback position"
+              title={saveStatus === 'success' ? "Position Saved!" : "Save playback position"}
             >
               {saveStatus === 'success' ? (
-                <Check className="w-4 h-4" />
+                <Check className="w-5 h-5" />
               ) : (
-                <Bookmark className={`w-4 h-4 sm:w-5 sm:h-5 ${saveStatus === 'saving' ? 'animate-bounce' : ''}`} />
+                <Bookmark className={`w-5 h-5 ${saveStatus === 'saving' ? 'animate-bounce' : ''}`} />
               )}
-              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
-                {saveStatus === 'success' ? 'Saved!' : 'Save Spot'}
-              </span>
             </button>
           </div>
 
