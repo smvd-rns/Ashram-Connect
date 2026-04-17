@@ -1220,7 +1220,7 @@ export default function YouTubeChannelHub() {
 
       {/* Premium Notification Toast */}
       {notification && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-8 duration-500">
+        <div className="fixed bottom-24 sm:bottom-10 left-1/2 -translate-x-1/2 z-[2000] animate-in fade-in slide-in-from-bottom-8 duration-500">
           <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3 min-w-[280px] ${
             notification.type === 'success' 
             ? "bg-slate-900/90 text-white border-white/20" 
