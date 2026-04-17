@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Folder, Music, ChevronRight, Search, RefreshCw, ChevronLeft, Loader2, PlayCircle, ExternalLink, X, MoreVertical, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Folder, Music, ChevronRight, Search, RefreshCw, ChevronLeft, Loader2, PlayCircle, ExternalLink, X, MoreVertical, Eye, EyeOff, Trash2, Clock, Check } from "lucide-react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useMedia } from "@/context/MediaContext";
+import { supabase } from "@/lib/supabase";
 
 export default function IdktExplorer({ session, profile }: { session: any, profile: any }) {
   const router = useRouter();
@@ -23,6 +24,11 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
   const [manualPath, setManualPath] = useState("");
   const cancelSyncRef = React.useRef(false);
   const { playTrack, currentTrack, isPlaying } = useMedia();
+
+  // Watch Later states
+  const [activeTab, setActiveTab] = useState<'library' | 'favorites'>('library');
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [favoriteItems, setFavoriteItems] = useState<any[]>([]);
   
   const getSpeakerName = (item: any) => {
     if (item.type === "folder") return "Sub-Directory";
@@ -115,7 +121,11 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Operation failed");
       
-      loadItems(currentPath);
+      if (activeTab === 'library') {
+        loadItems(currentPath);
+      } else {
+        loadFavorites();
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -123,11 +133,80 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
     }
   };
 
-  useEffect(() => {
-    if (searchQuery === "") {
-      loadItems(currentPath);
+  const loadFavorites = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch("/api/user/audio-favorites", {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to load Watch Later list");
+      
+      const data = await res.json();
+      setFavoriteItems(data.items || []);
+      setFavoriteIds(data.favoriteIds || []);
+      if (activeTab === 'favorites') {
+        setItems(data.items || []);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-  }, [currentPath, searchQuery, isSuperAdmin]);
+  };
+
+  const toggleWatchLater = async (e: React.MouseEvent, audioId: string) => {
+    e.stopPropagation();
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const isRemoving = favoriteIds.includes(audioId);
+      
+      const res = await fetch("/api/user/audio-favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ audio_id: audioId })
+      });
+
+      if (res.ok) {
+        if (isRemoving) {
+          setFavoriteIds(prev => prev.filter(id => id !== audioId));
+          setFavoriteItems(prev => prev.filter(item => item.id !== audioId));
+          if (activeTab === 'favorites') {
+            setItems(prev => prev.filter(item => item.id !== audioId));
+          }
+        } else {
+          setFavoriteIds(prev => [...prev, audioId]);
+          // Refresh list to get metadata if needed, but for now just updating UI state is enough 
+          // if we are in library view. If in favorites view, it shouldn't happen unless we add from search.
+        }
+      }
+    } catch (err) {
+      console.error("Error toggling watch later:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadFavorites();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'library') {
+      if (searchQuery === "") {
+        loadItems(currentPath);
+      }
+    } else {
+      loadFavorites();
+    }
+  }, [currentPath, searchQuery, isSuperAdmin, activeTab]);
 
   // Admin Sync Logic
   const handleSync = async () => {
@@ -276,7 +355,27 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full lg:w-auto">
-            <div className="relative w-full lg:w-80 group">
+            {/* Tab Switcher */}
+            <div className="flex bg-slate-100 p-1 rounded-xl sm:rounded-2xl shrink-0">
+              <button
+                onClick={() => setActiveTab('library')}
+                className={`flex items-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'library' ? "bg-white text-orange-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <Folder className="w-3.5 h-3.5" /> Library
+              </button>
+              <button
+                onClick={() => setActiveTab('favorites')}
+                className={`flex items-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'favorites' ? "bg-white text-orange-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" /> Watch Later
+              </button>
+            </div>
+
+            <div className="relative w-full lg:w-64 group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
               <input
                 type="text"
@@ -473,7 +572,15 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                 <div 
                   key={item.id} 
                   className={`group flex flex-row items-center justify-between p-4 sm:px-10 sm:py-6 hover:bg-white/80 transition-all cursor-pointer border-l-4 border-transparent hover:border-orange-500 gap-4 ${item.is_hidden ? "opacity-40 grayscale-[0.5]" : ""}`}
-                  onClick={() => item.type === "folder" ? navigateTo(item.full_path) : playTrack(item)}
+                  onClick={() => {
+                    if (item.type === "folder") {
+                      navigateTo(item.full_path);
+                    } else {
+                      // Check if we have progress data for this track
+                      const favVersion = favoriteItems.find(f => f.id === item.id);
+                      playTrack(favVersion || item);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-3 sm:gap-5 min-w-0 flex-1">
                     <div className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl sm:rounded-2xl shrink-0 shadow-sm transition-all group-hover:scale-110 ${item.type === "folder" ? "bg-orange-50 text-orange-600" : "bg-indigo-50 text-indigo-600"}`}>
@@ -524,11 +631,22 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                     {item.type === "audio" && (
                       <>
                         <button 
+                          onClick={(e) => toggleWatchLater(e, item.id)}
+                          className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl transition-all border ${
+                            favoriteIds.includes(item.id) 
+                              ? "bg-orange-600 border-orange-600 text-white" 
+                              : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-orange-50 hover:text-orange-600"
+                          }`}
+                          title={favoriteIds.includes(item.id) ? "Remove from Watch Later" : "Add to Watch Later"}
+                        >
+                          <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                        <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             playTrack(item);
                           }}
-                          className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl transition-all ${currentTrack?.id === item.id && isPlaying ? "bg-orange-600 text-white" : "bg-slate-50 text-slate-400 hover:bg-orange-100 hover:text-orange-600"}`}
+                          className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl transition-all ${currentTrack?.id === item.id && isPlaying ? "bg-indigo-600 text-white" : "bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}
                         >
                           <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>

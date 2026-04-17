@@ -1,23 +1,39 @@
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+require('dotenv').config({ path: '.env.local' });
 
-async function check() {
-  const path = "/02_-_ISKCON_Swamis/";
-  console.log("Checking path:", path);
-  
-  const { data: folder } = await supabase.from('idkt_items').select('*').eq('full_path', path).single();
-  console.log("Folder status:", folder);
-  
-  const { count: children } = await supabase.from('idkt_items').select('*', { count: 'exact', head: true }).eq('parent_path', path);
-  console.log("Children count:", children);
-  
-  const { data: nextPriority } = await supabase.from("idkt_items")
-    .select("full_path")
-    .eq("is_scanned", false)
-    .eq("type", "folder")
-    .lt("error_count", 3)
-    .like("full_path", `${path}%`)
-    .limit(5);
-  console.log("Next priority candidates:", nextPriority);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error("Missing ENV vars");
+  process.exit(1);
 }
-check();
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+async function checkSchema() {
+  const { data, error } = await supabase
+    .from('user_favorites')
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    console.error("Error fetching from user_favorites:", error);
+  } else {
+    console.log("Columns in user_favorites:", data.length > 0 ? Object.keys(data[0]) : "Empty table");
+  }
+
+  // Also check if user_watch_progress exists
+  const { data: progressData, error: progressError } = await supabase
+    .from('user_watch_progress')
+    .select('*')
+    .limit(1);
+  
+  if (progressError) {
+    console.log("user_watch_progress table does not exist or error:", progressError.message);
+  } else {
+    console.log("user_watch_progress exists!");
+  }
+}
+
+checkSchema();
