@@ -3303,20 +3303,21 @@ export default function AdminPanel() {
         let attempt = 0;
         while (attempt < 3) {
           attempt += 1;
-          const res = await fetch("/api/admin/youtube/sync", {
+          const syncRes = await fetch("/api/admin/youtube/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ channelId, isIncremental: false, cursor, maxPages: 5 })
           });
-          const data = await res.json();
+          const data = await syncRes.json();
 
-          if (res.ok) {
+          if (syncRes.ok) {
             hasMore = Boolean(data.hasMore);
             cursor = data.nextCursor || null;
             break;
           }
 
-          if (res.status === 504 && data.retryable && attempt < 3) {
+          if (syncRes.status === 504 && data.retryable && attempt < 3) {
+
             await sleep(600 * attempt);
             continue;
           }
@@ -3463,12 +3464,13 @@ export default function AdminPanel() {
       return;
     }
     try {
-      const res = await fetch("/api/admin/youtube-channels/assignments", {
+      const response = await fetch("/api/admin/youtube-channels/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel_id: activeYtChannel.id, user_id: userId })
       });
-      if (res.ok) fetchYtAssignments(activeYtChannel.id);
+      if (response.ok) fetchYtAssignments(activeYtChannel.id);
+
     } catch (err) {
       alert("Failed to assign user.");
     }
@@ -3476,10 +3478,11 @@ export default function AdminPanel() {
 
   async function handleRemoveYtAssignment(id: string) {
     try {
-      const res = await fetch(`/api/admin/youtube-channels/assignments?id=${id}`, {
+      const response = await fetch(`/api/admin/youtube-channels/assignments?id=${id}`, {
         method: "DELETE"
       });
-      if (res.ok && activeYtChannel?.id) fetchYtAssignments(activeYtChannel.id);
+      if (response.ok && activeYtChannel?.id) fetchYtAssignments(activeYtChannel.id);
+
     } catch (err) {
       alert("Failed to remove assignment.");
     }
@@ -3488,7 +3491,7 @@ export default function AdminPanel() {
   async function handleBulkAssignYt() {
     if (!activeYtChannel?.id || ytSelectedUserIds.size === 0) return;
     try {
-      const res = await fetch("/api/admin/youtube-channels/assignments", {
+      const response = await fetch("/api/admin/youtube-channels/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -3496,7 +3499,8 @@ export default function AdminPanel() {
           user_ids: Array.from(ytSelectedUserIds) 
         })
       });
-      if (res.ok) {
+      if (response.ok) {
+
         fetchYtAssignments(activeYtChannel.id);
         setYtSelectedUserIds(new Set());
         setYtUserDropdownOpen(false);
