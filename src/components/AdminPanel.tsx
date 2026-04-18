@@ -3303,26 +3303,26 @@ export default function AdminPanel() {
         let attempt = 0;
         while (attempt < 3) {
           attempt += 1;
-          const syncRes = await fetch("/api/admin/youtube/sync", {
+          const ytSyncResponse = await fetch("/api/admin/youtube/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ channelId, isIncremental: false, cursor, maxPages: 5 })
           });
-          const data = await syncRes.json();
+          const syncResult = await ytSyncResponse.json();
 
-          if (syncRes.ok) {
-            hasMore = Boolean(data.hasMore);
-            cursor = data.nextCursor || null;
+          if (ytSyncResponse.ok) {
+            hasMore = Boolean(syncResult.hasMore);
+            cursor = syncResult.nextCursor || null;
             break;
           }
 
-          if (syncRes.status === 504 && data.retryable && attempt < 3) {
+          if (ytSyncResponse.status === 504 && syncResult.retryable && attempt < 3) {
 
             await sleep(600 * attempt);
             continue;
           }
 
-          throw new Error(data.error || "Sync failed");
+          throw new Error(syncResult.error || "Sync failed");
         }
       }
 
