@@ -26,9 +26,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    // Default visibility to public if not provided
+    const payload = { ...body, visibility: body.visibility || 'public' };
     const { data, error } = await supabase
       .from("youtube_channels")
-      .insert([body])
+      .insert([payload])
       .select();
 
     if (error) throw error;
