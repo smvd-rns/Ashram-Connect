@@ -26,27 +26,25 @@ export async function GET(request: NextRequest) {
     if (fetchError) throw fetchError;
 
     console.log(`[Sync All] Starting automated sync for ${channels?.length || 0} channels`);
+    const results = [];
 
-    // 2. Perform syncs in parallel
-    // We use allSettled to ensure that one channel failing doesn't stop the rest
-    const syncPromises = (channels || []).map(async (channel) => {
+    // 2. Perform syncs SEQUENTIALLY to avoid statement timeouts on large tables
+    for (const channel of (channels || [])) {
       try {
         const result = await syncYouTubeChannel(channel.channel_id, true);
         console.log(`[Sync All] SUCCESS: ${channel.name} (${result.totalSynced} videos)`);
-        return { channel: channel.name, success: true, videos: result.totalSynced };
+        results.push({ channel: channel.name, success: true, videos: result.totalSynced });
       } catch (err: any) {
         console.error(`[Sync All] FAILED: ${channel.name} - ${err.message}`);
-        return { channel: channel.name, success: false, error: err.message };
+        results.push({ channel: channel.name, success: false, error: err.message });
       }
-    });
-
-    const results = await Promise.allSettled(syncPromises);
+    }
 
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       channelsCount: channels?.length || 0,
-      results: results.map((r: any) => r.value)
+      results: results
     });
 
   } catch (error: any) {

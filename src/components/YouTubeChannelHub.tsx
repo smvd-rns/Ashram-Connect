@@ -85,7 +85,13 @@ export default function YouTubeChannelHub() {
     const fetchChannels = async () => {
       setLoadingChannels(true);
       try {
-        const res = await fetch("/api/youtube/channels");
+        const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+
+        const res = await fetch("/api/youtube/channels", { headers });
         const data = await res.json();
         if (data.channels?.length > 0) {
           setChannels(data.channels);

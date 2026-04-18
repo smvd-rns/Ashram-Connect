@@ -10,7 +10,7 @@ import {
   Save, Trash2, ArrowRight, FileSpreadsheet, Download, CloudUpload,
   Search, Filter, ChevronLeft, ChevronRight, MoreVertical, Shield, UserCheck,
   Settings, Play, Clock, HardDrive, Plus, X, Activity, Grid, Calendar, Monitor, ArrowRightLeft, RotateCcw,
-  BookOpen
+  BookOpen, Check
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -111,6 +111,14 @@ export default function AdminPanel() {
   const [isFetchingYt, setIsFetchingYt] = useState(false);
   const [isUploadingYt, setIsUploadingYt] = useState(false);
   const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set());
+
+  // YouTube Channel Assignments
+  const [ytAssignments, setYtAssignments] = useState<any[]>([]);
+  const [ytUserSearch, setYtUserSearch] = useState("");
+  const [ytUserDropdownOpen, setYtUserDropdownOpen] = useState(false);
+  const [ytSelectedUserIds, setYtSelectedUserIds] = useState<Set<string>>(new Set());
+
+
 
   // Analytics State
   const [stats, setStats] = useState<any>(null);
@@ -522,7 +530,10 @@ export default function AdminPanel() {
     if (activeView === "users") fetchUsers();
     if (activeView === "notifications") fetchUsers(); // Pre-load users for manual targeting
     if (activeView === "bc-class") fetchLectures();
-    if (activeView === "youtube-channels") fetchYtChannels();
+    if (activeView === "youtube-channels") {
+      fetchYtChannels();
+      fetchUsers();
+    }
     if (activeView === "usage-analytics") fetchAnalytics();
     if (activeView === "attendance-machines" && isSuperAdmin) {
       fetchAttendanceConfig();
@@ -1796,7 +1807,17 @@ export default function AdminPanel() {
                   <List className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => { setActiveYtChannel({ is_active: true, banner_style: "linear-gradient(135deg, #f97316 0%, #fbbf24 100%)", order_index: (ytChannels.length + 1) * 10 }); setYtModalOpen(true); }}
+                  onClick={() => { 
+                    setActiveYtChannel({ 
+                      is_active: true, 
+                      banner_style: "linear-gradient(135deg, #f97316 0%, #fbbf24 100%)", 
+                      order_index: (ytChannels.length + 1) * 10,
+                      visibility: 'public'
+                    }); 
+                    setYtModalOpen(true); 
+                    setYtAssignments([]);
+                    setYtSelectedUserIds(new Set());
+                  }}
                   className="flex-grow sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-black text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg active:scale-95"
                 >
                   <Plus className="w-4 h-4" /> Add Channel
@@ -1880,7 +1901,13 @@ export default function AdminPanel() {
                       >
                         <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
                       </button>
-                      <button onClick={() => { setActiveYtChannel(channel); setYtModalOpen(true); }} className="p-2 bg-white text-slate-400 hover:text-indigo-600 rounded-lg border border-slate-100 hover:border-indigo-600 transition-all shadow-sm">
+                      <button onClick={() => { 
+                        setActiveYtChannel(channel); 
+                        setYtModalOpen(true); 
+                        setYtAssignments([]);
+                        setYtSelectedUserIds(new Set());
+                        fetchYtAssignments(channel.id);
+                      }} className="p-2 bg-white text-slate-400 hover:text-indigo-600 rounded-lg border border-slate-100 hover:border-indigo-600 transition-all shadow-sm">
                         <Settings className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => deleteYtChannel(channel.id)} className="p-2 bg-white text-slate-400 hover:text-red-500 rounded-lg border border-slate-100 hover:border-red-500 transition-all shadow-sm">
@@ -1920,6 +1947,128 @@ export default function AdminPanel() {
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Portal Display Name</label>
                       <input type="text" value={activeYtChannel?.name || ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveYtChannel((prev: any) => ({ ...prev, name: e.target.value }))} className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-black outline-none transition-all" />
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Visibility</label>
+                      <select 
+                        value={activeYtChannel?.visibility || 'public'} 
+                        onChange={(e) => setActiveYtChannel((prev: any) => ({ ...prev, visibility: e.target.value }))}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-black outline-none transition-all text-sm"
+                      >
+                        <option value="public">Public (Everyone)</option>
+                        <option value="private">Private (Restricted)</option>
+                      </select>
+                    </div>
+
+                    {activeYtChannel?.visibility === 'private' && (
+                      <div className="space-y-4 pt-2 border-t border-slate-100">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Assigned Users</label>
+                        
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setYtUserDropdownOpen(!ytUserDropdownOpen)}
+                            className="w-full px-4 py-4 bg-indigo-50 border-2 border-indigo-100 rounded-2xl font-bold text-sm text-left text-indigo-900 outline-none hover:bg-indigo-100 transition-all flex justify-between items-center"
+                          >
+                            <span>Add User to Channel</span>
+                            <Plus className="w-4 h-4" />
+                          </button>
+
+                          {ytUserDropdownOpen && (
+                            <div className="absolute z-[120] mt-2 w-full bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 animate-in fade-in slide-in-from-top-2">
+                              <div className="flex gap-2 mb-3">
+                                <input
+                                  type="text"
+                                  placeholder="Search users..."
+                                  value={ytUserSearch}
+                                  onChange={(e) => setYtUserSearch(e.target.value)}
+                                  className="flex-grow px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500"
+                                />
+                                <button 
+                                  onClick={() => {
+                                    const filtered = users
+                                      .filter(u => !ytAssignments.some(a => a.user_id === u.id))
+                                      .filter(u => {
+                                        const q = ytUserSearch.toLowerCase();
+                                        return (u.full_name || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q);
+                                      });
+                                    setYtSelectedUserIds(new Set(filtered.map(u => u.id)));
+                                  }}
+                                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 transition-all"
+                                >
+                                  All
+                                </button>
+                              </div>
+                              
+                              <div className="max-h-52 overflow-y-auto mb-4 custom-scrollbar">
+                                {users
+                                  .filter(u => !ytAssignments.some(a => a.user_id === u.id))
+                                  .filter(u => {
+                                    const q = ytUserSearch.toLowerCase();
+                                    return (u.full_name || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q);
+                                  })
+                                  .map(u => {
+                                    const isSelected = ytSelectedUserIds.has(u.id);
+                                    return (
+                                      <button
+                                        key={u.id}
+                                        onClick={() => {
+                                          const next = new Set(ytSelectedUserIds);
+                                          if (isSelected) next.delete(u.id);
+                                          else next.add(u.id);
+                                          setYtSelectedUserIds(next);
+                                        }}
+                                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-3 mb-1 ${isSelected ? "bg-indigo-50" : "hover:bg-slate-50"}`}
+                                      >
+                                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${isSelected ? "bg-indigo-600 border-indigo-600" : "border-slate-200"}`}>
+                                          {isSelected && <Check className="w-3 h-3 text-white" />}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="text-xs font-black truncate">{u.full_name || u.email}</div>
+                                          <div className="text-[10px] font-bold text-slate-400 truncate">{u.email}</div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                              </div>
+
+                              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                                <button 
+                                  onClick={() => setYtUserDropdownOpen(false)}
+                                  className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                                >
+                                  Cancel
+                                </button>
+                                <button 
+                                  disabled={ytSelectedUserIds.size === 0}
+                                  onClick={handleBulkAssignYt}
+                                  className="flex-[2] py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg disabled:opacity-30"
+                                >
+                                  Assign {ytSelectedUserIds.size} Users
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          {ytAssignments.map(a => (
+                            <div key={a.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-black text-slate-700 truncate">{a.profiles?.full_name || a.profiles?.email}</p>
+                                <p className="text-[10px] font-bold text-slate-400 truncate">{a.profiles?.email}</p>
+                              </div>
+                              <button onClick={() => handleRemoveYtAssignment(a.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors shrink-0">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                          {ytAssignments.length === 0 && (
+                            <p className="text-[10px] font-bold text-slate-400 italic text-center py-2">No users assigned yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Manual Logo Upload (Stability)</label>
                       <div className="flex items-center gap-5 p-5 bg-indigo-50/30 border-2 border-dashed border-indigo-100 rounded-3xl">
@@ -3265,6 +3414,66 @@ export default function AdminPanel() {
     } catch (err) {
       alert("Persistence error");
       fetchYtChannels();
+    }
+  }
+
+  // YT Assignments logic
+  async function fetchYtAssignments(channelId: string) {
+    try {
+      const res = await fetch(`/api/admin/youtube-channels/assignments?channelId=${channelId}`);
+      const data = await res.json();
+      if (data.assignments) setYtAssignments(data.assignments);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function handleAddYtAssignment(userId: string) {
+    if (!activeYtChannel?.id) {
+      alert("Please save the channel first before assigning users.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/youtube-channels/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_id: activeYtChannel.id, user_id: userId })
+      });
+      if (res.ok) fetchYtAssignments(activeYtChannel.id);
+    } catch (err) {
+      alert("Failed to assign user.");
+    }
+  }
+
+  async function handleRemoveYtAssignment(id: string) {
+    try {
+      const res = await fetch(`/api/admin/youtube-channels/assignments?id=${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok && activeYtChannel?.id) fetchYtAssignments(activeYtChannel.id);
+    } catch (err) {
+      alert("Failed to remove assignment.");
+    }
+  }
+
+  async function handleBulkAssignYt() {
+    if (!activeYtChannel?.id || ytSelectedUserIds.size === 0) return;
+    try {
+      const res = await fetch("/api/admin/youtube-channels/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          channel_id: activeYtChannel.id, 
+          user_ids: Array.from(ytSelectedUserIds) 
+        })
+      });
+      if (res.ok) {
+        fetchYtAssignments(activeYtChannel.id);
+        setYtSelectedUserIds(new Set());
+        setYtUserDropdownOpen(false);
+      }
+    } catch (err) {
+      alert("Failed to assign users.");
     }
   }
 }
