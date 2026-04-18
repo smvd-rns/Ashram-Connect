@@ -42,24 +42,40 @@ export function usePushNotifications(session: any) {
     setIsSyncing(true);
     try {
       console.log(`[PushDiag] Proactively syncing ${provider} registration to server...`);
-      const res = await fetch('/api/notifications/subscribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ 
-          subscription,
-          provider,
-          device_type: window.innerWidth < 768 ? 'mobile' : 'desktop' 
-        })
-      });
-      
-      if (res.ok) {
-        setPushEnabled(true);
-        console.log(`[PushDiag] Auto-sync success (${provider}).`);
-      } else {
-        console.error("[PushDiag] Sync failed.");
+      let synced = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const res = await fetch('/api/notifications/subscribe', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            subscription,
+            provider,
+            device_type: window.innerWidth < 768 ? 'mobile' : 'desktop'
+          })
+        });
+
+        if (res.ok) {
+          setPushEnabled(true);
+          console.log(`[PushDiag] Auto-sync success (${provider}).`);
+          synced = true;
+          break;
+        }
+
+        if (res.status === 503 && attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+          continue;
+        }
+
+        const payload = await res.json().catch(() => ({}));
+        console.error(`[PushDiag] Sync failed (${res.status}):`, payload?.error || "Unknown error");
+        break;
+      }
+
+      if (!synced) {
+        setPushEnabled(false);
       }
     } catch (err) {
       console.error("[PushDiag] Sync error:", err);

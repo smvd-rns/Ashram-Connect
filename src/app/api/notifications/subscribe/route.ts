@@ -7,6 +7,16 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function isTransientNetworkError(error: any) {
+  const msg = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+    msg.includes("connect timeout") ||
+    msg.includes("fetch failed") ||
+    msg.includes("network")
+  );
+}
+
 /**
  * POST: Subscribe a user's device for push notifications
  */
@@ -27,7 +37,17 @@ export async function POST(req: NextRequest) {
     );
     
     const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
+    if (authError) {
+      if (isTransientNetworkError(authError)) {
+        console.warn("[PushServer] Auth provider timeout while validating session.");
+        return NextResponse.json(
+          { error: "Auth service timeout. Please retry." },
+          { status: 503 }
+        );
+      }
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+    if (!user) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
