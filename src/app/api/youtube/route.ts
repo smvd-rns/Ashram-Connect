@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const CACHE_SECONDS = 1800; // 30 minutes
@@ -88,6 +93,43 @@ export async function GET(request: NextRequest) {
 
     // Step 1: If we have a channelId, get basic info
     if (channelId) {
+      // PRIVACY CHECK: Verify if channel is private
+      const { data: channelMeta } = await supabase
+        .from("youtube_channels")
+        .select("id, visibility")
+        .eq("channel_id", channelId)
+        .single();
+      
+      if (channelMeta && channelMeta.visibility === 'private') {
+        const authHeader = request.headers.get("Authorization");
+        let hasAccess = false;
+        
+        if (authHeader?.startsWith("Bearer ")) {
+          const token = authHeader.split(" ")[1];
+          const { data: { user } } = await supabase.auth.getUser(token);
+          if (user) {
+            const { data: profile } = await supabase.from("profiles").select("role, roles").eq("id", user.id).single();
+            const isSuperAdmin = profile?.role === 1 || (Array.isArray(profile?.roles) && profile.roles.includes(1));
+            
+            if (isSuperAdmin) {
+              hasAccess = true;
+            } else {
+              const { data: assignment } = await supabase
+                .from("youtube_channel_assignments")
+                .select("id")
+                .eq("channel_id", channelMeta.id)
+                .eq("user_id", user.id)
+                .single();
+              if (assignment) hasAccess = true;
+            }
+          }
+        }
+        
+        if (!hasAccess) {
+          return NextResponse.json({ error: "Private Channel: Access Restricted" }, { status: 403 });
+        }
+      }
+
       const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
       channelUrl.searchParams.set("id", channelId);
       channelUrl.searchParams.set("key", YOUTUBE_API_KEY);

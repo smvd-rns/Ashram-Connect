@@ -350,7 +350,13 @@ export default function YouTubeChannelHub() {
           url += `&channelId=${selectedChannelIds.join(',')}`;
         }
         
-        const res = await fetch(url);
+        const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+        
+        const res = await fetch(url, { headers });
         const data = await res.json();
         if (res.ok) {
           setGlobalResults(data.items || []);

@@ -21,10 +21,20 @@ export async function GET(request: NextRequest) {
     // Split comma-separated IDs into an array for the multi-channel RPC
     const channelIds = channelId ? channelId.split(',') : null;
 
+    // Get User ID from Session for Privacy Filtering
+    const authHeader = request.headers.get("Authorization");
+    let userId = null;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
+    }
+
     const { data, error: searchError } = await supabase.rpc("search_youtube_content", {
       query_text: query,
       channel_ids: channelIds,
-      max_limit: limit
+      max_limit: limit,
+      requesting_user_id: userId
     });
 
     if (searchError) {
