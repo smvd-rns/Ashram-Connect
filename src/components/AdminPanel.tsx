@@ -3303,10 +3303,16 @@ export default function AdminPanel() {
         let attempt = 0;
         while (attempt < 3) {
           attempt += 1;
-          const ytSyncResponse = await fetch("/api/admin/youtube/sync", {
+          const syncPayload = JSON.stringify({ 
+            channelId: channelId, 
+            isIncremental: false, 
+            cursor: cursor, 
+            maxPages: 5 
+          });
+          const ytSyncResponse: Response = await fetch("/api/admin/youtube/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ channelId, isIncremental: false, cursor, maxPages: 5 })
+            body: syncPayload
           });
           const syncResult = await ytSyncResponse.json();
 
@@ -3347,8 +3353,8 @@ export default function AdminPanel() {
     if (!activeYtChannel?.channel_id) return;
     setIsFetchingYt(true);
     try {
-      const res = await fetch(`/api/youtube?channelId=${activeYtChannel.channel_id}`);
-      const data = await res.json();
+      const infoRes = await fetch(`/api/youtube?channelId=${activeYtChannel.channel_id}`);
+      const data = await infoRes.json();
       if (data.channelTitle) {
         setActiveYtChannel((prev: any) => ({
           ...prev,
