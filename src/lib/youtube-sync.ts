@@ -14,10 +14,11 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
   console.log(`[YouTube Sync] Starting sync for channel ${channelId} (Mode: ${isIncremental ? 'Incremental' : 'Full'})`);
 
   // 1. Update status to 'syncing'
-  await safeQuery(() => supabase
+  await safeQuery(async () => await supabase
     .from("youtube_channels")
     .update({ sync_status: 'syncing', sync_error: null })
     .eq("channel_id", channelId), "Update Sync Status Start");
+
 
 
   try {
@@ -66,9 +67,10 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
       }));
 
       if (videos.length > 0) {
-        const { error: upsertError } = await safeQuery(() => supabase
+        const { error: upsertError } = await safeQuery(async () => await supabase
           .from("yt_videos")
           .upsert(videos, { onConflict: "video_id" }), "Upsert Videos");
+
 
         if (upsertError) throw upsertError;
         totalSynced += videos.length;
@@ -104,9 +106,10 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
         }));
 
         if (playlists.length > 0) {
-          const { error: pUpsertError } = await safeQuery(() => supabase
+          const { error: pUpsertError } = await safeQuery(async () => await supabase
             .from("yt_playlists")
             .upsert(playlists, { onConflict: "playlist_id" }), "Upsert Playlists");
+
           if (pUpsertError) console.error("Playlist upsert error:", pUpsertError);
         }
 
@@ -114,7 +117,7 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     }
 
     // 5. Finalize status
-    await safeQuery(() => supabase
+    await safeQuery(async () => await supabase
       .from("youtube_channels")
       .update({ 
         sync_status: 'completed', 
@@ -124,15 +127,17 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
       .eq("channel_id", channelId), "Update Sync Status Success");
 
 
+
     return { success: true, totalSynced };
   } catch (error: any) {
     console.error(`[YouTube Sync Error] Channel ${channelId}:`, error);
     
     // Update status to error
-    await safeQuery(() => supabase
+    await safeQuery(async () => await supabase
       .from("youtube_channels")
       .update({ sync_status: 'error', sync_error: error.message })
       .eq("channel_id", channelId), "Update Sync Status Error");
+
 
 
     throw error;
