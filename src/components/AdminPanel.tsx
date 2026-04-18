@@ -3292,13 +3292,42 @@ export default function AdminPanel() {
 
     setSyncingChannels(prev => new Set(prev).add(channelId));
     try {
-      const res = await fetch("/api/admin/youtube/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelId })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      let cursor: string | null = null;
+      let hasMore = true;
+      let pass = 0;
+      const maxPasses = 300;
+
+      while (hasMore && pass < maxPasses) {
+        pass += 1;
+        let attempt = 0;
+        while (attempt < 3) {
+          attempt += 1;
+          const res = await fetch("/api/admin/youtube/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channelId, isIncremental: false, cursor, maxPages: 5 })
+          });
+          const data = await res.json();
+
+          if (res.ok) {
+            hasMore = Boolean(data.hasMore);
+            cursor = data.nextCursor || null;
+            break;
+          }
+
+          if (res.status === 504 && data.retryable && attempt < 3) {
+            await sleep(600 * attempt);
+            continue;
+          }
+
+          throw new Error(data.error || "Sync failed");
+        }
+      }
+
+      if (hasMore) {
+        throw new Error("Backfill is very large and needs another run. Please click sync again.");
+      }
 
       // Refresh channels to get updated status and timestamp
       fetchYtChannels();
