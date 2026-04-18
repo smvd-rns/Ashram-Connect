@@ -273,7 +273,15 @@ export default function YouTubeChannelHub() {
       const pageToken = isLoadMore ? nextPageToken : "";
       const plParam = activePlaylistId ? `&playlistId=${activePlaylistId}` : "";
       const tParam = `&_t=${Date.now()}`;
-      const res = await fetch(`/api/youtube?channelId=${channel.channel_id}&type=${tab}&pageToken=${pageToken}${plParam}${tParam}`);
+      
+      const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch(`/api/youtube?channelId=${channel.channel_id}&type=${tab}&pageToken=${pageToken}${plParam}${tParam}`, { headers });
+
       const data = await res.json();
       
       if (!res.ok) {
@@ -401,7 +409,14 @@ export default function YouTubeChannelHub() {
     if (!isCached && !fetchedVideoMetadata[activeVideoId]) {
       const fetchMetadata = async () => {
         try {
-          const res = await fetch(`/api/youtube?videoId=${activeVideoId}`);
+          const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+          const headers: Record<string, string> = {};
+          if (session) {
+            headers["Authorization"] = `Bearer ${session.access_token}`;
+          }
+
+          const res = await fetch(`/api/youtube?videoId=${activeVideoId}`, { headers });
+
           if (res.ok) {
             const data = await res.json();
             setFetchedVideoMetadata(prev => ({ ...prev, [activeVideoId]: data }));
