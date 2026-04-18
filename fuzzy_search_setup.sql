@@ -1,12 +1,12 @@
 -- 1. Enable pg_trgm if not already enabled
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- 2. Update the Search Function to support MULTI-CHANNEL filtering
--- We change channel_id_filter to channel_ids (an array of TEXT)
+-- 2. Update the Search Function to support PRIVACY and MULTI-CHANNEL filtering
 CREATE OR REPLACE FUNCTION search_youtube_content(
     query_text TEXT,
-    channel_ids TEXT[] DEFAULT NULL, -- CHANGED: Now accepts an array for multi-channel search
-    max_limit INT DEFAULT 200
+    channel_ids TEXT[] DEFAULT NULL,
+    max_limit INT DEFAULT 200,
+    requesting_user_id UUID DEFAULT NULL -- Added for privacy filtering
 )
 RETURNS TABLE (
     id TEXT,
@@ -36,11 +36,18 @@ BEGIN
         FROM yt_videos v
         JOIN youtube_channels c ON v.channel_id = c.channel_id
         WHERE 
-            -- CHANGED: Use = ANY() to filter by multiple channel IDs
             (channel_ids IS NULL OR v.channel_id = ANY(channel_ids))
             AND (
                 v.title ILIKE '%' || query_text || '%' 
                 OR v.title % query_text
+            )
+            -- Privacy Enforcement
+            AND (
+                c.visibility = 'public'
+                OR (requesting_user_id IS NOT NULL AND (
+                    EXISTS (SELECT 1 FROM youtube_channel_assignments a WHERE a.channel_id = c.id AND a.user_id = requesting_user_id)
+                    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = requesting_user_id AND (p.role = 1 OR (p.roles IS NOT NULL AND 1 = ANY(p.roles))))
+                ))
             )
         
         UNION ALL
@@ -59,11 +66,18 @@ BEGIN
         FROM yt_playlists p
         JOIN youtube_channels c ON p.channel_id = c.channel_id
         WHERE 
-            -- CHANGED: Use = ANY() to filter by multiple channel IDs
             (channel_ids IS NULL OR p.channel_id = ANY(channel_ids))
             AND (
                 p.title ILIKE '%' || query_text || '%'
                 OR p.title % query_text
+            )
+            -- Privacy Enforcement
+            AND (
+                c.visibility = 'public'
+                OR (requesting_user_id IS NOT NULL AND (
+                    EXISTS (SELECT 1 FROM youtube_channel_assignments a WHERE a.channel_id = c.id AND a.user_id = requesting_user_id)
+                    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = requesting_user_id AND (p.role = 1 OR (p.roles IS NOT NULL AND 1 = ANY(p.roles))))
+                ))
             )
     )
     SELECT * FROM combined_results
