@@ -1030,18 +1030,18 @@ export default function YouTubeChannelHub() {
                       console.log("[Autoplay] Video ended. Searching for next...", { activeVideoId, activeTab, hasPlaylist: !!activePlaylistId });
                       
                       // Try to find in the current filtered list (what the user sees)
-                      let currentIndex = filteredVideos.findIndex(v => v.id === activeVideoId);
+                      let currentIndex = filteredVideos.findIndex((v: VideoItem) => v.id === activeVideoId);
                       let listToUse = filteredVideos;
                       
                       // Fallback to the full videos list if not found in filtered (e.g. search query changed)
                       if (currentIndex === -1) {
-                        currentIndex = videos.findIndex(v => v.id === activeVideoId);
+                        currentIndex = videos.findIndex((v: VideoItem) => v.id === activeVideoId);
                         listToUse = videos;
                       }
                       
                       // Final fallback to favorites if in favorites tab
                       if (currentIndex === -1 && activeTab === "favorites") {
-                        currentIndex = favoriteVideos.findIndex(v => v.id === activeVideoId);
+                        currentIndex = favoriteVideos.findIndex((v: VideoItem) => v.id === activeVideoId);
                         listToUse = favoriteVideos;
                       }
 
