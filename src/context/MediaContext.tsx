@@ -12,16 +12,21 @@ interface Track {
 
 interface MediaContextType {
   currentTrack: Track | null;
+  playlist: Track[];
+  autoplay: boolean;
+  setAutoplay: (autoplay: boolean) => void;
   isPlaying: boolean;
   playbackSpeed: number;
   progress: number;
   duration: number;
   volume: number;
   isMuted: boolean;
-  playTrack: (track: Track) => void;
+  playTrack: (track: Track, newPlaylist?: Track[]) => void;
   pauseTrack: () => void;
   togglePlay: () => void;
   stopTrack: () => void;
+  playNext: () => void;
+  playPrevious: () => void;
   setPlaybackSpeed: (speed: number) => void;
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
@@ -33,12 +38,23 @@ const MediaContext = createContext<MediaContextType | undefined>(undefined);
 
 export function MediaProvider({ children }: { children: React.ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [playlist, setPlaylist] = useState<Track[]>([]);
+  const [autoplay, setAutoplay] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("idkt-autoplay") !== "false";
+    }
+    return true;
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("idkt-autoplay", String(autoplay));
+  }, [autoplay]);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -50,7 +66,13 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
 
     const onTimeUpdate = () => setProgress(audio.currentTime);
     const onLoadedMetadata = () => setDuration(audio.duration);
-    const onEnded = () => setIsPlaying(false);
+    
+    // We use a ref for playNext to ensure the event listener has access to the latest state
+    // but here we can also just handle it via useEffect if needed.
+    // However, the simplest way is to handle it in a callback.
+    const onEnded = () => {
+      setIsPlaying(false);
+    };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -62,6 +84,23 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener("ended", onEnded);
     };
   }, []);
+
+  // Handle autoplay when track ends
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleEnded = () => {
+      if (autoplay) {
+        playNext();
+      } else {
+        setIsPlaying(false);
+      }
+    };
+
+    audio.addEventListener("ended", handleEnded);
+    return () => audio.removeEventListener("ended", handleEnded);
+  }, [autoplay, currentTrack, playlist]); // Re-bind when playlist or currentTrack changes
 
   useEffect(() => {
     if (audioRef.current) {
@@ -75,8 +114,12 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
     }
   }, [volume, isMuted]);
 
-  const playTrack = (track: Track) => {
+  const playTrack = (track: Track, newPlaylist?: Track[]) => {
     if (audioRef.current) {
+      if (newPlaylist) {
+        setPlaylist(newPlaylist);
+      }
+
       if (currentTrack?.id !== track.id) {
         audioRef.current.src = track.url;
         setCurrentTrack(track);
@@ -89,6 +132,22 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
       }
       audioRef.current.play().catch(console.error);
       setIsPlaying(true);
+    }
+  };
+
+  const playNext = () => {
+    if (!playlist.length || !currentTrack) return;
+    const currentIndex = playlist.findIndex(t => t.id === currentTrack.id);
+    if (currentIndex !== -1 && currentIndex < playlist.length - 1) {
+      playTrack(playlist[currentIndex + 1]);
+    }
+  };
+
+  const playPrevious = () => {
+    if (!playlist.length || !currentTrack) return;
+    const currentIndex = playlist.findIndex(t => t.id === currentTrack.id);
+    if (currentIndex > 0) {
+      playTrack(playlist[currentIndex - 1]);
     }
   };
 
@@ -153,6 +212,9 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
   return (
     <MediaContext.Provider value={{ 
       currentTrack, 
+      playlist,
+      autoplay,
+      setAutoplay,
       isPlaying, 
       playbackSpeed,
       progress,
@@ -163,6 +225,8 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
       pauseTrack, 
       togglePlay,
       stopTrack,
+      playNext,
+      playPrevious,
       setPlaybackSpeed,
       seek,
       setVolume,

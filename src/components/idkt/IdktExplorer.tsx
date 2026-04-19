@@ -578,7 +578,9 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                     } else {
                       // Check if we have progress data for this track
                       const favVersion = favoriteItems.find(f => f.id === item.id);
-                      playTrack(favVersion || item);
+                      // Only include audio items in the playlist
+                      const audioPlaylist = items.filter((i: any) => i.type === "audio");
+                      playTrack(favVersion || item, audioPlaylist);
                     }
                   }}
                 >
@@ -644,7 +646,8 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            playTrack(item);
+                            const audioPlaylist = items.filter((i: any) => i.type === "audio");
+                            playTrack(item, audioPlaylist);
                           }}
                           className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl transition-all ${currentTrack?.id === item.id && isPlaying ? "bg-indigo-600 text-white" : "bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}
                         >
