@@ -137,6 +137,11 @@ export default function OptimizedVideoPlayer({
     seekPerformedRef.current = false;
   }, [videoId]);
 
+  const onStateChangeRef = useRef(onStateChange);
+  useEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  }, [onStateChange]);
+
   useEffect(() => {
     if (!playerReady || !videoId || timedOut) return;
 
@@ -158,10 +163,12 @@ export default function OptimizedVideoPlayer({
                playerInstance.current?.seekTo(initialTime, true);
                seekPerformedRef.current = true;
              }
+             // Explicitly play to ensure autoplay works after a transition
+             playerInstance.current?.playVideo();
           },
           onStateChange: (event: any) => {
             setCurrentState(event.data);
-            if (onStateChange) onStateChange(event.data);
+            if (onStateChangeRef.current) onStateChangeRef.current(event.data);
             const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
             const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
             
@@ -186,7 +193,11 @@ export default function OptimizedVideoPlayer({
         },
       });
     } else if (playerInstance.current.loadVideoById) {
-      playerInstance.current.loadVideoById(videoId);
+      playerInstance.current.loadVideoById({
+        videoId: videoId,
+        startSeconds: initialTime || 0
+      });
+      playerInstance.current.playVideo();
       updateMediaSession();
     }
 

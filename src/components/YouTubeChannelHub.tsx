@@ -57,9 +57,25 @@ export default function YouTubeChannelHub() {
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
+  const [autoplay, setAutoplay] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
+
+  useEffect(() => {
+    const saved = localStorage.getItem("yt-autoplay");
+    if (saved !== null) {
+      setAutoplay(saved === "true");
+    }
+  }, []);
+
+  const toggleAutoplay = () => {
+    setAutoplay(prev => {
+      const newVal = !prev;
+      localStorage.setItem("yt-autoplay", String(newVal));
+      return newVal;
+    });
+  };
 
   const [contentCache, setContentCache] = useState<Record<string, any>>({});
   const [logoCache, setLogoCache] = useState<Record<string, string>>({});
@@ -167,6 +183,10 @@ export default function YouTubeChannelHub() {
       // This prevents the "null" in URL from fighting with the "auto-select" logic
       if (urlPlaylistId && urlPlaylistId !== activePlaylistId) {
         setActivePlaylistId(urlPlaylistId);
+        // If we have a playlist in URL but no tab, force 'playlists' tab to ensure correct content loading
+        if (!urlTab && activeTab !== "playlists") {
+          setActiveTab("playlists");
+        }
       }
       if (urlVideoId && urlVideoId !== activeVideoId) {
         setActiveVideoId(urlVideoId);
@@ -978,6 +998,11 @@ export default function YouTubeChannelHub() {
                     onClick={() => {
                       setActivePlaylistId(null);
                       setActivePlaylistName(null);
+                      // Update URL to remove playlist and video ID
+                      const query = new URLSearchParams(searchParams.toString());
+                      query.delete("playlist");
+                      query.delete("v");
+                      router.push(`${pathname}?${query.toString()}`, { scroll: false });
                     }}
                     className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
                   >
@@ -990,7 +1015,7 @@ export default function YouTubeChannelHub() {
             <div ref={playerRef} className="order-1 lg:order-2 scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
               {activeVideoId ? (
                 <OptimizedVideoPlayer 
-                  key={activeVideoId}
+                  key={activeChannel?.id || "global-player"}
                   videoId={activeVideoId}
                   title={activeVideo?.title || "Video"}
                   artist={activeChannel?.name || "Watch Later"}
@@ -999,6 +1024,39 @@ export default function YouTubeChannelHub() {
                   onStateChange={(state: number) => {
                     if (state === -1) setLoading(true);
                     else setLoading(false);
+                    
+                    // 0 is YT.PlayerState.ENDED
+                    if (state === 0 && autoplay) {
+                      console.log("[Autoplay] Video ended. Searching for next...", { activeVideoId, activeTab, hasPlaylist: !!activePlaylistId });
+                      
+                      // Try to find in the current filtered list (what the user sees)
+                      let currentIndex = filteredVideos.findIndex(v => v.id === activeVideoId);
+                      let listToUse = filteredVideos;
+                      
+                      // Fallback to the full videos list if not found in filtered (e.g. search query changed)
+                      if (currentIndex === -1) {
+                        currentIndex = videos.findIndex(v => v.id === activeVideoId);
+                        listToUse = videos;
+                      }
+                      
+                      // Final fallback to favorites if in favorites tab
+                      if (currentIndex === -1 && activeTab === "favorites") {
+                        currentIndex = favoriteVideos.findIndex(v => v.id === activeVideoId);
+                        listToUse = favoriteVideos;
+                      }
+
+                      if (currentIndex !== -1 && currentIndex < listToUse.length - 1) {
+                        const nextVideo = listToUse[currentIndex + 1];
+                        console.log("[Autoplay] Found next video:", nextVideo.title);
+                        // Small delay for UX transition
+                        setTimeout(() => {
+                          handleVideoSelect(nextVideo);
+                          notify(`Autoplay: Playing next lecture`, 'success');
+                        }, 1000);
+                      } else {
+                        console.log("[Autoplay] No next video found or at end of list.", { currentIndex, total: listToUse.length });
+                      }
+                    }
                   }}
                   onProgress={handleVideoProgress}
                 />
@@ -1076,10 +1134,23 @@ export default function YouTubeChannelHub() {
               />
             </div>
 
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 pl-2 flex items-center gap-2">
-              <Play className="w-3 h-3" />
-              {loading ? "Loading…" : `${activePlaylistId ? "Playlist" : activeTab.toUpperCase()}: ${filteredVideos.length} Items`}
-            </p>
+            <div className="flex items-center justify-between pl-2 pr-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 flex items-center gap-2">
+                <Play className="w-3 h-3" />
+                {loading ? "Loading…" : `${activePlaylistId ? "Playlist" : activeTab.toUpperCase()}: ${filteredVideos.length} Items`}
+              </p>
+              
+              <button 
+                onClick={toggleAutoplay}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${autoplay ? "bg-devo-50 text-devo-600 border border-devo-100" : "bg-slate-50 text-slate-400 border border-slate-100"}`}
+                title={autoplay ? "Autoplay is ON" : "Autoplay is OFF"}
+              >
+                <span className="text-[9px] font-black uppercase tracking-widest">Autoplay</span>
+                <div className={`w-7 h-4 rounded-full relative transition-colors ${autoplay ? "bg-devo-500" : "bg-slate-300"}`}>
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-sm transition-all ${autoplay ? "left-3.5" : "left-0.5"}`} />
+                </div>
+              </button>
+            </div>
 
             <div className="space-y-3 max-h-[1200px] overflow-y-auto pr-1 custom-scrollbar">
               {loading ? (
