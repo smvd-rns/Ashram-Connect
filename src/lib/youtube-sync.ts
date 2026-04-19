@@ -91,7 +91,7 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     // 3. Paginate through videos in the uploads playlist
     const resolvedStartCursor = typeof options.startPageToken === "string"
       ? options.startPageToken
-      : await readSavedCursor(channelId);
+      : (isIncremental ? "" : await readSavedCursor(channelId));
     let nextPageToken = resolvedStartCursor || "";
     let totalSynced = 0;
     let pagesProcessed = 0;
@@ -135,7 +135,11 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     } while (nextPageToken);
 
     const hasMore = Boolean(nextPageToken);
-    await saveCursorState(channelId, hasMore ? nextPageToken : null);
+    
+    // Only update the persistent backfill cursor if we are actually doing a backfill run.
+    if (!isIncremental) {
+      await saveCursorState(channelId, hasMore ? nextPageToken : null);
+    }
 
     // 4. Fetch and Sync Playlists (Only if NOT incremental)
     if (!isIncremental && !hasMore) {
@@ -169,15 +173,17 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
       }
     }
 
-    // 5. Finalize status only when backfill is complete
-    if (!hasMore) {
+    // 5. Finalize status: Completed if we finished the whole thing, 
+    // OR if we finished the requested incremental pass.
+    if (!hasMore || isIncremental) {
       await safeQuery(async () => await supabase
         .from("youtube_channels")
         .update({
           sync_status: 'completed',
           last_sync_at: new Date().toISOString(),
           sync_error: null,
-          sync_cursor: null
+          // Only clear cursor if we actually reached the end of the playlist.
+          ...(!hasMore ? { sync_cursor: null } : {})
         })
         .eq("channel_id", channelId), "Update Sync Status Success");
     }
