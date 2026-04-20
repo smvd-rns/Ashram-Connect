@@ -389,22 +389,19 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
               />
             </div>
             
-            {isSuperAdmin && (
-              <>
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              <button 
+                onClick={handleSync}
+                disabled={syncing || deepSyncing}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-slate-800 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                title="Sync this current directory only"
+              >
+                {syncing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                {syncing ? "Syncing..." : "Sync Here"}
+              </button>
 
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  <button 
-                    onClick={handleSync}
-                    disabled={syncing || deepSyncing}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-[9px] sm:text-[10px] hover:bg-slate-800 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                    title="Sync this current directory only"
-                  >
-                    {syncing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
-                    {syncing ? "Syncing..." : "Sync Here"}
-                  </button>
-
-
-
+              {isSuperAdmin && (
+                <div className="flex items-center gap-2 flex-1 sm:flex-none">
                   {deepSyncing ? (
                     <button 
                       onClick={stopDeepSync}
@@ -436,8 +433,8 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                     </>
                   )}
                 </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
         
