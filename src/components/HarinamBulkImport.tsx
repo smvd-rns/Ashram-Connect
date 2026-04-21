@@ -54,7 +54,7 @@ export default function HarinamBulkImport({ session, onSuccess }: HarinamBulkImp
           if (!name || !typeStr || !dateVal) continue;
 
           // Parse types: "(7:00:00 AM, PDC, 7:40:00 AM)"
-          const types = (typeStr || "").toString().replace(/[()]/g, "").split(",").map(t => t.trim()).filter(Boolean);
+          const types = (typeStr || "").toString().replace(/[()]/g, "").split(",").map((t: string) => t.trim()).filter(Boolean);
           
           // Handle Excel date objects or strings
           let formattedDate = "";
@@ -108,7 +108,7 @@ export default function HarinamBulkImport({ session, onSuccess }: HarinamBulkImp
         const typeStr = parts[1].trim();
         const dateStr = parts[2].trim();
 
-        const types = typeStr.replace(/[()]/g, "").split(",").map(t => t.trim());
+        const types = typeStr.replace(/[()]/g, "").split(",").map((t: string) => t.trim());
         
         let formattedDate = dateStr;
         if (dateStr.includes("/")) {
