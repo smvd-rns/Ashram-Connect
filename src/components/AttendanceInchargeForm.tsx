@@ -25,6 +25,7 @@ export default function AttendanceInchargeForm({
   const [customMins, setCustomMins] = useState(15);
   const [harinamRecords, setHarinamRecords] = useState<Record<string, any>>({});
   const [loadingRecords, setLoadingRecords] = useState(false);
+  const [showOnlyMarked, setShowOnlyMarked] = useState(false);
 
   const loadUsers = async () => {
     if (!session?.access_token) return;
@@ -77,14 +78,26 @@ export default function AttendanceInchargeForm({
   }, [session?.access_token, date]);
 
   const filteredUsers = useMemo(() => {
+    let list = users;
+    if (showOnlyMarked) {
+      list = list.filter((u: any) => {
+        const record = harinamRecords[u.email];
+        if (!record) return false;
+        // If "Only Marked" is on, show users marked for the CURRENTLY selected slot
+        return (record[markType] || 0) > 0;
+      });
+    }
+
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u: any) =>
-        (u.full_name || "").toLowerCase().includes(q) ||
-        (u.email || "").toLowerCase().includes(q),
-    );
-  }, [users, search]);
+    if (q) {
+      list = list.filter(
+        (u: any) =>
+          (u.full_name || "").toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [users, search, showOnlyMarked, harinamRecords, markType]);
 
   const toggleUser = (email: string) => {
     setSelected((prev) =>
@@ -222,10 +235,10 @@ export default function AttendanceInchargeForm({
               Select Filtered
             </button>
             <button
-              onClick={clearSelection}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-white border-emerald-100 text-slate-500 hover:border-emerald-200"
+              onClick={() => setShowOnlyMarked(!showOnlyMarked)}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border ${showOnlyMarked ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-blue-100 text-blue-600 hover:border-blue-200"}`}
             >
-              Clear
+              {showOnlyMarked ? "Show All" : "Only Marked"}
             </button>
             <span className="text-[10px] font-black text-slate-400 ml-auto">
               {selected.length} selected
@@ -244,18 +257,24 @@ export default function AttendanceInchargeForm({
             ) : (
               filteredUsers.map((u: any) => {
                 const isSelected = selected.includes(u.email);
-                const markedMins = harinamRecords[u.email]
-                  ? (harinamRecords[u.email].h7am || 0) +
-                    (harinamRecords[u.email].h740am || 0) +
-                    (harinamRecords[u.email].hpdc || 0) +
-                    (harinamRecords[u.email].hcustom_mins || 0)
-                  : 0;
+                const record = harinamRecords[u.email];
+                const markedSlots: string[] = [];
+                if (record?.h7am > 0) markedSlots.push("7AM");
+                if (record?.h740am > 0) markedSlots.push("7:40AM");
+                if (record?.hpdc > 0) markedSlots.push("PDC");
+                if (record?.hcustom_mins > 0) markedSlots.push("Custom");
+                
+                const isMarked = markedSlots.length > 0;
 
                 return (
                   <div
                     key={u.email}
                     onClick={() => toggleUser(u.email)}
-                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white cursor-pointer transition-colors"
+                    className={`flex items-center gap-2.5 px-3 py-2.5 hover:bg-white cursor-pointer transition-all ${
+                      isMarked 
+                        ? "bg-blue-50/80 border-y border-blue-100/50" 
+                        : "bg-transparent"
+                    }`}
                   >
                     <div
                       className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${isSelected ? "bg-emerald-600 border-emerald-600 shadow-sm" : "bg-white border-slate-200"}`}
@@ -266,16 +285,20 @@ export default function AttendanceInchargeForm({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="text-[11px] font-black text-slate-800 truncate">
+                        <div className={`text-[13px] font-black truncate ${isMarked ? "text-blue-900" : "text-slate-800"}`}>
                           {u.full_name}
                         </div>
-                        {markedMins > 0 && (
-                          <div className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-md border border-emerald-100">
-                            MARKED {markedMins}m
+                        {isMarked && (
+                          <div className="flex flex-wrap gap-1">
+                            {markedSlots.map(slot => (
+                              <div key={slot} className="px-1.5 py-0.5 bg-blue-600 text-white text-[7px] font-black rounded-md uppercase animate-in fade-in zoom-in duration-300">
+                                {slot}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
-                      <div className="text-[10px] font-bold text-slate-400 truncate">
+                      <div className={`text-[11px] font-bold truncate ${isMarked ? "text-blue-400" : "text-slate-400"}`}>
                         {u.email}
                       </div>
                     </div>

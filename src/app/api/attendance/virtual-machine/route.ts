@@ -46,6 +46,9 @@ export async function GET(req: NextRequest) {
     const machine = await getAssignedMachineForIncharge(user.id);
     if (!machine) return NextResponse.json({ machine: null, users: [] });
 
+    const { searchParams } = new URL(req.url);
+    const date = searchParams.get("date");
+
     const { data: machineMappings, error: mappingError } = await supabase
       .from("attendance_user_mapping")
       .select("user_email")
@@ -82,7 +85,18 @@ export async function GET(req: NextRequest) {
       full_name: profileMap.get(email) || email.split("@")[0],
     }));
 
-    return NextResponse.json({ machine, users });
+    // Fetch existing attendance for the date if provided
+    let existingAttendance = [];
+    if (date) {
+      const { data: attendance } = await supabase
+        .from("virtual_machine_attendance")
+        .select("user_email, status")
+        .eq("machine_id", machine.id)
+        .eq("date", date);
+      existingAttendance = attendance || [];
+    }
+
+    return NextResponse.json({ machine, users, records: existingAttendance });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
