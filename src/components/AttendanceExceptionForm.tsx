@@ -59,10 +59,10 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
   };
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/20 relative overflow-hidden group">
+    <div className="bg-rose-100 p-6 sm:p-8 rounded-[2.5rem] border-2 border-rose-200 shadow-xl shadow-rose-300/20 relative overflow-hidden group transition-all hover:bg-rose-200/40">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-          <AlertCircle className="w-5 h-5 text-indigo-600" />
+        <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
+          <AlertCircle className="w-5 h-5 text-rose-600" />
         </div>
         <div>
           <h4 className="text-lg font-black text-slate-900 tracking-tight leading-none">Report Exception</h4>
@@ -83,7 +83,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
                 // Default to single-day behavior unless the user explicitly enables range.
                 if (!useDateRange) setReportingEnd(next);
               }}
-              className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+              className="w-full text-xs font-bold p-3 bg-white border border-rose-100 rounded-2xl focus:ring-4 focus:ring-rose-500/10 outline-none transition-all"
             />
           </div>
           {useDateRange ? (
@@ -93,7 +93,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
                 type="date"
                 value={reportingEnd}
                 onChange={(e) => setReportingEnd(e.target.value)}
-                className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+                className="w-full text-xs font-bold p-3 bg-white border border-rose-100 rounded-2xl focus:ring-4 focus:ring-rose-500/10 outline-none transition-all"
               />
             </div>
           ) : (
@@ -104,7 +104,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
                   setUseDateRange(true);
                   setReportingEnd(reportingStart);
                 }}
-                className="w-full text-left text-[10px] font-black uppercase tracking-widest px-1 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:text-slate-700 hover:border-slate-200 transition-all"
+                className="w-full text-left text-[10px] font-black uppercase tracking-widest px-1 py-3 bg-white border border-rose-100 rounded-2xl text-slate-500 hover:text-slate-700 hover:border-rose-200 transition-all"
               >
                 Use date range
               </button>
@@ -116,7 +116,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
             <button
               type="button"
               onClick={() => setUseDateRange(false)}
-              className="text-[10px] font-black uppercase tracking-widest px-1 py-1 text-indigo-700 hover:text-indigo-900"
+              className="text-[10px] font-black uppercase tracking-widest px-1 py-1 text-rose-700 hover:text-rose-900"
             >
               Mark only one day
             </button>
@@ -130,7 +130,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
               onClick={() => setSelectedSessions(["All"])}
               className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border ${
                 selectedSessions.includes("All")
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100"
+                  ? "bg-rose-600 border-rose-600 text-white shadow-md shadow-rose-100"
                   : "bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-300"
               }`}
             >
@@ -155,8 +155,8 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
                   }}
                   className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border ${
                     isActive
-                      ? "bg-indigo-100 border-indigo-200 text-indigo-700"
-                      : "bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200"
+                      ? "bg-rose-100 border-rose-200 text-rose-700"
+                      : "bg-white border-rose-100 text-slate-400 hover:border-rose-200"
                   }`}
                 >
                   {s}
@@ -172,7 +172,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
           <select 
             value={reportingReason} 
             onChange={e => setReportingReason(e.target.value)} 
-            className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all cursor-pointer appearance-none"
+            className="w-full text-xs font-bold p-3 bg-white border border-rose-100 rounded-2xl focus:ring-4 focus:ring-rose-500/10 outline-none transition-all cursor-pointer appearance-none"
           >
             {Object.keys(exceptionConfigs).map(r => <option key={r} value={r}>{r}</option>)}
           </select>
@@ -184,7 +184,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
             value={reportingComment} 
             onChange={e => setReportingComment(e.target.value)} 
             placeholder="Help the community understand why you missed the session..." 
-            className="w-full text-xs font-bold p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all h-24 resize-none placeholder:text-slate-300" 
+            className="w-full text-xs font-bold p-4 bg-white border border-rose-100 rounded-2xl focus:ring-4 focus:ring-rose-500/10 outline-none transition-all h-24 resize-none placeholder:text-slate-300" 
           />
         </div>
 
@@ -194,7 +194,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
           className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${
             isSubmittingException 
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-              : 'bg-indigo-600 text-white hover:bg-slate-900 shadow-lg shadow-indigo-100 active:scale-95'
+              : 'bg-rose-600 text-white hover:bg-slate-900 shadow-lg shadow-rose-100 active:scale-95'
           }`}
         >
           {isSubmittingException ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Submit Record Exception'}
@@ -202,7 +202,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
       </div>
       
       {/* Decorative gradient overlay */}
-      <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-indigo-50/50 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-rose-50/50 rounded-full blur-3xl pointer-events-none" />
     </div>
   );
 }

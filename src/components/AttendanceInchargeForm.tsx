@@ -23,6 +23,8 @@ export default function AttendanceInchargeForm({
   const [selected, setSelected] = useState<string[]>([]);
   const [markType, setMarkType] = useState<HarinamType>("h7am");
   const [customMins, setCustomMins] = useState(15);
+  const [harinamRecords, setHarinamRecords] = useState<Record<string, any>>({});
+  const [loadingRecords, setLoadingRecords] = useState(false);
 
   const loadUsers = async () => {
     if (!session?.access_token) return;
@@ -46,9 +48,33 @@ export default function AttendanceInchargeForm({
     }
   };
 
+  const loadHarinamRecords = async () => {
+    if (!session?.access_token || !date) return;
+    setLoadingRecords(true);
+    try {
+      const res = await fetch(`/api/admin/harinam?date=${date}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      const records = (data?.records || []).reduce((acc: any, r: any) => {
+        acc[r.user_email] = r;
+        return acc;
+      }, {});
+      setHarinamRecords(records);
+    } catch (err) {
+      console.error("Failed to load harinam records:", err);
+    } finally {
+      setLoadingRecords(false);
+    }
+  };
+
   useEffect(() => {
     loadUsers();
   }, [session?.access_token]);
+
+  useEffect(() => {
+    loadHarinamRecords();
+  }, [session?.access_token, date]);
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -105,6 +131,7 @@ export default function AttendanceInchargeForm({
       }
 
       if (onSuccess) onSuccess();
+      await loadHarinamRecords();
       setSelected([]);
     } catch (err) {
       console.error(err);
@@ -115,68 +142,68 @@ export default function AttendanceInchargeForm({
   };
 
   return (
-    <div className="bg-white p-4 sm:p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/20 relative overflow-hidden">
+    <div className="bg-emerald-100 p-6 sm:p-8 rounded-[2.5rem] border-2 border-emerald-200 shadow-xl shadow-emerald-300/20 relative overflow-hidden group transition-all hover:bg-emerald-200/40">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-          <Users className="w-5 h-5 text-indigo-600" />
+        <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+          <Users className="w-5 h-5 text-emerald-600" />
         </div>
         <div>
           <h4 className="text-lg font-black text-slate-900 tracking-tight leading-none">
             Attendance Incharge
           </h4>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-            Bulk Mark Harinam
+            Bulk Marking Record
           </p>
         </div>
       </div>
 
       <div className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">
-            Date
-          </label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">
-            Mark As
-          </label>
-          <select
-            value={markType}
-            onChange={(e) => setMarkType(e.target.value as HarinamType)}
-            className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all cursor-pointer appearance-none"
-          >
-            <option value="h7am">7:00 AM</option>
-            <option value="h740am">7:40 AM</option>
-            <option value="hpdc">PDC</option>
-            <option value="hcustom_mins">Custom Minutes</option>
-          </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">
+              Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">
+              Harinam Slot
+            </label>
+            <select
+              value={markType}
+              onChange={(e) => setMarkType(e.target.value as HarinamType)}
+              className="w-full text-xs font-bold p-3 bg-white border border-emerald-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all appearance-none cursor-pointer"
+            >
+              <option value="h7am">7:00 AM Slot</option>
+              <option value="h740am">7:40 AM Slot</option>
+              <option value="hpdc">PDC Slot</option>
+              <option value="hcustom_mins">Custom Minutes</option>
+            </select>
+          </div>
         </div>
 
         {markType === "hcustom_mins" && (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-300">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">
-              Custom Minutes
+              Minutes to assign
             </label>
             <input
               type="number"
-              min={0}
               value={customMins}
               onChange={(e) => setCustomMins(parseInt(e.target.value || "0", 10))}
-              className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+              className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
             />
           </div>
         )}
 
         <div className="space-y-1.5">
           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">
-            Select Users
+            Search Users
           </label>
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -184,21 +211,19 @@ export default function AttendanceInchargeForm({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name or email"
-              className="w-full pl-9 pr-3 py-2.5 text-xs font-bold bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-slate-300"
+              className="w-full pl-9 pr-3 py-2.5 text-xs font-bold bg-white border border-emerald-100 rounded-xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all placeholder:text-slate-300"
             />
           </div>
           <div className="flex items-center gap-2">
             <button
-              type="button"
               onClick={selectAllFiltered}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-indigo-50 border-indigo-100 text-indigo-700 hover:bg-indigo-100"
+              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
             >
               Select Filtered
             </button>
             <button
-              type="button"
               onClick={clearSelection}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-white border-emerald-100 text-slate-500 hover:border-emerald-200"
             >
               Clear
             </button>
@@ -207,38 +232,54 @@ export default function AttendanceInchargeForm({
             </span>
           </div>
 
-          <div className="max-h-56 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/40 divide-y divide-slate-100">
+          <div className="max-h-64 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/40 divide-y divide-slate-100 custom-attendance-scrollbar">
             {loadingUsers ? (
               <div className="py-6 flex items-center justify-center text-slate-400">
                 <Loader2 className="w-4 h-4 animate-spin" />
               </div>
             ) : filteredUsers.length === 0 ? (
               <div className="py-6 text-center text-[11px] font-bold text-slate-400">
-                No users found
+                No users match your search
               </div>
             ) : (
               filteredUsers.map((u: any) => {
-                const checked = selected.includes(u.email);
+                const isSelected = selected.includes(u.email);
+                const markedMins = harinamRecords[u.email]
+                  ? (harinamRecords[u.email].h7am || 0) +
+                    (harinamRecords[u.email].h740am || 0) +
+                    (harinamRecords[u.email].hpdc || 0) +
+                    (harinamRecords[u.email].hcustom_mins || 0)
+                  : 0;
+
                 return (
-                  <label
+                  <div
                     key={u.email}
-                    className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white transition-colors"
+                    onClick={() => toggleUser(u.email)}
+                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white cursor-pointer transition-colors"
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleUser(u.email)}
-                      className="accent-indigo-600"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-black text-slate-800 truncate">
-                        {u.full_name}
+                    <div
+                      className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${isSelected ? "bg-emerald-600 border-emerald-600 shadow-sm" : "bg-white border-slate-200"}`}
+                    >
+                      {isSelected && (
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="text-[11px] font-black text-slate-800 truncate">
+                          {u.full_name}
+                        </div>
+                        {markedMins > 0 && (
+                          <div className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-md border border-emerald-100">
+                            MARKED {markedMins}m
+                          </div>
+                        )}
                       </div>
                       <div className="text-[10px] font-bold text-slate-400 truncate">
                         {u.email}
                       </div>
                     </div>
-                  </label>
+                  </div>
                 );
               })
             )}
@@ -250,8 +291,8 @@ export default function AttendanceInchargeForm({
           disabled={submitting || selected.length === 0}
           onClick={handleSubmit}
           className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${submitting || selected.length === 0
-              ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-              : "bg-indigo-600 text-white hover:bg-slate-900 shadow-lg shadow-indigo-100 active:scale-95"
+            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+            : "bg-emerald-600 text-white hover:bg-slate-900 shadow-lg shadow-emerald-100 active:scale-95"
             }`}
         >
           {submitting ? (
@@ -262,8 +303,8 @@ export default function AttendanceInchargeForm({
           Mark Selected Users
         </button>
       </div>
-      <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-indigo-50/50 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-emerald-50/50 rounded-full blur-3xl pointer-events-none" />
     </div>
   );
 }
-
