@@ -22,12 +22,14 @@ export default function VirtualMachineAttendanceForm({
   const [machineName, setMachineName] = useState("");
   const [users, setUsers] = useState<any[]>([]);
   const [selected, setSelected] = useState<Record<string, AttendanceStatus>>({});
+  const [existingRecords, setExistingRecords] = useState<Record<string, AttendanceStatus>>({});
+  const [showOnlyMarked, setShowOnlyMarked] = useState(false);
 
   const loadUsers = async () => {
     if (!session?.access_token) return;
     setLoadingUsers(true);
     try {
-      const res = await fetch("/api/attendance/virtual-machine", {
+      const res = await fetch(`/api/attendance/virtual-machine?date=${date}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const data = await res.json();
@@ -38,6 +40,12 @@ export default function VirtualMachineAttendanceForm({
         );
       setUsers(list);
       setMachineName(data?.machine?.description || data?.machine?.serial_number || "");
+      
+      const records = (data?.records || []).reduce((acc: any, r: any) => {
+        acc[r.user_email] = r.status;
+        return acc;
+      }, {});
+      setExistingRecords(records);
     } catch (err) {
       console.error("Failed to load virtual machine users:", err);
       setUsers([]);
@@ -49,17 +57,24 @@ export default function VirtualMachineAttendanceForm({
 
   useEffect(() => {
     loadUsers();
-  }, [session?.access_token]);
+  }, [session?.access_token, date]);
 
   const filteredUsers = useMemo(() => {
+    let list = users;
+    if (showOnlyMarked) {
+      list = list.filter((u: any) => !!existingRecords[u.email]);
+    }
+
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u: any) =>
-        (u.full_name || "").toLowerCase().includes(q) ||
-        (u.email || "").toLowerCase().includes(q),
-    );
-  }, [users, search]);
+    if (q) {
+      list = list.filter(
+        (u: any) =>
+          (u.full_name || "").toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [users, search, showOnlyMarked, existingRecords]);
 
   const setUserStatus = (email: string, status: AttendanceStatus) => {
     setSelected((prev) => ({ ...prev, [email]: status }));
@@ -95,6 +110,7 @@ export default function VirtualMachineAttendanceForm({
 
       if (onSuccess) onSuccess();
       setSelected({});
+      loadUsers(); // Refresh to show marked status
     } catch (err) {
       console.error(err);
       alert("Failed to mark selected users. Please try again.");
@@ -148,10 +164,10 @@ export default function VirtualMachineAttendanceForm({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={clearSelection}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-white border-sky-100 text-slate-500 hover:border-sky-200"
+              onClick={() => setShowOnlyMarked(!showOnlyMarked)}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border ${showOnlyMarked ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-blue-100 text-blue-600 hover:border-blue-200"}`}
             >
-              Clear
+              {showOnlyMarked ? "Show All" : "Only Marked"}
             </button>
             <span className="text-[10px] font-black text-slate-400 ml-auto">
               {Object.keys(selected).length} marked
@@ -170,16 +186,32 @@ export default function VirtualMachineAttendanceForm({
             ) : (
               filteredUsers.map((u: any) => {
                 const status = selected[u.email];
+                const existingStatus = existingRecords[u.email];
+                const isMarked = !!existingStatus;
+
                 return (
                   <div
                     key={u.email}
-                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white transition-colors"
+                    className={`flex items-center gap-2.5 px-3 py-2.5 hover:bg-white transition-all ${
+                      isMarked ? "bg-blue-50/80 border-y border-blue-100/50" : "bg-transparent"
+                    }`}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-black text-slate-800 truncate">
-                        {u.full_name}
+                      <div className="flex items-center gap-2">
+                        <div className={`text-[13px] font-black truncate ${isMarked ? "text-blue-900" : "text-slate-800"}`}>
+                          {u.full_name}
+                        </div>
+                        {isMarked && (
+                          <div className={`px-1.5 py-0.5 text-[8px] font-black rounded-md border animate-in fade-in zoom-in duration-300 ${
+                            existingStatus === 'P' 
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-200" 
+                              : "bg-rose-100 text-rose-700 border-rose-200"
+                          }`}>
+                            {existingStatus === 'P' ? 'PRESENT' : 'ABSENT'}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-[10px] font-bold text-slate-400 truncate">
+                      <div className={`text-[11px] font-bold truncate ${isMarked ? "text-blue-400" : "text-slate-400"}`}>
                         {u.email}
                       </div>
                     </div>
