@@ -3,7 +3,7 @@ import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { supabaseIdktAdmin } from "@/lib/supabaseIdkt";
 
 /**
- * GET: Fetch user's "Watch Later" audio tracks with progress
+ * GET: Fetch user's "Hear Later" audio tracks with progress
  */
 export async function GET(request: NextRequest) {
   try {
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ items: sortedItems, favoriteIds });
   } catch (error: any) {
-    console.error("Fetch audio Watch Later error:", error);
+    console.error("Fetch audio Hear Later error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
-    // Check if already in Watch Later
+    // Check if already in Hear Later
     const { data: existing, error: checkError } = await supabaseAdmin
       .from("user_audio_favorites")
       .select("id")
