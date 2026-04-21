@@ -10,6 +10,7 @@ import AttendanceExceptionForm from "@/components/AttendanceExceptionForm";
 import AttendanceInchargeForm from "@/components/AttendanceInchargeForm";
 import HarinamSelfMarkingForm from "@/components/HarinamSelfMarkingForm";
 import VirtualMachineAttendanceForm from "@/components/VirtualMachineAttendanceForm";
+import HarinamBulkImport from "@/components/HarinamBulkImport";
 import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 
 export default function PersonalAttendancePage() {
@@ -132,6 +133,13 @@ export default function PersonalAttendancePage() {
 
               {isAttendanceIncharge && (
                 <AttendanceInchargeForm
+                  session={session}
+                  onSuccess={() => setRefreshKey((prev) => prev + 1)}
+                />
+              )}
+
+              {isSuperAdmin && (
+                <HarinamBulkImport
                   session={session}
                   onSuccess={() => setRefreshKey((prev) => prev + 1)}
                 />
