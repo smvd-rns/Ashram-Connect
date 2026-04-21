@@ -198,7 +198,7 @@ export default function HarinamBulkImport({ session, onSuccess }: HarinamBulkImp
           <AlertCircle className="w-3.5 h-3.5 text-indigo-500" />
           Format Guide
         </h5>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-4">
           <div className="space-y-1">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Column 1: Name</p>
             <p className="text-[10px] font-bold text-slate-600">Must match BCDB Full Name exactly</p>

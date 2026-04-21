@@ -91,10 +91,10 @@ export default function PersonalAttendancePage() {
       <Navbar />
       <div className="min-h-screen bg-slate-50 pt-16 sm:pt-20 pb-24 md:pb-20 overflow-x-hidden">
         <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-12 min-w-0">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start min-w-0">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 xl:gap-10 items-start min-w-0">
             {/* Main Attendance Section - Left side */}
             {canViewFullAttendance && (
-              <div className="col-span-1 lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8 lg:space-y-10 min-w-0">
+              <div className="col-span-1 xl:col-span-8 2xl:col-span-9 space-y-6 sm:space-y-8 xl:space-y-10 min-w-0">
                 <div className="animate-in fade-in slide-in-from-left-4 duration-700">
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tighter mb-2 font-outfit uppercase">My Attendance</h1>
                   <div className="flex items-center gap-3">
@@ -123,7 +123,7 @@ export default function PersonalAttendancePage() {
             )}
 
             {/* Sidebar Space - Now housing the Exception Reporting Form */}
-            <div className={`flex flex-col ${canViewFullAttendance ? "lg:col-span-4 xl:col-span-3" : "lg:col-span-12 xl:col-span-12 max-w-3xl mx-auto w-full"} lg:sticky lg:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 lg:slide-in-from-right-4 duration-1000 delay-300 min-w-0`}>
+            <div className={`flex flex-col ${canViewFullAttendance ? "xl:col-span-4 2xl:col-span-3" : "xl:col-span-12 2xl:col-span-12 max-w-3xl mx-auto w-full"} xl:sticky xl:top-28 gap-6 animate-in fade-in slide-in-from-bottom-4 xl:slide-in-from-right-4 duration-1000 delay-300 min-w-0`}>
               {canViewFullAttendance && (
                 <AttendanceExceptionForm
                   userEmail={profile?.email || ""}
