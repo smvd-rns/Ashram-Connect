@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     }));
 
     // Fetch existing attendance for the date if provided
-    let existingAttendance = [];
+    let existingAttendance: any[] = [];
     if (date) {
       const { data: attendance } = await supabase
         .from("virtual_machine_attendance")
