@@ -384,7 +384,12 @@ export default function AttendanceTracing({
       );
       const data = await res.json();
       if (requestId !== reportRequestIdRef.current) return;
-      if (data.report) setReport(data.report);
+      if (data.report) {
+        const sortedReport = [...data.report].sort((a: any, b: any) =>
+          (a.full_name || "").localeCompare(b.full_name || ""),
+        );
+        setReport(sortedReport);
+      }
       if (data.machines) {
         setMachines(data.machines);
         if (!selectedMachineId && data.machines.length > 0) {
@@ -603,7 +608,7 @@ export default function AttendanceTracing({
 
   const displayUser =
     report.find((u) => u.email.toLowerCase() === selectedUserEmail?.toLowerCase()) || 
-    (viewMode === "history" && selectedUserEmail?.toLowerCase() === profile?.email?.toLowerCase() ? {
+    (viewMode === "history" && profile && selectedUserEmail && selectedUserEmail.toLowerCase() === profile.email?.toLowerCase() ? {
       email: profile.email,
       full_name: profile.full_name || profile.email.split("@")[0],
       dates: {},
@@ -761,7 +766,10 @@ export default function AttendanceTracing({
             totalHarinamMins += dayMins;
           }
           const hrs = dayMins / 60;
-          html += `<td style="text-align: center;">${hrs > 0 ? (hrs % 1 === 0 ? hrs : hrs.toFixed(1)) : 0}</td>`;
+          const placeNote = logs[0]?.hcustom_place ? ` (${logs[0].hcustom_place})` : '';
+          const hrsVal = hrs > 0 ? (hrs % 1 === 0 ? hrs : hrs.toFixed(1)) : 0;
+          const isSelf = !!logs[0]?.hcustom_place;
+          html += `<td style="text-align: center; ${isSelf ? 'background-color: #ffedd5; color: #1d4ed8; font-weight: bold; border: 1px solid #fed7aa;' : ''}">${hrsVal}${placeNote}</td>`;
         } else {
           const ex = user.dates[date]?.[activeMachine?.description + "_exception"];
           const status = getStatus(logs, activeMachine);
@@ -794,7 +802,7 @@ export default function AttendanceTracing({
             }
           }
 
-          if (logs.length > 0 && status !== "absent") {
+          if (logs.length > 0) {
             const earliest = logs.reduce(
               (min: any, log: any) =>
                 !min.check_time ||
@@ -1563,15 +1571,23 @@ export default function AttendanceTracing({
                                             return (
                                               <div className="w-1 h-1 mx-auto bg-slate-200 rounded-full opacity-20" />
                                             );
-                                          const hrs = mins / 60;
-                                          return (
-                                            <div className="font-black text-indigo-600 text-[10px] sm:text-[11px] whitespace-nowrap">
-                                              {hrs % 1 === 0
-                                                ? hrs
-                                                : hrs.toFixed(1)}{" "}
-                                              hr
-                                            </div>
-                                          );
+                                                                                     const hrs = mins / 60;
+                                           const isSelfMarked = !!logs[0]?.hcustom_place;
+
+                                           return (
+                                             <div 
+                                               className={`font-black text-[10px] sm:text-[11px] whitespace-nowrap flex items-center justify-center gap-1 cursor-help ${
+                                                 isSelfMarked ? "text-amber-600" : "text-indigo-600"
+                                               }`}
+                                               title={logs[0]?.hcustom_place ? `Place: ${logs[0].hcustom_place}` : undefined}
+                                             >
+                                               {isSelfMarked && <Sparkles className="w-2.5 h-2.5" />}
+                                               {hrs % 1 === 0
+                                                 ? hrs
+                                                 : hrs.toFixed(1)}{" "}
+                                               hr
+                                             </div>
+                                           );
                                         })()
                                       ) : (
                                         <div className="flex flex-col items-center justify-center gap-0.5">
@@ -2716,8 +2732,17 @@ export default function AttendanceTracing({
                                       dailyHarinamMins % 60 === 0
                                         ? (dailyHarinamMins / 60).toString()
                                         : (dailyHarinamMins / 60).toFixed(1);
+                                    const isSelfMarked = !!logs[0]?.hcustom_place;
                                     renderContent = (
-                                      <div className="font-black text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm tracking-tight sm:tracking-widest border border-indigo-100 shadow-sm mx-auto w-fit">
+                                      <div 
+                                        className={`font-black px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-sm tracking-tight sm:tracking-widest border shadow-sm mx-auto w-fit cursor-help flex items-center gap-1.5 ${
+                                          isSelfMarked 
+                                            ? "text-amber-600 bg-amber-50 border-amber-100" 
+                                            : "text-indigo-600 bg-indigo-50 border-indigo-100"
+                                        }`}
+                                        title={logs[0]?.hcustom_place ? `Place: ${logs[0].hcustom_place}` : undefined}
+                                      >
+                                        {isSelfMarked && <Sparkles className="w-3 h-3" />}
                                         {hrsStr}hr
                                       </div>
                                     );

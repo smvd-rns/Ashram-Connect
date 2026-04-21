@@ -8,6 +8,7 @@ import Navbar from "@/components/Navbar";
 import AttendanceTracing from "@/components/AttendanceTracing";
 import AttendanceExceptionForm from "@/components/AttendanceExceptionForm";
 import AttendanceInchargeForm from "@/components/AttendanceInchargeForm";
+import HarinamSelfMarkingForm from "@/components/HarinamSelfMarkingForm";
 import VirtualMachineAttendanceForm from "@/components/VirtualMachineAttendanceForm";
 import { Loader2, ShieldAlert, LogIn, ArrowRight } from "lucide-react";
 
@@ -138,6 +139,13 @@ export default function PersonalAttendancePage() {
 
               {isVirtualMachineIncharge && (
                 <VirtualMachineAttendanceForm
+                  session={session}
+                  onSuccess={() => setRefreshKey((prev) => prev + 1)}
+                />
+              )}
+
+              {isBcdb && (
+                <HarinamSelfMarkingForm
                   session={session}
                   onSuccess={() => setRefreshKey((prev) => prev + 1)}
                 />

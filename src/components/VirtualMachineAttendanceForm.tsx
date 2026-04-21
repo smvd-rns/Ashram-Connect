@@ -104,10 +104,10 @@ export default function VirtualMachineAttendanceForm({
   };
 
   return (
-    <div className="bg-white p-4 sm:p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/20 relative overflow-hidden">
+    <div className="bg-sky-100 p-4 sm:p-8 rounded-[2.5rem] border-2 border-sky-200 shadow-xl shadow-sky-300/20 relative overflow-hidden transition-all hover:bg-sky-200/40 group">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-          <Monitor className="w-5 h-5 text-indigo-600" />
+        <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+          <Monitor className="w-5 h-5 text-sky-600" />
         </div>
         <div>
           <h4 className="text-lg font-black text-slate-900 tracking-tight leading-none">
@@ -128,7 +128,7 @@ export default function VirtualMachineAttendanceForm({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+            className="w-full text-xs font-bold p-3 bg-white border border-sky-100 rounded-2xl focus:ring-4 focus:ring-sky-500/10 outline-none transition-all"
           />
         </div>
 
@@ -142,14 +142,14 @@ export default function VirtualMachineAttendanceForm({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name or email"
-              className="w-full pl-9 pr-3 py-2.5 text-xs font-bold bg-slate-50 border border-slate-100 rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-slate-300"
+              className="w-full pl-9 pr-3 py-2.5 text-xs font-bold bg-white border border-sky-100 rounded-xl focus:ring-4 focus:ring-sky-500/10 outline-none transition-all placeholder:text-slate-300"
             />
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={clearSelection}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-white border-sky-100 text-slate-500 hover:border-sky-200"
             >
               Clear
             </button>
@@ -212,7 +212,7 @@ export default function VirtualMachineAttendanceForm({
           onClick={handleSubmit}
           className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${submitting || Object.keys(selected).length === 0
             ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-            : "bg-indigo-600 text-white hover:bg-slate-900 shadow-lg shadow-indigo-100 active:scale-95"
+            : "bg-sky-600 text-white hover:bg-slate-900 shadow-lg shadow-sky-100 active:scale-95"
             }`}
         >
           {submitting ? (
@@ -223,7 +223,7 @@ export default function VirtualMachineAttendanceForm({
           Mark Selected Users
         </button>
       </div>
-      <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-indigo-50/50 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-sky-50/50 rounded-full blur-3xl pointer-events-none" />
     </div>
   );
 }
