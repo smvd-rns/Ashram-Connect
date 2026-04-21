@@ -71,7 +71,7 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
       </div>
       
       <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Start Date</label>
             <input
