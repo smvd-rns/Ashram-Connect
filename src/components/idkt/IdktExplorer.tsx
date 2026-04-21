@@ -25,7 +25,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
   const cancelSyncRef = React.useRef(false);
   const { playTrack, currentTrack, isPlaying } = useMedia();
 
-  // Watch Later states
+  // Hear Later states
   const [activeTab, setActiveTab] = useState<'library' | 'favorites'>('library');
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<any[]>([]);
@@ -143,7 +143,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
       const res = await fetch("/api/user/audio-favorites", {
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
-      if (!res.ok) throw new Error("Failed to load Watch Later list");
+      if (!res.ok) throw new Error("Failed to load Hear Later list");
       
       const data = await res.json();
       setFavoriteItems(data.items || []);
@@ -190,7 +190,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
         }
       }
     } catch (err) {
-      console.error("Error toggling watch later:", err);
+      console.error("Error toggling hear later:", err);
     }
   };
 
@@ -371,7 +371,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                   activeTab === 'favorites' ? "bg-white text-orange-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
                 }`}
               >
-                <Clock className="w-3.5 h-3.5" /> Watch Later
+                <Clock className="w-3.5 h-3.5" /> Hear Later
               </button>
             </div>
 
@@ -636,7 +636,7 @@ export default function IdktExplorer({ session, profile }: { session: any, profi
                               ? "bg-orange-600 border-orange-600 text-white" 
                               : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-orange-50 hover:text-orange-600"
                           }`}
-                          title={favoriteIds.includes(item.id) ? "Remove from Watch Later" : "Add to Watch Later"}
+                          title={favoriteIds.includes(item.id) ? "Remove from Hear Later" : "Add to Hear Later"}
                         >
                           <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>

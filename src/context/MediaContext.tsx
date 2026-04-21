@@ -197,7 +197,7 @@ export function MediaProvider({ children }: { children: React.ReactNode }) {
           audio_id: currentTrack.id,
           last_position: audioRef.current.currentTime,
           duration: audioRef.current.duration,
-          is_update_only: false // Save it even if it was not in watch later yet
+          is_update_only: false // Save it even if it was not in hear later yet
         })
       });
 
