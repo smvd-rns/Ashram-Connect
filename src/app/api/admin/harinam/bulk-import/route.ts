@@ -65,9 +65,20 @@ export async function POST(req: NextRequest) {
         hcustom_mins: 0
       };
 
-      if (rec.types.some((t: string) => t.includes("7:00") || t.includes("7 AM"))) update.h7am = 30;
-      if (rec.types.some((t: string) => t.includes("7:40"))) update.h740am = 30;
-      if (rec.types.some((t: string) => t.includes("PDC"))) update.hpdc = 90;
+      const hasType = (pattern: string) => rec.types.some((t: string) => {
+        const norm = t.toLowerCase().trim();
+        if (pattern === "7am") {
+          return norm === "7:00" || norm === "7:00 am" || norm === "7 am" || norm === "7:00:00 am";
+        }
+        if (pattern === "740am") {
+          return norm === "7:40" || norm === "7:40 am" || norm === "7:40:00 am";
+        }
+        return norm.includes(pattern.toLowerCase());
+      });
+
+      if (hasType("7am")) update.h7am = 30;
+      if (hasType("740am")) update.h740am = 30;
+      if (hasType("PDC")) update.hpdc = 90;
 
       // Merge if multiple entries for same user/date exist in the import
       if (upsertMap.has(key)) {
