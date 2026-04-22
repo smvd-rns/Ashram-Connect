@@ -98,6 +98,12 @@ export default function AttendanceInchargeForm({
     }
     return list;
   }, [users, search, showOnlyMarked, harinamRecords, markType]);
+  
+  const markedCount = useMemo(() => {
+    return Object.values(harinamRecords).filter((r: any) => 
+      (r[markType] || 0) > 0
+    ).length;
+  }, [harinamRecords, markType]);
 
   const toggleUser = (email: string) => {
     setSelected((prev) =>
@@ -110,6 +116,11 @@ export default function AttendanceInchargeForm({
   const selectAllFiltered = () => {
     const emails = filteredUsers.map((u: any) => u.email);
     setSelected((prev) => Array.from(new Set([...prev, ...emails])));
+  };
+
+  const deselectAllFiltered = () => {
+    const emails = filteredUsers.map((u: any) => u.email);
+    setSelected((prev) => prev.filter(e => !emails.includes(e)));
   };
 
   const clearSelection = () => setSelected([]);
@@ -227,18 +238,29 @@ export default function AttendanceInchargeForm({
               className="w-full pl-9 pr-3 py-2.5 text-xs font-bold bg-white border border-emerald-100 rounded-xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all placeholder:text-slate-300"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={selectAllFiltered}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-slate-50 border-slate-100 text-slate-500 hover:border-indigo-200 hover:text-indigo-600"
             >
-              Select Filtered
+              Select All
+            </button>
+            <button
+              onClick={deselectAllFiltered}
+              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border bg-slate-50 border-slate-100 text-slate-400 hover:border-rose-200 hover:text-rose-600"
+            >
+              Deselect All
             </button>
             <button
               onClick={() => setShowOnlyMarked(!showOnlyMarked)}
-              className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border ${showOnlyMarked ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-blue-100 text-blue-600 hover:border-blue-200"}`}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border flex items-center gap-2 ${showOnlyMarked ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-blue-100 text-blue-600 hover:border-blue-200"}`}
             >
               {showOnlyMarked ? "Show All" : "Only Marked"}
+              {markedCount > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-black ${showOnlyMarked ? "bg-white/20 text-white" : "bg-blue-100 text-blue-600"}`}>
+                  {markedCount}
+                </span>
+              )}
             </button>
             <span className="text-[10px] font-black text-slate-400 ml-auto">
               {selected.length} selected
