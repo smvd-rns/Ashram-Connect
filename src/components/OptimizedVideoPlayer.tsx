@@ -201,19 +201,7 @@ export default function OptimizedVideoPlayer({
       updateMediaSession();
     }
 
-    // Security: Apply sandbox to the generated iframe to prevent navigation
-    const applySandbox = () => {
-      const iframe = document.getElementById(playerContainerId.current) as HTMLIFrameElement;
-      if (iframe && iframe.tagName === "IFRAME") {
-        // Essential flags for YT to work but WITHOUT top-navigation or popups
-        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-presentation");
-      }
-    };
-
-    const timer = setTimeout(applySandbox, 1000); // Wait for API to replace DIV
-
     return () => {
-      clearTimeout(timer);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = null;
       }
@@ -281,7 +269,6 @@ export default function OptimizedVideoPlayer({
           className="w-full h-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
         />
       )}
 
@@ -311,35 +298,7 @@ export default function OptimizedVideoPlayer({
         </div>
       )}
 
-      {/* 
-          UI SHIELDS: These transparent layers catch clicks on known "Leak" points
-          (YouTube logo, Title, Channel link) and redirect them to our Policy Modal.
-      */}
-      {playerReady && !timedOut && (
-        <>
-          {/* Bottom Right Logo Shield — target watermark area only */}
-          <div 
-            className="absolute bottom-[52px] right-[56px] w-[56px] h-[26px] z-[9999] cursor-default pointer-events-auto bg-transparent"
-            title="Temple Media Policy"
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-          />
-
-          {/* Bottom Left Shield — keep away from seek/progress controls */}
-          <div 
-            className="absolute bottom-[52px] left-0 w-[10%] h-[50px] z-[10000] cursor-default pointer-events-auto bg-transparent"
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-          />
-
-          {/* Bottom Right Shield — keep away from seek/progress + settings/CC */}
-          <div 
-            className="absolute bottom-[52px] right-[124px] w-[10%] h-[50px] z-[10000] cursor-default pointer-events-auto bg-transparent"
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-            onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); openExternal(`https://www.youtube.com/watch?v=${videoId}`); }}
-          />
-        </>
-      )}
     </div>
   );
 }
+
