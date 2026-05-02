@@ -1889,16 +1889,38 @@ export default function AdminPanel() {
                           </div>
                         )}
                       </div>
-                      {syncingChannels.has(channel.channel_id) && syncProgress[channel.channel_id] && (
-                        <div className="mt-1 flex items-center gap-2">
-                          <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-indigo-500 animate-pulse" style={{ width: '100%' }} />
+                      {/* Background Sync Live Progress from DB metadata */}
+                      {channel.sync_status === 'syncing' && channel.metadata && (() => {
+                        const meta = channel.metadata as any;
+                        return (
+                          <div className="mt-2 p-2 bg-indigo-50 border border-indigo-100 rounded-lg space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1">
+                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                {meta.stage === 'uploads' ? '📥 Main Upload Sync' : meta.stage === 'deep_scan' ? '🔍 Deep Playlist Scan' : '⏳ Starting...'}
+                              </span>
+                              {meta.totalOnYT && (
+                                <span className="text-[8px] font-bold text-slate-400">~{Number(meta.totalOnYT).toLocaleString()} on YT</span>
+                              )}
+                            </div>
+                            {meta.stage === 'deep_scan' && meta.playlistProgress && (
+                              <div className="space-y-0.5">
+                                <div className="flex justify-between text-[8px] font-bold text-indigo-500">
+                                  <span>Playlists: {meta.playlistProgress}</span>
+                                  {meta.deepTotal > 0 && <span>+{Number(meta.deepTotal).toLocaleString()} new</span>}
+                                </div>
+                                <div className="h-1 bg-indigo-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-indigo-500 transition-all duration-500 rounded-full"
+                                    style={{ width: `${Math.min(100, (parseInt(meta.playlistProgress) / parseInt(meta.playlistProgress.split('/')[1])) * 100)}%` }} />
+                                </div>
+                              </div>
+                            )}
+                            {meta.uploadsTotal > 0 && (
+                              <div className="text-[8px] font-bold text-emerald-600">✓ Uploads: {Number(meta.uploadsTotal).toLocaleString()} synced</div>
+                            )}
                           </div>
-                          <span className="text-[8px] font-black text-indigo-600 uppercase tabular-nums">
-                            {syncProgress[channel.channel_id].pages} pgs / {syncProgress[channel.channel_id].total} vids
-                          </span>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     <div className="absolute top-4 right-4 flex gap-1">
