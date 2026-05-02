@@ -6,8 +6,8 @@ const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
-const UPSERT_CHUNK_SIZE = 10;
-const DEFAULT_FULL_SYNC_PAGES_PER_RUN = 5;
+const UPSERT_CHUNK_SIZE = 50;
+const DEFAULT_FULL_SYNC_PAGES_PER_RUN = 3;
 
 type SyncOptions = {
   startPageToken?: string;
