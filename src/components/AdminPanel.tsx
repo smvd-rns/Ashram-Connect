@@ -111,6 +111,8 @@ export default function AdminPanel() {
   const [isFetchingYt, setIsFetchingYt] = useState(false);
   const [isUploadingYt, setIsUploadingYt] = useState(false);
   const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set());
+  const [syncProgress, setSyncProgress] = useState<Record<string, { pages: number, total: number }>>({});
+
 
   // YouTube Channel Assignments
   const [ytAssignments, setYtAssignments] = useState<any[]>([]);
@@ -1887,6 +1889,16 @@ export default function AdminPanel() {
                           </div>
                         )}
                       </div>
+                      {syncingChannels.has(channel.channel_id) && syncProgress[channel.channel_id] && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 animate-pulse" style={{ width: '100%' }} />
+                          </div>
+                          <span className="text-[8px] font-black text-indigo-600 uppercase tabular-nums">
+                            {syncProgress[channel.channel_id].pages} pgs / {syncProgress[channel.channel_id].total} vids
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="absolute top-4 right-4 flex gap-1">
@@ -1900,6 +1912,17 @@ export default function AdminPanel() {
                         title="Sync Metadata"
                       >
                         <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button
+                        onClick={() => handleSyncChannel(channel.channel_id, true)}
+                        disabled={syncingChannels.has(channel.channel_id)}
+                        className={`p-2 rounded-lg border transition-all shadow-sm ${syncingChannels.has(channel.channel_id)
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                          : 'bg-white text-orange-600 border-slate-100 hover:border-orange-600 hover:bg-orange-50'
+                          }`}
+                        title="Turbo Sync (Large Channels)"
+                      >
+                        <Activity className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-pulse' : ''}`} />
                       </button>
                       <button onClick={() => { 
                         setActiveYtChannel(channel); 
@@ -3287,59 +3310,83 @@ export default function AdminPanel() {
     }
   }
 
-  async function handleSyncChannel(channelId: string) {
+  async function handleSyncChannel(channelId: string, isTurbo: boolean = false) {
     if (syncingChannels.has(channelId)) return;
 
     setSyncingChannels(prev => new Set(prev).add(channelId));
+    setSyncProgress(prev => ({ ...prev, [channelId]: { pages: 0, total: 0 } }));
+
     try {
       const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       let cursor: string | null = null;
       let hasMore = true;
       let pass = 0;
-      const maxPasses = 300;
+      const maxPasses = isTurbo ? 1000 : 300;
+      const pagesPerRequest = isTurbo ? 10 : 3;
 
       while (hasMore && pass < maxPasses) {
         pass += 1;
         let attempt = 0;
         while (attempt < 3) {
           attempt += 1;
-          const syncPayload = JSON.stringify({ 
-            channelId: channelId, 
-            isIncremental: false, 
-            cursor: cursor, 
-            maxPages: 5 
-          });
-          const ytSyncResponse: Response = await fetch("/api/admin/youtube/sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: syncPayload
-          });
-          const syncResult = await ytSyncResponse.json();
+          try {
+            const syncPayload = JSON.stringify({ 
+              channelId: channelId, 
+              isIncremental: false, 
+              cursor: cursor, 
+              maxPages: pagesPerRequest 
+            });
+            const ytSyncResponse: Response = await fetch("/api/admin/youtube/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: syncPayload
+            });
+            
+            const syncResult = await ytSyncResponse.json();
 
-          if (ytSyncResponse.ok) {
-            hasMore = Boolean(syncResult.hasMore);
-            cursor = syncResult.nextCursor || null;
-            break;
+            if (ytSyncResponse.ok) {
+              hasMore = Boolean(syncResult.hasMore);
+              cursor = syncResult.nextCursor || null;
+              
+              setSyncProgress(prev => ({
+                ...prev,
+                [channelId]: { 
+                  pages: (prev[channelId]?.pages || 0) + (syncResult.pagesProcessed || 0),
+                  total: (prev[channelId]?.total || 0) + (syncResult.totalSynced || 0)
+                }
+              }));
+              break;
+            }
+
+            if (ytSyncResponse.status === 504 && syncResult.retryable && attempt < 3) {
+              await sleep(1000 * attempt);
+              continue;
+            }
+
+            throw new Error(syncResult.error || `Server returned ${ytSyncResponse.status}`);
+          } catch (fetchErr: any) {
+            if (fetchErr.name === 'TypeError' && fetchErr.message === 'fetch failed' && attempt < 3) {
+              console.warn(`[Sync] Fetch failed for ${channelId}, retrying...`, fetchErr);
+              await sleep(2000 * attempt);
+              continue;
+            }
+            throw fetchErr;
           }
-
-          if (ytSyncResponse.status === 504 && syncResult.retryable && attempt < 3) {
-
-            await sleep(600 * attempt);
-            continue;
-          }
-
-          throw new Error(syncResult.error || "Sync failed");
         }
       }
 
       if (hasMore) {
-        throw new Error("Backfill is very large and needs another run. Please click sync again.");
+        throw new Error("Channel is extremely large. Please run another sync pass or use the local CLI script.");
       }
 
-      // Refresh channels to get updated status and timestamp
       fetchYtChannels();
     } catch (err: any) {
-      alert("Sync failed: " + err.message);
+      console.error("Sync Error:", err);
+      const isLocal = window.location.hostname === 'localhost';
+      const helpMsg = isLocal 
+        ? `\n\nTIP: For very large channels (>35K videos), run this in your terminal:\nnode scripts/sync-youtube.js ${channelId}`
+        : "";
+      alert("Sync failed: " + err.message + helpMsg);
     } finally {
       setSyncingChannels(prev => {
         const next = new Set(prev);
