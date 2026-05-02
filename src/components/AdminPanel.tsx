@@ -1914,13 +1914,13 @@ export default function AdminPanel() {
                         <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
                       </button>
                       <button
-                        onClick={() => handleSyncChannel(channel.channel_id, true)}
+                        onClick={() => handleBackgroundSync(channel.channel_id)}
                         disabled={syncingChannels.has(channel.channel_id)}
                         className={`p-2 rounded-lg border transition-all shadow-sm ${syncingChannels.has(channel.channel_id)
                           ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
                           : 'bg-white text-orange-600 border-slate-100 hover:border-orange-600 hover:bg-orange-50'
                           }`}
-                        title="Turbo Sync (Large Channels)"
+                        title="Deep Background Sync (35K+ channels — server handles everything)"
                       >
                         <Activity className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-pulse' : ''}`} />
                       </button>
@@ -3307,6 +3307,66 @@ export default function AdminPanel() {
       console.error(err);
     } finally {
       setLoadingYt(false);
+    }
+  }
+
+  async function handleBackgroundSync(channelId: string) {
+    if (syncingChannels.has(channelId)) return;
+    
+    setSyncingChannels(prev => new Set(prev).add(channelId));
+    
+    try {
+      // Fire the background sync — server handles everything, responds immediately
+      const res = await fetch("/api/admin/youtube/background-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "Failed to start background sync");
+      
+      alert(`✅ Background sync started for channel!\n\nThe server is now downloading all videos. You can close this page and come back later.\n\nCheck the channel status — it will update to "completed" when done.`);
+      
+      // Poll for completion every 10 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/admin/youtube/background-sync?channelId=${channelId}`);
+          const status = await statusRes.json();
+          
+          // Refresh channel list to get updated status
+          fetchYtChannels();
+          
+          if (!status.running) {
+            clearInterval(pollInterval);
+            setSyncingChannels(prev => {
+              const next = new Set(prev);
+              next.delete(channelId);
+              return next;
+            });
+          }
+        } catch {
+          // Network error during poll — keep polling
+        }
+      }, 10000);
+
+      // Stop polling after 2 hours max
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setSyncingChannels(prev => {
+          const next = new Set(prev);
+          next.delete(channelId);
+          return next;
+        });
+      }, 7200000);
+
+    } catch (err: any) {
+      alert("Failed to start background sync: " + err.message);
+      setSyncingChannels(prev => {
+        const next = new Set(prev);
+        next.delete(channelId);
+        return next;
+      });
     }
   }
 
