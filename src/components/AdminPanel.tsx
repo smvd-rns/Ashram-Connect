@@ -3365,8 +3365,11 @@ export default function AdminPanel() {
 
             throw new Error(syncResult.error || `Server returned ${ytSyncResponse.status}`);
           } catch (fetchErr: any) {
-            if (fetchErr.name === 'TypeError' && fetchErr.message === 'fetch failed' && attempt < 3) {
-              console.warn(`[Sync] Fetch failed for ${channelId}, retrying...`, fetchErr);
+            const errorMsg = fetchErr.message || "";
+            const isNetworkError = errorMsg.includes('fetch failed') || errorMsg.includes('Failed to fetch') || fetchErr.name === 'TypeError';
+            
+            if (isNetworkError && attempt < 5) {
+              console.warn(`[Sync] Network error for ${channelId}, retrying (${attempt}/5)...`, errorMsg);
               await sleep(2000 * attempt);
               continue;
             }
