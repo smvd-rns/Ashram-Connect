@@ -78,11 +78,15 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
     channelUrl.searchParams.set("id", channelId);
     channelUrl.searchParams.set("key", YOUTUBE_API_KEY);
-    channelUrl.searchParams.set("part", "contentDetails");
+    channelUrl.searchParams.set("part", "contentDetails,statistics");
     
     const cRes = await fetch(channelUrl.toString());
     const cData = await cRes.json();
-    const uploadsId = cData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    const channelItem = cData.items?.[0];
+    const uploadsId = channelItem?.contentDetails?.relatedPlaylists?.uploads;
+    const totalVideosOnYoutube = parseInt(channelItem?.statistics?.videoCount || "0");
+
+    console.log(`[YouTube Sync] Channel Statistics: ${totalVideosOnYoutube} total videos reported by YouTube.`);
 
     if (!uploadsId) {
       throw new Error(`Could not find uploads playlist for channel ${channelId}`);
@@ -168,6 +172,45 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
             .upsert(playlists, { onConflict: "playlist_id" }), "Upsert Playlists");
 
           if (pUpsertError) console.error("Playlist upsert error:", pUpsertError);
+
+          // Deep Sync: Process videos within each playlist to find ones missing from the main uploads list
+          console.log(`[YouTube Sync] Deep Scanning ${playlists.length} playlists for additional videos...`);
+          for (const pl of playlists) {
+            let plPageToken = "";
+            let plVideosSynced = 0;
+            do {
+              const plItemsUrl = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+              plItemsUrl.searchParams.set("playlistId", pl.playlist_id);
+              plItemsUrl.searchParams.set("part", "snippet,contentDetails");
+              plItemsUrl.searchParams.set("maxResults", "50");
+              plItemsUrl.searchParams.set("key", YOUTUBE_API_KEY);
+              if (plPageToken) plItemsUrl.searchParams.set("pageToken", plPageToken);
+
+              const plRes = await fetch(plItemsUrl.toString());
+              const plData = await plRes.json();
+
+              if (plRes.ok && plData.items) {
+                const plVideos = plData.items.map((item: any) => ({
+                  video_id: item?.contentDetails?.videoId || "",
+                  channel_id: channelId,
+                  title: item?.snippet?.title || "Untitled",
+                  description: item?.snippet?.description || "",
+                  thumbnail_url: item?.snippet?.thumbnails?.high?.url || item?.snippet?.thumbnails?.medium?.url,
+                  published_at: item?.contentDetails?.videoPublishedAt || item?.snippet?.publishedAt,
+                  kind: 'video',
+                  updated_at: new Date().toISOString()
+                })).filter((v: any) => v.video_id);
+
+                if (plVideos.length > 0) {
+                  plVideosSynced += await upsertVideosInChunks(plVideos);
+                }
+                plPageToken = plData.nextPageToken || "";
+              } else {
+                plPageToken = "";
+              }
+            } while (plPageToken);
+            console.log(`[YouTube Sync] Playlist ${pl.title}: Synced ${plVideosSynced} videos.`);
+          }
         }
 
       }
