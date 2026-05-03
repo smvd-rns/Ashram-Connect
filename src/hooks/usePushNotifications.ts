@@ -43,7 +43,7 @@ export function usePushNotifications(session: any) {
     try {
       console.log(`[PushDiag] Proactively syncing ${provider} registration to server...`);
       let synced = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 5; attempt++) {
         const res = await fetch('/api/notifications/subscribe', {
           method: 'POST',
           headers: {
@@ -64,8 +64,10 @@ export function usePushNotifications(session: any) {
           break;
         }
 
-        if (res.status === 503 && attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        // If it's a timeout/busy error, wait longer and retry
+        if ((res.status === 503 || res.status === 504) && attempt < 5) {
+          console.warn(`[PushDiag] Database busy (Attempt ${attempt}/5). Retrying in ${2 * attempt}s...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
 
