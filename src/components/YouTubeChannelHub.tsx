@@ -42,6 +42,15 @@ const tabs = [
   { id: "favorites", label: "Watch Later", icon: Clock },
 ];
 
+const formatClockTime = (seconds: number) => {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+};
+
 export default function YouTubeChannelHub() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
@@ -88,7 +97,7 @@ export default function YouTubeChannelHub() {
   const [loading, setLoading] = useState(true);
   const [loadMoreLoading, setLoadMoreLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [globalResults, setGlobalResults] = useState<VideoItem[]>([]);
+  const [globalResults, setGlobalResults] = useState<{ playlists: VideoItem[], videos: VideoItem[] }>({ playlists: [], videos: [] });
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -96,6 +105,16 @@ export default function YouTubeChannelHub() {
   const filterRef = useRef<HTMLDivElement>(null);
 
   const fetchedRef = useRef<Set<string>>(new Set());
+  const currentTimeRef = useRef<number>(0);
+  const currentDurationRef = useRef<number>(0);
+  const playerInstanceRef = useRef<any>(null);
+  const lastProgressSyncRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    // Reset time tracking when video changes
+    currentTimeRef.current = 0;
+    currentDurationRef.current = 0;
+  }, [activeVideoId]);
 
   useEffect(() => {
     const fetchChannels = async () => {
@@ -227,39 +246,92 @@ export default function YouTubeChannelHub() {
 
   const toggleFavorite = async (e: React.MouseEvent, videoId: string) => {
     e.stopPropagation();
+    
+    // 1. Check Session First
+    const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+    if (!session) {
+      window.dispatchEvent(new CustomEvent("show-policy"));
+      return;
+    }
+
+    const isAlreadyFavorite = favorites.includes(videoId);
+    const shouldIncludeProgress = !isAlreadyFavorite && videoId === activeVideoId;
+    const requestIntent = isAlreadyFavorite ? "remove" : "add";
+
+    // 2. OPTIMISTIC UPDATE: Update UI immediately
+    if (isAlreadyFavorite) {
+      setFavorites(prev => prev.filter(id => id !== videoId));
+      setFavoriteVideos(prev => prev.filter(v => v.id !== videoId));
+      notify("Removed from Watch Later");
+    } else {
+      setFavorites(prev => [...prev, videoId]);
+      const vid = videos.find((v: any) => v.id === videoId) || 
+                  globalResults.videos.find((v: any) => v.id === videoId) || 
+                  globalResults.playlists.find((v: any) => v.id === videoId) || 
+                  fetchedVideoMetadata[videoId];
+      
+      if (vid) {
+        // Force-sync time for the notification/initial state
+        let finalTime = currentTimeRef.current;
+        let finalDuration = currentDurationRef.current;
+        if (playerInstanceRef.current?.getCurrentTime) {
+          finalTime = playerInstanceRef.current.getCurrentTime() || finalTime;
+          finalDuration = playerInstanceRef.current.getDuration() || finalDuration;
+        }
+        
+        setFavoriteVideos(prev => [{ ...vid, lastPosition: finalTime, duration: finalDuration }, ...prev]);
+        notify(`Added to Watch Later at ${formatClockTime(finalTime)}`);
+      } else {
+        notify("Added to Watch Later!");
+      }
+    }
+
+    // 3. BACKGROUND SYNC: Send to database without making the user wait
     try {
-      const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
-      if (!session) {
-        window.dispatchEvent(new CustomEvent("show-policy")); // Or show login
-        return;
+      // Get the exact time one more time for the background save
+      let finalTime = currentTimeRef.current;
+      let finalDuration = currentDurationRef.current;
+      if (shouldIncludeProgress && playerInstanceRef.current?.getCurrentTime) {
+        finalTime = playerInstanceRef.current.getCurrentTime() || finalTime;
+        finalDuration = playerInstanceRef.current.getDuration() || finalDuration;
       }
 
-      const res = await fetch("/api/user/favorites", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}` 
-        },
-        body: JSON.stringify({ video_id: videoId })
-      });
-      const data = await res.json();
-      
-      if (res.ok) {
-        if (data.action === "added") {
-          setFavorites(prev => [...prev, videoId]);
-          // If we have the video in current list, add to favoriteVideos
-          const vid = videos.find((v: any) => v.id === videoId) || globalResults.find((v: any) => v.id === videoId) || fetchedVideoMetadata[videoId];
-          if (vid) setFavoriteVideos(prev => [vid, ...prev]);
-          notify("Added to Watch Later!");
-        } else {
-          setFavorites(prev => prev.filter(id => id !== videoId));
-          setFavoriteVideos(prev => prev.filter(v => v.id !== videoId));
-          notify("Removed from Watch Later");
+      const performSync = async (retryCount = 0) => {
+        try {
+          const res = await fetch("/api/user/favorites", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}` 
+            },
+            body: JSON.stringify({ 
+              intent: requestIntent,
+              video_id: videoId,
+              last_position: shouldIncludeProgress ? finalTime : undefined,
+              duration: shouldIncludeProgress ? finalDuration : undefined
+            })
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            console.warn(`[PushDiag] Background save attempt ${retryCount + 1} failed (${res.status}):`, errorData.error);
+            
+            if (retryCount < 2 && (res.status === 503 || res.status === 504 || res.status === 429)) {
+              const delay = (retryCount + 1) * 5000; // 5s, 10s
+              console.log(`[PushDiag] Retrying in ${delay/1000}s...`);
+              setTimeout(() => performSync(retryCount + 1), delay);
+            }
+          } else {
+            console.log("[PushDiag] Background save successful.");
+          }
+        } catch (err) {
+          console.error("[PushDiag] Background save network error:", err);
         }
-      }
+      };
+
+      performSync();
     } catch (err) {
-      console.error("Failed to toggle favorite:", err);
-      notify("Failed to update favorites", "error");
+      console.error("Failed to start background favorite sync:", err);
     }
   };
 
@@ -306,7 +378,11 @@ export default function YouTubeChannelHub() {
       
       if (!res.ok) {
         fetchedRef.current.delete(cacheKey);
-        throw new Error(data.error ?? `HTTP ${res.status}`);
+        const serverDetails = typeof data?.details === "string"
+          ? data.details
+          : data?.details?.error?.message;
+        setError(serverDetails || data?.error || `HTTP ${res.status}`);
+        return;
       }
 
       setContentCache((prev) => {
@@ -361,13 +437,13 @@ export default function YouTubeChannelHub() {
   useEffect(() => {
     const performGlobalSearch = async () => {
       if (!searchQuery.trim()) {
-        setGlobalResults([]);
+        setGlobalResults({ playlists: [], videos: [] });
         return;
       }
 
       // If we are in a channel view, or have filters, or a long enough query
       if (selectedChannelIds.length === 0 && activeChannel && searchQuery.length < 3) {
-        setGlobalResults([]);
+        setGlobalResults({ playlists: [], videos: [] });
         return;
       }
 
@@ -387,7 +463,10 @@ export default function YouTubeChannelHub() {
         const res = await fetch(url, { headers });
         const data = await res.json();
         if (res.ok) {
-          setGlobalResults(data.items || []);
+          setGlobalResults({
+            playlists: data.playlists || [],
+            videos: data.videos || []
+          });
         }
       } catch (err) {
         console.error("Global search error:", err);
@@ -417,7 +496,8 @@ export default function YouTubeChannelHub() {
 
     // Check if it's already in some cache
     const isCached = videos.some((v: VideoItem) => v.id === activeVideoId) || 
-                     globalResults.some((v: VideoItem) => v.id === activeVideoId) ||
+                     globalResults.videos.some((v: VideoItem) => v.id === activeVideoId) ||
+                     globalResults.playlists.some((v: VideoItem) => v.id === activeVideoId) ||
                      Object.values(contentCache).some((ch: any) => 
                        Object.values(ch).some((tabs: any) => 
                          Object.values(tabs).some((pl: any) => 
@@ -467,7 +547,8 @@ export default function YouTubeChannelHub() {
     if (fromChannel) return fromChannel;
     
     // 2. Check global search results (important if clicked from search)
-    const fromGlobal = globalResults.find((v: VideoItem) => v.id === activeVideoId);
+    const fromGlobal = globalResults.videos.find((v: VideoItem) => v.id === activeVideoId) || 
+                       globalResults.playlists.find((v: VideoItem) => v.id === activeVideoId);
     if (fromGlobal) return fromGlobal;
 
     // 3. Check one-off fetched metadata
@@ -485,11 +566,25 @@ export default function YouTubeChannelHub() {
     return null;
   })();
 
-  const handleVideoProgress = useCallback(async (currentTime: number, duration: number) => {
-    if (!activeVideoId) return;
+  const handleVideoProgress = useCallback(async (videoId: string, currentTime: number, duration: number) => {
+    if (!videoId) return;
     
-    // Only save if it's in Watch Later
-    if (!favorites.includes(activeVideoId)) return;
+    // Track locally for immediate favoriting if it's the active one
+    if (videoId === activeVideoId) {
+      currentTimeRef.current = currentTime;
+      currentDurationRef.current = duration;
+    }
+    
+    // Only save to DB if it's in Watch Later
+    if (!favorites.includes(videoId)) return;
+    if (!duration || duration <= 0) return;
+
+    const roundedCurrent = Math.floor(currentTime);
+    const roundedDuration = Math.floor(duration);
+    const previousSynced = lastProgressSyncRef.current[videoId] ?? -1;
+    const isNearEnd = roundedDuration - roundedCurrent <= 3;
+    const shouldSyncNow = previousSynced < 0 || (roundedCurrent - previousSynced >= 10) || isNearEnd;
+    if (!shouldSyncNow) return;
 
     try {
       const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
@@ -502,16 +597,18 @@ export default function YouTubeChannelHub() {
           "Authorization": `Bearer ${session.access_token}` 
         },
         body: JSON.stringify({ 
-          video_id: activeVideoId, 
-          last_position: currentTime, 
-          duration: duration,
+          intent: "progress",
+          video_id: videoId, 
+          last_position: roundedCurrent, 
+          duration: roundedDuration,
           is_update_only: true 
         })
       });
+      lastProgressSyncRef.current[videoId] = roundedCurrent;
       
       // Update local cache
       setFavoriteVideos(prev => prev.map(v => 
-        v.id === activeVideoId ? { ...v, lastPosition: currentTime, duration } : v
+        v.id === videoId ? { ...v, lastPosition: roundedCurrent, duration: roundedDuration } : v
       ));
     } catch (err) {
       console.error("Failed to save progress:", err);
@@ -694,100 +791,61 @@ export default function YouTubeChannelHub() {
           </div>
 
           {searchQuery ? (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                 <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-200 pb-6 gap-4">
+            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-200 pb-6 gap-4">
                   <div className="flex flex-col items-center sm:items-start gap-1">
-                    <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">LECTURE SEARCH RESULTS ({globalResults.length})</h2>
+                    <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">LECTURE SEARCH RESULTS</h2>
                     {selectedChannelIds.length > 0 && (
                       <p className="text-[10px] font-bold text-devo-600 uppercase tracking-widest">
                         Filtering by: {selectedChannelIds.length} Selected Teachers
                       </p>
                     )}
                   </div>
-                  <button onClick={() => { setSearchQuery(""); setSelectedChannelIds([]); }} className="px-6 py-2 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg">Back to Library</button>
+                  <button onClick={() => { setSearchQuery(""); setSelectedChannelIds([]); setGlobalResults({ playlists: [], videos: [] }); }} className="px-6 py-2 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg">Back to Library</button>
                 </div>
-               {globalResults.length === 0 && !isSearchingGlobal ? (
-                 <div className="py-20 text-center">
+
+                {globalResults.playlists.length === 0 && globalResults.videos.length === 0 && !isSearchingGlobal ? (
+                  <div className="py-20 text-center">
                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
                       <X className="w-8 h-8 text-slate-300" />
                     </div>
                     <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No matching lectures found in our library</p>
-                 </div>
-               ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10">
-                    {globalResults.map((item: any, i) => {
-                      const isPlaylist = item.type === "playlist";
-                      const isLiveItem = item.type === "live";
-                      
-                      return (
-                        <button 
-                           key={item.id + i}
-                           onClick={() => {
-                             const query = new URLSearchParams();
-                             query.set("channel", item.channelId || item.channel_id);
-                             if (isPlaylist) {
-                               query.set("playlist", item.id);
-                             } else {
-                               query.set("v", item.id);
-                             }
-                             setSearchQuery(""); 
-                             router.push(`${pathname}?${query.toString()}`);
-                           }}
-                           className="group flex flex-col text-left"
-                        >
-                           <div className="relative w-full pb-[56.25%] rounded-3xl overflow-hidden shadow-sm group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-500 border border-slate-100 bg-slate-200">
-                                 <Image 
-                                   src={item.thumbnail} 
-                                   alt={item.title} 
-                                   fill 
-                                   className="object-cover object-center group-hover:scale-110 transition-all duration-700 opacity-0 data-[loaded=true]:opacity-100" 
-                                   onLoadingComplete={(img) => img.setAttribute('data-loaded', 'true')}
-                                   unoptimized 
-                                 />
-                                 
-                                 {/* Overlay Icons */}
-                                 <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                                    {isPlaylist ? (
-                                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                         <Layers className="w-6 h-6 text-white" />
-                                      </div>
-                                    ) : (
-                                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                         <Play className="w-6 h-6 text-white ml-1" />
-                                      </div>
-                                    )}
-                                 </div>
-
-                                 {/* Badges */}
-                                 <div className="absolute bottom-3 right-3 flex gap-2">
-                                    {isLiveItem && (
-                                      <div className="px-2 py-1 bg-red-600 rounded-lg flex items-center gap-1.5 shadow-lg border border-red-500">
-                                         <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                                         <span className="text-[8px] font-black text-white uppercase tracking-widest">LIVE</span>
-                                      </div>
-                                    )}
-                                    <div className="px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/20 shadow-lg">
-                                      {isPlaylist ? `${item.playlistCount || 0} VIDEOS` : "LECTURE"}
-                                 </div>
-                              </div>
-                           </div>
-
-                           <div className="pt-4 px-1 space-y-2.5">
-                              <h3 className="font-outfit font-black text-xs sm:text-[13px] text-devo-950 line-clamp-2 leading-snug group-hover:text-devo-600 transition-colors">
-                                {item.title}
-                              </h3>
-                              <div className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
-                                  {isPlaylist ? <Layers className="w-3 h-3 text-slate-400" /> : <Video className="w-3 h-3 text-slate-400" />}
-                                </div>
-                                <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-widest">{item.channelTitle || "Devotional Library"}</p>
-                              </div>
-                           </div>
-                        </button>
-                      );
-                    })}
                   </div>
-               )}
+                ) : (
+                  <div className="space-y-16">
+                    {/* Playlists Section */}
+                    {globalResults.playlists.length > 0 && (
+                      <div className="space-y-8">
+                        <div className="flex items-center gap-4">
+                          <Layers className="w-5 h-5 text-devo-500" />
+                          <h3 className="text-sm font-black uppercase tracking-[0.2em] text-devo-900">Found Playlists ({globalResults.playlists.length})</h3>
+                          <div className="flex-1 h-px bg-gradient-to-r from-devo-100 to-transparent" />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10">
+                          {globalResults.playlists.map((item, i) => (
+                            <SearchResultItem key={item.id + i} item={item} isPlaylist={true} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Videos Section */}
+                    {globalResults.videos.length > 0 && (
+                      <div className="space-y-8">
+                        <div className="flex items-center gap-4">
+                          <Play className="w-5 h-5 text-devo-500" />
+                          <h3 className="text-sm font-black uppercase tracking-[0.2em] text-devo-900">Lectures & Videos ({globalResults.videos.length})</h3>
+                          <div className="flex-1 h-px bg-gradient-to-r from-devo-100 to-transparent" />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10">
+                          {globalResults.videos.map((item, i) => (
+                            <SearchResultItem key={item.id + i} item={item} isPlaylist={false} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8 gap-x-4 sm:gap-x-6">
@@ -1015,7 +1073,8 @@ export default function YouTubeChannelHub() {
             <div ref={playerRef} className="order-1 lg:order-2 scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
               {activeVideoId ? (
                 <OptimizedVideoPlayer 
-                  key={activeChannel?.id || "global-player"}
+                  ref={playerInstanceRef}
+                  key={`${activeChannel?.id || "global-player"}-${activeVideoId}`}
                   videoId={activeVideoId}
                   title={activeVideo?.title || "Video"}
                   artist={activeChannel?.name || "Watch Later"}
@@ -1236,15 +1295,15 @@ export default function YouTubeChannelHub() {
                     </div>
                   )}
 
-                  {/* Divider if both have results */}
-                  {searchQuery && filteredVideos.length > 0 && globalResults.length > 0 && (
+                  {/* Separator if both have results */}
+                  {filteredVideos.length > 0 && (globalResults.videos.length > 0 || globalResults.playlists.length > 0) && (
                     <div className="h-px bg-slate-200 my-6 mx-4" />
                   )}
 
                   {/* Global Results Section */}
                   {searchQuery && (
                     <div className="space-y-4 pt-2">
-                       {(globalResults.length > 0 || isSearchingGlobal) && (
+                       {(globalResults.videos.length > 0 || globalResults.playlists.length > 0 || isSearchingGlobal) && (
                          <>
                            <div className="flex items-center justify-between px-2">
                              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600">
@@ -1254,7 +1313,7 @@ export default function YouTubeChannelHub() {
                            </div>
                            
                            <div className="space-y-3">
-                             {globalResults
+                             {[...globalResults.videos, ...globalResults.playlists]
                                .filter(gr => gr.channelId !== activeChannel?.channel_id)
                                .slice(0, 10)
                                .map((item: any, i) => (
@@ -1289,7 +1348,7 @@ export default function YouTubeChannelHub() {
                          </>
                         )}
                         
-                        {!isSearchingGlobal && globalResults.length === 0 && searchQuery.length >= 2 && filteredVideos.length === 0 && (
+                        {!isSearchingGlobal && (globalResults.videos.length === 0 && globalResults.playlists.length === 0) && searchQuery.length >= 2 && filteredVideos.length === 0 && (
                           <div className="text-center py-10 bg-white/30 rounded-3xl border-2 border-dashed border-slate-100">
                             <Search className="w-8 h-8 text-slate-200 mx-auto mb-2 opacity-50" />
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
@@ -1351,5 +1410,78 @@ export default function YouTubeChannelHub() {
         url={activeVideoId ? `https://www.youtube.com/watch?v=${activeVideoId}` : ""}
       />
     </div>
+  );
+}
+
+// Sub-component for Search Results
+function SearchResultItem({ item, isPlaylist }: { item: any, isPlaylist: boolean }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const isLiveItem = item.type === "live";
+
+  return (
+    <button 
+        onClick={() => {
+          const query = new URLSearchParams();
+          query.set("channel", item.channelId || item.channel_id);
+          if (isPlaylist) {
+            query.set("playlist", item.id);
+          } else {
+            query.set("v", item.id);
+          }
+          router.push(`${pathname}?${query.toString()}`);
+        }}
+        className="group flex flex-col text-left"
+    >
+        <div className="relative w-full pb-[56.25%] rounded-3xl overflow-hidden shadow-sm group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-500 border border-slate-100 bg-slate-200">
+              <Image 
+                src={item.thumbnail} 
+                alt={item.title} 
+                fill 
+                className="object-cover object-center group-hover:scale-110 transition-all duration-700 opacity-0 data-[loaded=true]:opacity-100" 
+                onLoadingComplete={(img) => img.setAttribute('data-loaded', 'true')}
+                unoptimized 
+              />
+              
+              {/* Overlay Icons */}
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                {isPlaylist ? (
+                  <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Layers className="w-6 h-6 text-white" />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Play className="w-6 h-6 text-white ml-1" />
+                  </div>
+                )}
+              </div>
+
+              {/* Badges */}
+              <div className="absolute bottom-3 right-3 flex gap-2">
+                {isLiveItem && (
+                  <div className="px-2 py-1 bg-red-600 rounded-lg flex items-center gap-1.5 shadow-lg border border-red-500">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                      <span className="text-[8px] font-black text-white uppercase tracking-widest">LIVE</span>
+                  </div>
+                )}
+                <div className="px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/20 shadow-lg">
+                  {isPlaylist ? `${item.playlistCount || 0} VIDEOS` : "LECTURE"}
+              </div>
+          </div>
+        </div>
+
+        <div className="pt-4 px-1 space-y-2.5">
+          <h3 className="font-outfit font-black text-xs sm:text-[13px] text-devo-950 line-clamp-2 leading-snug group-hover:text-devo-600 transition-colors">
+            {item.title}
+          </h3>
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
+              {isPlaylist ? <Layers className="w-3 h-3 text-slate-400" /> : <Video className="w-3 h-3 text-slate-400" />}
+            </div>
+            <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-widest">{item.channelTitle || "Devotional Library"}</p>
+          </div>
+        </div>
+    </button>
   );
 }

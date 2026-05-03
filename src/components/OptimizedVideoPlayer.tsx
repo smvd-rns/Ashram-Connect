@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 import { openExternal } from "@/lib/device";
+
+// Add TypeScript support for the YouTube IFrame API
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
+
+export interface VideoPlayerHandle {
+  getCurrentTime: () => number;
+  getDuration: () => number;
+}
 
 interface OptimizedVideoPlayerProps {
   videoId: string;
@@ -12,18 +25,11 @@ interface OptimizedVideoPlayerProps {
   thumbnail?: string;
   initialTime?: number;
   onStateChange?: (state: number) => void;
-  onProgress?: (currentTime: number, duration: number) => void;
+  onProgress?: (videoId: string, currentTime: number, duration: number) => void;
   className?: string;
 }
 
-declare global {
-  interface Window {
-    onYouTubeIframeAPIReady: () => void;
-    YT: any;
-  }
-}
-
-export default function OptimizedVideoPlayer({
+const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerProps>(({
   videoId,
   title,
   artist = "Devotional Library",
@@ -33,7 +39,9 @@ export default function OptimizedVideoPlayer({
   onStateChange,
   onProgress,
   className = ""
-}: OptimizedVideoPlayerProps) {
+}, ref) => {
+  const PLAYER_STATE_PLAYING = 1;
+  const PLAYER_STATE_PAUSED = 2;
   const [playerReady, setPlayerReady] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +49,35 @@ export default function OptimizedVideoPlayer({
   const [currentState, setCurrentState] = useState<number | null>(null);
   const playerContainerId = useRef(`player-${Math.random().toString(36).substr(2, 9)}`);
 
-  // Fallback URL for standard iframe (Used if JS API fails or is blocked)
-  const fallbackUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => {
+      if (playerInstance.current?.getCurrentTime) {
+        return playerInstance.current.getCurrentTime();
+      }
+      return 0;
+    },
+    getDuration: () => {
+      if (playerInstance.current?.getDuration) {
+        return playerInstance.current.getDuration();
+      }
+      return 0;
+    }
+  }));
+
+  // On local/http, including the origin parameter can sometimes trigger "Invalid Response" 
+  // from YouTube due to strict security policies. We only include it for HTTPS.
+  // We use youtube-nocookie.com for better compatibility with filtered networks (e.g. at the Temple).
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const origin = isHttps ? window.location.origin : undefined;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1${origin ? `&origin=${encodeURIComponent(origin)}` : ''}`;
 
   // 1. Load YouTube IFrame API Script (Globally once)
   useEffect(() => {
     const checkYT = () => {
-      if (window.YT && window.YT.Player && window.YT.PlayerState) {
+      if (window.YT && window.YT.Player) {
         setPlayerReady(true);
+        setTimedOut(false);
         return true;
       }
       return false;
@@ -56,14 +85,13 @@ export default function OptimizedVideoPlayer({
 
     if (checkYT()) return;
 
-    // AUTO-FALLBACK: If the API doesn't load in 3.5 seconds, we use a standard iframe
-    // This fixed the "Stuck on Initializing" issue on high-security laptops/ad-blockers
+    // AUTO-FALLBACK: If the API still doesn't load after a longer grace period, use standard iframe
     const fallbackTimer = setTimeout(() => {
       if (!window.YT || !window.YT.Player) {
         console.warn("[YT-PLAYER] Using Standard Fallback (API slow/blocked)");
         setTimedOut(true);
       }
-    }, 3500);
+    }, 12000);
 
     if (!document.getElementById("youtube-api-script")) {
       const tag = document.createElement("script");
@@ -111,7 +139,7 @@ export default function OptimizedVideoPlayer({
     };
 
     navigator.mediaSession.metadata = new (window as any).MediaMetadata(metadata);
-    navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState() === (window as any).YT?.PlayerState?.PLAYING ? "playing" : "paused";
+    navigator.mediaSession.playbackState = playerInstance.current?.getPlayerState?.() === PLAYER_STATE_PLAYING ? "playing" : "paused";
 
     navigator.mediaSession.setActionHandler("play", () => {
       playerInstance.current?.playVideo();
@@ -136,6 +164,15 @@ export default function OptimizedVideoPlayer({
     // Reset seek flag when videoId changes
     seekPerformedRef.current = false;
   }, [videoId]);
+
+  useEffect(() => {
+    if (!playerInstance.current || !initialTime || seekPerformedRef.current) return;
+    const current = playerInstance.current.getCurrentTime?.();
+    if (typeof current === "number" && current + 2 < initialTime) {
+      playerInstance.current.seekTo(initialTime, true);
+      seekPerformedRef.current = true;
+    }
+  }, [initialTime, videoId]);
 
   const onStateChangeRef = useRef(onStateChange);
   useEffect(() => {
@@ -169,12 +206,18 @@ export default function OptimizedVideoPlayer({
           onStateChange: (event: any) => {
             setCurrentState(event.data);
             if (onStateChangeRef.current) onStateChangeRef.current(event.data);
-            const isPlaying = event.data === (window as any).YT?.PlayerState?.PLAYING;
-            const isPaused = event.data === (window as any).YT?.PlayerState?.PAUSED;
+            const isPlaying = event.data === PLAYER_STATE_PLAYING;
+            const isPaused = event.data === PLAYER_STATE_PAUSED;
             
             if (isPlaying) {
               updateMediaSession();
               wasPlayingRef.current = true;
+              if (onProgress && playerInstance.current?.getCurrentTime) {
+                const currentTime = playerInstance.current.getCurrentTime();
+                if (currentTime > 0 || (initialTime === 0 && seekPerformedRef.current)) {
+                  onProgress(videoId, currentTime, playerInstance.current.getDuration());
+                }
+              }
               
               // Fallback seek: if onReady seek didn't work or was skipped, try here once
               if (!seekPerformedRef.current && initialTime > 0) {
@@ -184,6 +227,13 @@ export default function OptimizedVideoPlayer({
             } else if (isPaused) {
               if (!document.hidden) {
                 wasPlayingRef.current = false;
+              }
+              // Save progress immediately on pause
+              if (onProgress && playerInstance.current?.getCurrentTime) {
+                const currentTime = playerInstance.current.getCurrentTime();
+                if (currentTime > 0 || (initialTime === 0 && seekPerformedRef.current)) {
+                  onProgress(videoId, currentTime, playerInstance.current.getDuration());
+                }
               }
             }
           },
@@ -202,6 +252,13 @@ export default function OptimizedVideoPlayer({
     }
 
     return () => {
+      // Final Save on unmount or video change
+      if (onProgress && playerInstance.current?.getCurrentTime) {
+        const currentTime = playerInstance.current.getCurrentTime();
+        if (currentTime > 0 || (initialTime === 0 && seekPerformedRef.current)) {
+          onProgress(videoId, currentTime, playerInstance.current.getDuration());
+        }
+      }
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = null;
       }
@@ -240,7 +297,7 @@ export default function OptimizedVideoPlayer({
 
   // 5. Progress Tracking
   useEffect(() => {
-    if (!onProgress || !playerInstance.current || currentState !== (window as any).YT?.PlayerState?.PLAYING) {
+    if (!onProgress || !playerInstance.current || currentState !== PLAYER_STATE_PLAYING) {
       return;
     }
 
@@ -248,31 +305,32 @@ export default function OptimizedVideoPlayer({
       if (playerInstance.current?.getCurrentTime) {
         const currentTime = playerInstance.current.getCurrentTime();
         const duration = playerInstance.current.getDuration();
-        onProgress(currentTime, duration);
+        
+        // PROTECTION: Don't save 0 if we are still waiting for the initial seek to complete
+        const isActuallyPlaying = currentTime > 0 || (initialTime === 0 && seekPerformedRef.current);
+        
+        if (isActuallyPlaying) {
+          onProgress(videoId, currentTime, duration);
+        }
       }
-    }, 5000); // Save every 5 seconds
+    }, 1000); // Save every 1 second
 
     return () => clearInterval(interval);
   }, [currentState, onProgress]);
 
   return (
     <div className={`relative w-full h-full bg-black overflow-hidden ${className}`}>
-      {/* 
-         IF READY OR LOADING: Show API Div Target
-         IF TIMED OUT: Show Standard Iframe Fallback
-      */}
       {!timedOut ? (
         <div id={playerContainerId.current} className="w-full h-full" />
       ) : (
         <iframe
-          src={fallbackUrl}
+          src={embedUrl}
           className="w-full h-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
         />
       )}
 
-      {/* Loading Overlay (Only if not ready AND not timed out) */}
       {!playerReady && !timedOut && videoId && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
           <div className="text-center space-y-4">
@@ -284,7 +342,6 @@ export default function OptimizedVideoPlayer({
         </div>
       )}
 
-      {/* Error State */}
       {error && !timedOut && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-20">
           <AlertCircle className="w-12 h-12 text-red-400 mb-4" />
@@ -297,8 +354,8 @@ export default function OptimizedVideoPlayer({
           </button>
         </div>
       )}
-
     </div>
   );
-}
+});
 
+export default OptimizedVideoPlayer;

@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseYtAdmin as supabaseYt } from "./supabase-yt";
+
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY!;
 const supabase = createClient(
@@ -11,7 +13,7 @@ const CHUNK_SIZE = 100;
 async function upsertChunked(videos: any[]) {
   let count = 0;
   for (let i = 0; i < videos.length; i += CHUNK_SIZE) {
-    const { error } = await supabase
+    const { error } = await supabaseYt!
       .from("yt_videos")
       .upsert(videos.slice(i, i + CHUNK_SIZE), { onConflict: "video_id", ignoreDuplicates: true });
     if (error) console.error("[BgSync] Upsert error:", error.message);
@@ -50,6 +52,16 @@ async function fetchAllPlaylistVideos(playlistId: string, channelId: string): Pr
 
 export async function syncYouTubeChannelFull(channelId: string) {
   console.log(`[BgSync] ===== Starting Full Background Sync for ${channelId} =====`);
+
+  // --- SAFETY STEP: Ensure channel exists in the YouTube DB helper table ---
+  const { data: mainChannel } = await supabase.from("youtube_channels").select("name, visibility").eq("channel_id", channelId).single();
+  if (mainChannel && supabaseYt) {
+    await supabaseYt.from("youtube_channels").upsert({
+      channel_id: channelId,
+      name: mainChannel.name,
+      visibility: mainChannel.visibility
+    });
+  }
 
   await supabase.from("youtube_channels").update({
     sync_status: "syncing",
@@ -98,7 +110,7 @@ export async function syncYouTubeChannelFull(channelId: string) {
       updated_at: new Date().toISOString()
     }));
     if (playlistRecords.length > 0) {
-      await supabase.from("yt_playlists").upsert(playlistRecords, { onConflict: "playlist_id" });
+      await supabaseYt!.from("yt_playlists").upsert(playlistRecords, { onConflict: "playlist_id" });
     }
 
     // --- STEP 4: Sync each playlist ---

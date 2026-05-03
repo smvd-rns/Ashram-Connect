@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseYtAdmin as supabaseYt } from "./supabase-yt";
+
 import { safeQuery } from "./resilient-db";
 
 
@@ -46,7 +48,7 @@ async function upsertVideosInChunks(videos: any[]) {
     const chunk = videos.slice(i, i + UPSERT_CHUNK_SIZE);
     const { error: upsertError } = await safeQuery(
       async () =>
-        await supabase
+        await supabaseYt!
           .from("yt_videos")
           // Avoid expensive updates for already-synced rows.
           .upsert(chunk, { onConflict: "video_id", ignoreDuplicates: true }),
@@ -76,10 +78,25 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
   const metadata = (channelData?.metadata as any) || { stage: 'uploads', playlistIndex: 0 };
   const currentStage = isIncremental ? 'uploads' : metadata.stage || 'uploads';
   
+  // IMMEDIATELY update status and metadata to provide instant UI feedback
+  const initialMetadata = { ...metadata, stage: currentStage, last_started_at: new Date().toISOString() };
+  await supabase.from("youtube_channels").update({ 
+    sync_status: 'syncing', 
+    sync_error: null,
+    metadata: initialMetadata 
+  }).eq("channel_id", channelId);
+
   console.log(`[YouTube Sync] ${channelId} | Stage: ${currentStage} | Mode: ${isIncremental ? 'Incremental' : 'Full'}`);
 
-  // Update status to 'syncing'
-  await supabase.from("youtube_channels").update({ sync_status: 'syncing', sync_error: null }).eq("channel_id", channelId);
+  // --- SAFETY STEP: Ensure channel exists in the YouTube DB helper table ---
+  const { data: mainChannel } = await supabase.from("youtube_channels").select("name, visibility").eq("channel_id", channelId).single();
+  if (mainChannel && supabaseYt) {
+    await supabaseYt.from("youtube_channels").upsert({
+      channel_id: channelId,
+      name: mainChannel.name,
+      visibility: mainChannel.visibility
+    });
+  }
 
   try {
     // 2. Get "Uploads" playlist ID

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { supabaseYtAdmin } from "@/lib/supabase-yt";
+
 
 /**
  * GET: Fetch user's favorite videos
@@ -13,17 +15,17 @@ export async function GET(request: NextRequest) {
 
     const token = authHeader.split(" ")[1];
     
-    // VERIFY with a shorter timeout to prevent 10s hangs
+    // VERIFY with a much longer timeout because the Main DB is extremely busy
     const { data: { user }, error: authError } = await Promise.race([
       supabase.auth.getUser(token),
-      new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Supabase Connection Timeout")), 5000))
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Supabase Connection Timeout")), 60000))
     ]).catch(err => ({ data: { user: null }, error: err }));
     
     if (authError || !user) {
       console.error("Auth Error/Timeout:", authError);
       return NextResponse.json({ 
         error: authError?.message === "Supabase Connection Timeout" 
-          ? "Database connection timed out. Please check your internet or Supabase project status." 
+          ? "Database connection timed out (60s). The Main DB is extremely busy. Your request might still be processing in the background." 
           : "Invalid session" 
       }, { status: authError?.message === "Supabase Connection Timeout" ? 504 : 401 });
     }
@@ -44,8 +46,8 @@ export async function GET(request: NextRequest) {
       duration: f.duration 
     }]));
 
-    // Fetch metadata from yt_videos if available
-    const { data: videos, error: vidError } = await supabaseAdmin!
+    // Fetch metadata from yt_videos in the dedicated YouTube DB
+    const { data: videos, error: vidError } = await supabaseYtAdmin!
       .from("yt_videos")
       .select("*")
       .in("video_id", favoriteIds);
@@ -89,16 +91,30 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(" ")[1];
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    // Use the same 60s timeout for POST to handle extreme DB slowness
+    const { data: { user }, error: authError } = await Promise.race([
+      supabase.auth.getUser(token),
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Supabase Connection Timeout")), 60000))
+    ]).catch(err => ({ data: { user: null }, error: err }));
     
     if (authError || !user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      return NextResponse.json({ 
+        error: authError?.message === "Supabase Connection Timeout" 
+          ? "Connection timeout (60s). The DB is extremely busy, but your progress might still be processing. Check back in a minute." 
+          : "Invalid session" 
+      }, { status: authError?.message === "Supabase Connection Timeout" ? 504 : 401 });
     }
 
-    const { video_id, last_position, duration, is_update_only } = await request.json();
+    const { video_id, last_position, duration, is_update_only, intent } = await request.json();
     if (!video_id) {
       return NextResponse.json({ error: "video_id is required" }, { status: 400 });
     }
+    const parsedLastPosition = last_position !== undefined ? Number(last_position) : undefined;
+    const parsedDuration = duration !== undefined ? Number(duration) : undefined;
+    
+    const validLastPosition = (parsedLastPosition !== undefined && Number.isFinite(parsedLastPosition)) ? parsedLastPosition : undefined;
+    const validDuration = (parsedDuration !== undefined && Number.isFinite(parsedDuration)) ? parsedDuration : undefined;
 
     // Check if already in Watch Later
     const { data: existing } = await supabaseAdmin!
@@ -109,21 +125,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (existing) {
-      if (last_position !== undefined) {
-        // Update progress ONLY if it already exists in Watch Later
-        const { error: updError } = await supabaseAdmin!
-          .from("user_favorites")
-          .update({
-            last_position: last_position,
-            duration: duration || 0,
-            last_watched_at: new Date().toISOString()
-          })
-          .eq("id", existing.id);
-        
-        if (updError) throw updError;
-        return NextResponse.json({ action: "updated", video_id, last_position });
-      } else if (!is_update_only) {
-        // Simple Toggle: Remove
+      if (intent === "remove") {
         const { error: delError } = await supabaseAdmin!
           .from("user_favorites")
           .delete()
@@ -132,21 +134,36 @@ export async function POST(request: NextRequest) {
         if (delError) throw delError;
         return NextResponse.json({ action: "removed", video_id });
       }
-      return NextResponse.json({ action: "none", video_id });
+      
+      // Update existing record
+      const updateData: any = {
+        last_watched_at: new Date().toISOString()
+      };
+      if (validLastPosition !== undefined) updateData.last_position = validLastPosition;
+      if (validDuration !== undefined) updateData.duration = validDuration;
+
+      const { error: updError } = await supabaseAdmin!
+        .from("user_favorites")
+        .update(updateData)
+        .eq("id", existing.id);
+      
+      if (updError) throw updError;
+      return NextResponse.json({ action: "updated", video_id, last_position: validLastPosition ?? null });
+      
     } else {
-      if (is_update_only) {
-        // Don't add to Watch Later if it's just a progress update and not already there
-        // This follows the "save only when clicked and watched" rule
+      if (intent === "remove" || intent === "progress" || is_update_only) {
         return NextResponse.json({ action: "ignored", video_id });
       }
-      // Add
+
+      // Add New
       const { error: insError } = await supabaseAdmin!
         .from("user_favorites")
         .insert({
           user_id: user.id,
           video_id: video_id,
-          last_position: last_position || 0,
-          duration: duration || 0
+          last_position: validLastPosition ?? 0,
+          duration: validDuration ?? 0,
+          last_watched_at: new Date().toISOString()
         });
       
       if (insError) throw insError;

@@ -161,9 +161,12 @@ export async function GET(request: NextRequest) {
       const cRes = await fetch(channelUrl.toString());
       const cData = await cRes.json();
       const uploadsId = cData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+      if (!uploadsId) {
+        return NextResponse.json({ error: "Uploads playlist not found for channel" }, { status: 404 });
+      }
 
       apiUrl = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
-      apiUrl.searchParams.set("playlistId", uploadsId || "");
+      apiUrl.searchParams.set("playlistId", uploadsId);
       apiUrl.searchParams.set("part", "snippet");
     }
 
@@ -229,8 +232,8 @@ export async function GET(request: NextRequest) {
       },
       { headers: { "Cache-Control": `public, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=60` } }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("API error:", error);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return NextResponse.json({ error: error?.message || "Internal error" }, { status: 500 });
   }
 }
