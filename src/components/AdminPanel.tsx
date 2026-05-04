@@ -3410,7 +3410,10 @@ export default function AdminPanel() {
       // Fire the background sync — server handles everything, responds immediately
       const res = await fetch("/api/admin/youtube/background-sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ channelId })
       });
       const data = await res.json();
