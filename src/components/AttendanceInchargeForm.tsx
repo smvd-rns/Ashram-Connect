@@ -125,15 +125,31 @@ export default function AttendanceInchargeForm({
 
   const clearSelection = () => setSelected([]);
 
-  const handleSubmit = async () => {
+  const [confirmAction, setConfirmAction] = useState<{ isOpen: boolean; isRemove: boolean } | null>(null);
+
+  const slotLabels: Record<HarinamType, string> = {
+    h7am: "7:00 AM Slot",
+    h740am: "7:40 AM Slot",
+    hpdc: "PDC Slot",
+    hcustom_mins: `${customMins} mins (Custom)`,
+  };
+
+  const handleSubmit = async (isRemove = false) => {
     if (!selected.length || !session?.access_token) return;
+
+    if (isRemove && (!confirmAction || !confirmAction.isOpen)) {
+      setConfirmAction({ isOpen: true, isRemove: true });
+      return;
+    }
+
     setSubmitting(true);
+    setConfirmAction(null);
     try {
       const valueMap: Record<HarinamType, number> = {
-        h7am: 30,
-        h740am: 30,
-        hpdc: 90,
-        hcustom_mins: Math.max(0, Number(customMins) || 0),
+        h7am: isRemove ? 0 : 30,
+        h740am: isRemove ? 0 : 30,
+        hpdc: isRemove ? 0 : 90,
+        hcustom_mins: isRemove ? 0 : Math.max(0, Number(customMins) || 0),
       };
       const update = { [markType]: valueMap[markType] };
 
@@ -151,7 +167,7 @@ export default function AttendanceInchargeForm({
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Failed to mark attendance");
+        throw new Error(err?.error || `Failed to ${isRemove ? 'remove' : 'mark'} attendance`);
       }
 
       if (onSuccess) onSuccess();
@@ -159,7 +175,7 @@ export default function AttendanceInchargeForm({
       setSelected([]);
     } catch (err) {
       console.error(err);
-      alert("Failed to mark selected users. Please try again.");
+      alert(`Failed to ${isRemove ? 'remove' : 'mark'} selected users. Please try again.`);
     } finally {
       setSubmitting(false);
     }
@@ -167,6 +183,37 @@ export default function AttendanceInchargeForm({
 
   return (
     <div className="bg-emerald-100 p-6 sm:p-8 rounded-[2.5rem] border-2 border-emerald-200 shadow-xl shadow-emerald-300/20 relative overflow-hidden group transition-all hover:bg-emerald-200/40">
+      {/* Custom Confirmation Modal */}
+      {confirmAction?.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl border-2 border-emerald-100 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+            <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <CheckSquare className="w-8 h-8 text-rose-500" />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 text-center leading-tight mb-2">
+              Confirm Removal
+            </h3>
+            <p className="text-xs font-bold text-slate-500 text-center mb-8 px-4">
+              Are you sure you want to <span className="text-rose-600">REMOVE</span> attendance for <span className="text-slate-900 font-black">{selected.length} users</span> in the <span className="text-emerald-600 font-black">{slotLabels[markType]}</span>?
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 hover:bg-slate-100 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSubmit(true)}
+                className="py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-100 transition-all"
+              >
+                Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
           <Users className="w-5 h-5 text-emerald-600" />
@@ -331,22 +378,43 @@ export default function AttendanceInchargeForm({
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={submitting || selected.length === 0}
-          onClick={handleSubmit}
-          className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${submitting || selected.length === 0
-            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-            : "bg-emerald-600 text-white hover:bg-slate-900 shadow-lg shadow-emerald-100 active:scale-95"
-            }`}
-        >
-          {submitting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <CheckSquare className="w-4 h-4" />
-          )}
-          Mark Selected Users
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            type="button"
+            disabled={submitting || selected.length === 0}
+            onClick={() => handleSubmit(false)}
+            className={`group/btn py-4 rounded-3xl font-black text-[11px] uppercase tracking-[0.15em] transition-all flex items-center justify-center gap-2.5 ${submitting || selected.length === 0
+              ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+              : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200 active:scale-95"
+              }`}
+          >
+            {submitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <CheckSquare className="w-4 h-4 transition-transform group-hover/btn:scale-110" />
+            )}
+            <span className="leading-none">Mark Selected</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={submitting || selected.length === 0}
+            onClick={() => handleSubmit(true)}
+            className={`group/btn py-4 rounded-3xl font-black text-[11px] uppercase tracking-[0.15em] transition-all flex items-center justify-center gap-2.5 ${submitting || selected.length === 0
+              ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+              : "bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-200 active:scale-95"
+              }`}
+          >
+            {submitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <div className="w-4 h-4 border-2 border-white/80 rounded-md flex items-center justify-center transition-transform group-hover/btn:scale-110">
+                <div className="w-2 h-0.5 bg-white" />
+              </div>
+            )}
+            <span className="leading-none">Remove Selected</span>
+          </button>
+        </div>
       </div>
 
       <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-emerald-50/50 rounded-full blur-3xl pointer-events-none" />
