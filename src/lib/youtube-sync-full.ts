@@ -46,6 +46,9 @@ async function fetchAllPlaylistVideos(playlistId: string, channelId: string): Pr
 
     if (videos.length > 0) total += await upsertChunked(videos);
     pageToken = data.nextPageToken || "";
+    
+    // Throttling: Add a small delay to prevent exhausting Supabase Disk IO budget
+    if (pageToken) await new Promise(resolve => setTimeout(resolve, 500));
   } while (pageToken);
   return total;
 }
@@ -121,16 +124,18 @@ export async function syncYouTubeChannelFull(channelId: string) {
       deepTotal += count;
       console.log(`[BgSync] Playlist ${i + 1}/${allPlaylists.length} "${pl.snippet?.title}": +${count} videos (total new: ${deepTotal})`);
       
-      // Update progress in DB so admin can see it
-      await supabase.from("youtube_channels").update({
-        metadata: { 
-          stage: "deep_scan", 
-          playlistProgress: `${i + 1}/${allPlaylists.length}`,
-          deepTotal,
-          uploadsTotal,
-          totalOnYT
-        }
-      }).eq("channel_id", channelId);
+      // Update progress in DB so admin can see it - ONLY every 10 playlists to save Disk IO budget
+      if (i % 10 === 0 || i === allPlaylists.length - 1) {
+        await supabase.from("youtube_channels").update({
+          metadata: { 
+            stage: "deep_scan", 
+            playlistProgress: `${i + 1}/${allPlaylists.length}`,
+            deepTotal,
+            uploadsTotal,
+            totalOnYT
+          }
+        }).eq("channel_id", channelId);
+      }
     }
 
     // --- STEP 5: Mark completed ---

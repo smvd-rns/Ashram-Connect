@@ -151,6 +151,7 @@ export default function AdminPanel() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isRunningGlobalSync, setIsRunningGlobalSync] = useState(false);
 
   // Push Notifications Hook
   const { pushEnabled, subscribe: subscribePush, permission: pushPermission } = usePushNotifications(session);
@@ -1808,6 +1809,21 @@ export default function AdminPanel() {
                 >
                   <List className="w-4 h-4" />
                 </button>
+                  <button
+                    onClick={() => resetYtSyncStatus()}
+                    className="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all active:scale-95 shadow-sm border border-rose-100"
+                    title="Force Clear All Sync Statuses (Stuck Fix)"
+                  >
+                    <ArrowRightLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleRunGlobalSync}
+                    disabled={isRunningGlobalSync}
+                    className={`p-3 rounded-xl transition-all active:scale-95 shadow-sm border ${isRunningGlobalSync ? 'bg-slate-50 text-slate-300 border-slate-100' : 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-100'}`}
+                    title="Run Daily Incremental Sync for ALL Channels Now"
+                  >
+                    <Activity className={`w-4 h-4 ${isRunningGlobalSync ? 'animate-pulse' : ''}`} />
+                  </button>
                 <button
                   onClick={() => { 
                     setActiveYtChannel({ 
@@ -1868,13 +1884,17 @@ export default function AdminPanel() {
 
                       {/* Sync Status & Timestamp */}
                       <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${
+                          syncingChannels.has(channel.channel_id) ? 'bg-indigo-50 border-indigo-100 text-indigo-600' :
+                          channel.sync_status === 'syncing' ? 'bg-amber-50 border-amber-100 text-amber-600' :
                           channel.sync_status === 'completed' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                            channel.sync_status === 'error' ? 'bg-rose-50 border-rose-100 text-rose-600' :
-                              'bg-slate-50 border-slate-100 text-slate-400'
-                          }`}>
-                          {channel.sync_status === 'syncing' || syncingChannels.has(channel.channel_id) ? (
+                          channel.sync_status === 'error' ? 'bg-rose-50 border-rose-100 text-rose-600' :
+                          'bg-slate-50 border-slate-100 text-slate-400'
+                        }`}>
+                          {syncingChannels.has(channel.channel_id) ? (
                             <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Syncing...</>
+                          ) : channel.sync_status === 'syncing' ? (
+                            <><Activity className="w-2.5 h-2.5 animate-pulse" /> Deep Syncing</>
                           ) : channel.sync_status === 'completed' ? (
                             <><CheckCircle className="w-2.5 h-2.5" /> Completed</>
                           ) : channel.sync_status === 'error' ? (
@@ -1889,8 +1909,8 @@ export default function AdminPanel() {
                           </div>
                         )}
                       </div>
-                      {/* Background Sync Live Progress from DB metadata */}
-                      {channel.sync_status === 'syncing' && channel.metadata && (() => {
+                      {/* Background Sync Live Progress from DB metadata — Only shown when NOT manually syncing in foreground */}
+                      {channel.sync_status === 'syncing' && !syncingChannels.has(channel.channel_id) && channel.metadata && (() => {
                         const meta = channel.metadata as any;
                         return (
                           <div className="mt-2 p-2 bg-indigo-50 border border-indigo-100 rounded-lg space-y-1">
@@ -1910,7 +1930,7 @@ export default function AdminPanel() {
                                   {meta.deepTotal > 0 && <span>+{Number(meta.deepTotal).toLocaleString()} new</span>}
                                 </div>
                                 <div className="h-1 bg-indigo-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-indigo-500 transition-all duration-500 rounded-full"
+                                  <div className="h-full bg-amber-500 transition-all duration-500 rounded-full"
                                     style={{ width: `${Math.min(100, (parseInt(meta.playlistProgress) / parseInt(meta.playlistProgress.split('/')[1])) * 100)}%` }} />
                                 </div>
                               </div>
@@ -1931,7 +1951,7 @@ export default function AdminPanel() {
                           ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
                           : 'bg-white text-indigo-600 border-slate-100 hover:border-indigo-600 hover:bg-indigo-50'
                           }`}
-                        title="Sync Metadata"
+                        title="Sync Metadata (Foreground - Quick)"
                       >
                         <RotateCcw className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-spin' : ''}`} />
                       </button>
@@ -1942,9 +1962,16 @@ export default function AdminPanel() {
                           ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
                           : 'bg-white text-orange-600 border-slate-100 hover:border-orange-600 hover:bg-orange-50'
                           }`}
-                        title="Deep Background Sync (35K+ channels — server handles everything)"
+                        title="Deep Background Sync (Server-side - Best for 35K+)"
                       >
-                        <Activity className={`w-3.5 h-3.5 ${syncingChannels.has(channel.channel_id) ? 'animate-pulse' : ''}`} />
+                        <Activity className={`w-3.5 h-3.5 ${channel.sync_status === 'syncing' ? 'animate-pulse' : ''}`} />
+                      </button>
+                      <button 
+                        onClick={() => resetYtSyncStatus(channel.channel_id)}
+                        className="p-2 bg-white text-slate-400 hover:text-rose-500 rounded-lg border border-slate-100 hover:border-rose-500 transition-all shadow-sm"
+                        title="Force Clear Status (Stuck Fix)"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => { 
                         setActiveYtChannel(channel); 
@@ -3319,7 +3346,7 @@ export default function AdminPanel() {
   );
 
   // --- Helper Methods for YT Mgmt ---
-  async function fetchYtChannels() {
+    async function fetchYtChannels() {
     setLoadingYt(true);
     try {
       const res = await fetch("/api/admin/youtube-channels");
@@ -3329,6 +3356,48 @@ export default function AdminPanel() {
       console.error(err);
     } finally {
       setLoadingYt(false);
+    }
+  }
+
+  async function handleRunGlobalSync() {
+    const activeChannels = ytChannels.filter(c => c.is_active);
+    if (!confirm(`Run daily sync for ${activeChannels.length} active channels now? This will fetch the latest 50 videos for each channel.`)) return;
+    
+    setIsRunningGlobalSync(true);
+    try {
+      // Process each channel sequentially for live feedback and stability
+      for (const channel of activeChannels) {
+        // Skip if a deep background sync is already in progress
+        if (channel.sync_status === 'syncing') continue;
+
+        try {
+          // Call the incremental sync API for this channel
+          await handleSyncChannel(channel.channel_id, false, true); // true for isIncremental
+        } catch (err) {
+          console.error(`Global Sync failed for ${channel.name}:`, err);
+        }
+      }
+      alert("Global Daily Sync completed!");
+    } catch (err: any) {
+      alert("An error occurred during global sync: " + err.message);
+    } finally {
+      setIsRunningGlobalSync(false);
+      fetchYtChannels();
+    }
+  }
+
+  async function resetYtSyncStatus(channelId?: string) {
+    if (channelId && !confirm("Force clear sync status for this channel?")) return;
+    if (!channelId && !confirm("Force clear sync status for ALL channels? This will stop all background indicators.")) return;
+
+    try {
+      const query = supabase.from("youtube_channels").update({ sync_status: null, metadata: null });
+      if (channelId) query.eq("channel_id", channelId);
+      const { error } = await query;
+      if (error) throw error;
+      fetchYtChannels();
+    } catch (err: any) {
+      alert("Failed to reset status: " + err.message);
     }
   }
 
@@ -3350,22 +3419,25 @@ export default function AdminPanel() {
       
       alert(`✅ Background sync started for channel!\n\nThe server is now downloading all videos. You can close this page and come back later.\n\nCheck the channel status — it will update to "completed" when done.`);
       
-      // Poll for completion every 10 seconds
+      // Once successfully started on server, we can clear the LOCAL syncing state
+      // The UI will now show the Background Sync Progress box based on DB status
+      setSyncingChannels(prev => {
+        const next = new Set(prev);
+        next.delete(channelId);
+        return next;
+      });
+
+      // Poll for completion every 10 seconds to refresh the list
       const pollInterval = setInterval(async () => {
         try {
           const statusRes = await fetch(`/api/admin/youtube/background-sync?channelId=${channelId}`);
           const status = await statusRes.json();
           
-          // Refresh channel list to get updated status
+          // Refresh channel list to get updated status and metadata progress
           fetchYtChannels();
           
           if (!status.running) {
             clearInterval(pollInterval);
-            setSyncingChannels(prev => {
-              const next = new Set(prev);
-              next.delete(channelId);
-              return next;
-            });
           }
         } catch {
           // Network error during poll — keep polling
@@ -3392,7 +3464,7 @@ export default function AdminPanel() {
     }
   }
 
-  async function handleSyncChannel(channelId: string, isTurbo: boolean = false) {
+  async function handleSyncChannel(channelId: string, isTurbo: boolean = false, isIncrementalForce: boolean = false) {
     if (syncingChannels.has(channelId)) return;
 
     setSyncingChannels(prev => new Set(prev).add(channelId));
@@ -3403,8 +3475,8 @@ export default function AdminPanel() {
       let cursor: string | null = null;
       let hasMore = true;
       let pass = 0;
-      const maxPasses = isTurbo ? 1000 : 300;
-      const pagesPerRequest = isTurbo ? 10 : 3;
+      const maxPasses = isIncrementalForce ? 1 : (isTurbo ? 1000 : 300);
+      const pagesPerRequest = isIncrementalForce ? 1 : (isTurbo ? 10 : 3);
 
       while (hasMore && pass < maxPasses) {
         pass += 1;
@@ -3414,7 +3486,7 @@ export default function AdminPanel() {
           try {
             const syncPayload = JSON.stringify({ 
               channelId: channelId, 
-              isIncremental: false, 
+              isIncremental: isIncrementalForce, 
               cursor: cursor, 
               maxPages: pagesPerRequest 
             });
@@ -3460,7 +3532,7 @@ export default function AdminPanel() {
         }
       }
 
-      if (hasMore) {
+      if (hasMore && !isIncrementalForce) {
         throw new Error("Channel is extremely large. Please run another sync pass or use the local CLI script.");
       }
 

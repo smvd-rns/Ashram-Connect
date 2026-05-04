@@ -78,14 +78,6 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
   const metadata = (channelData?.metadata as any) || { stage: 'uploads', playlistIndex: 0 };
   const currentStage = isIncremental ? 'uploads' : metadata.stage || 'uploads';
   
-  // IMMEDIATELY update status and metadata to provide instant UI feedback
-  const initialMetadata = { ...metadata, stage: currentStage, last_started_at: new Date().toISOString() };
-  await supabase.from("youtube_channels").update({ 
-    sync_status: 'syncing', 
-    sync_error: null,
-    metadata: initialMetadata 
-  }).eq("channel_id", channelId);
-
   console.log(`[YouTube Sync] ${channelId} | Stage: ${currentStage} | Mode: ${isIncremental ? 'Incremental' : 'Full'}`);
 
   // --- SAFETY STEP: Ensure channel exists in the YouTube DB helper table ---
@@ -191,14 +183,21 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     }
 
     // 4. Update State
-    const isActuallyDone = !hasMore && !isIncremental;
-    await supabase.from("youtube_channels").update({
-      sync_status: isActuallyDone ? 'completed' : 'syncing',
+    const isActuallyDone = !hasMore || isIncremental;
+    const updatePayload: any = {
       sync_cursor: hasMore ? nextCursor : null,
-      last_sync_at: isActuallyDone ? new Date().toISOString() : undefined,
       metadata: metadata,
       sync_error: null
-    }).eq("channel_id", channelId);
+    };
+
+    // Only mark as 'completed' and update timestamp if we aren't currently in a Deep Background Sync
+    // This prevents a quick incremental sync from clearing the 'syncing' status of a deep scan.
+    if (isActuallyDone && channelData?.sync_status !== 'syncing') {
+      updatePayload.sync_status = 'completed';
+      updatePayload.last_sync_at = new Date().toISOString();
+    }
+
+    await supabase.from("youtube_channels").update(updatePayload).eq("channel_id", channelId);
 
     return { success: true, totalSynced, hasMore, nextPageToken: nextCursor, pagesProcessed };
 
