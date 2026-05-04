@@ -66,10 +66,12 @@ export async function syncYouTubeChannelFull(channelId: string) {
     });
   }
 
+  const engine = process.env.SYNC_ENGINE_NAME || 'local';
+
   await supabase.from("youtube_channels").update({
     sync_status: "syncing",
     sync_error: null,
-    metadata: { stage: "uploads", startedAt: new Date().toISOString() }
+    metadata: { stage: "uploads", startedAt: new Date().toISOString(), engine }
   }).eq("channel_id", channelId);
 
   try {
@@ -84,13 +86,13 @@ export async function syncYouTubeChannelFull(channelId: string) {
 
     // --- STEP 2: Sync main Uploads playlist (all pages, no limit) ---
     let uploadsTotal = 0;
-    await supabase.from("youtube_channels").update({ metadata: { stage: "uploads", totalOnYT } }).eq("channel_id", channelId);
+    await supabase.from("youtube_channels").update({ metadata: { stage: "uploads", totalOnYT, engine } }).eq("channel_id", channelId);
     uploadsTotal = await fetchAllPlaylistVideos(uploadsPlaylistId, channelId);
     console.log(`[BgSync] Uploads stage done. Synced ${uploadsTotal} videos.`);
 
     // --- STEP 3: Get all channel playlists ---
     console.log(`[BgSync] Starting deep playlist scan...`);
-    await supabase.from("youtube_channels").update({ metadata: { stage: "deep_scan", uploadsTotal, totalOnYT } }).eq("channel_id", channelId);
+    await supabase.from("youtube_channels").update({ metadata: { stage: "deep_scan", uploadsTotal, totalOnYT, engine } }).eq("channel_id", channelId);
 
     let allPlaylists: any[] = [];
     let plPageToken = "";
@@ -132,7 +134,8 @@ export async function syncYouTubeChannelFull(channelId: string) {
             playlistProgress: `${i + 1}/${allPlaylists.length}`,
             deepTotal,
             uploadsTotal,
-            totalOnYT
+            totalOnYT,
+            engine
           }
         }).eq("channel_id", channelId);
       }
@@ -146,7 +149,7 @@ export async function syncYouTubeChannelFull(channelId: string) {
       last_sync_at: new Date().toISOString(),
       sync_cursor: null,
       sync_error: null,
-      metadata: { stage: "completed", grandTotal, uploadsTotal, deepTotal, totalOnYT }
+      metadata: { stage: "completed", grandTotal, uploadsTotal, deepTotal, totalOnYT, engine }
     }).eq("channel_id", channelId);
 
   } catch (err: any) {

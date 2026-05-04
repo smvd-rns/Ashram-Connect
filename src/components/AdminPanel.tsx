@@ -1918,6 +1918,11 @@ export default function AdminPanel() {
                               <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1">
                                 <Loader2 className="w-2.5 h-2.5 animate-spin" />
                                 {meta.stage === 'uploads' ? '📥 Main Upload Sync' : meta.stage === 'deep_scan' ? '🔍 Deep Playlist Scan' : '⏳ Starting...'}
+                                {meta.engine && (
+                                  <span className="ml-2 px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-[7px] border border-indigo-200">
+                                    Engine: {meta.engine}
+                                  </span>
+                                )}
                               </span>
                               {meta.totalOnYT && (
                                 <span className="text-[8px] font-bold text-slate-400">~{Number(meta.totalOnYT).toLocaleString()} on YT</span>
