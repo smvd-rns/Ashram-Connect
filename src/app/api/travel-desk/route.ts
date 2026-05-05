@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
     const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
     const isManager = roles.includes(1) || roles.includes(5);
     
-    // Use supabaseAdmin for managers to bypass RLS and see all data
-    let dbQuery = (isManager ? supabaseAdmin! : supabase)
+    // Use supabaseAdmin to bypass RLS as auth.uid() isn't set on server-side requests
+    let dbQuery = supabaseAdmin!
         .from("travel_submissions")
         .select("*")
         .eq("is_deleted", false);
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { data, error } = await safeQuery(async () => 
-        await supabase
+        await supabaseAdmin!
             .from("travel_submissions")
             .insert([{
                 user_id: user.id,
@@ -148,7 +148,7 @@ export async function PATCH(req: NextRequest) {
       const { id, status } = body;
   
       const { data, error } = await safeQuery(async () => 
-        await supabase
+        await supabaseAdmin!
             .from("travel_submissions")
             .update({ status })
             .eq("id", id)
