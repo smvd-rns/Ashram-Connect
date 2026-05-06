@@ -5,11 +5,175 @@ import { ShieldAlert, X, BookOpen, ExternalLink } from "lucide-react";
 
 export default function PolicyModal() {
   const [isOpen, setIsOpen] = useState(false);
+  const [modalTitleMain, setModalTitleMain] = useState("Ashram");
+  const [modalTitleHighlight, setModalTitleHighlight] = useState("Media Policy");
+  const [modalDesc, setModalDesc] = useState("Restricted Device Access");
+  const [modalContent, setModalContent] = useState("As per our Temple Policy, external YouTube navigation is restricted to maintain a focused spiritual atmosphere.");
+  const [modalSub, setModalSub] = useState("Please continue your journey within this curated library.");
 
   useEffect(() => {
-    const handleShowPolicy = () => setIsOpen(true);
+    const handleShowPolicy = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setModalTitleMain(customEvent.detail.titleMain || "External Link");
+        setModalTitleHighlight(customEvent.detail.titleHighlight || "Restricted");
+        setModalDesc(customEvent.detail.desc || "Restricted Action");
+        setModalContent(customEvent.detail.content || "External links are not allowed to be opened in another browser tab on laptop view.");
+        setModalSub(customEvent.detail.sub || "Please continue your journey within this curated library.");
+      } else {
+        // Default YouTube block message
+        setModalTitleMain("Ashram");
+        setModalTitleHighlight("Media Policy");
+        setModalDesc("Restricted Device Access");
+        setModalContent("As per our Temple Policy, external YouTube navigation is restricted to maintain a focused spiritual atmosphere.");
+        setModalSub("Please continue your journey within this curated library.");
+      }
+      setIsOpen(true);
+    };
     window.addEventListener("show-policy", handleShowPolicy);
     return () => window.removeEventListener("show-policy", handleShowPolicy);
+  }, []);
+
+  // Global click interceptor and window.open override for laptop view
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // 1. Intercept standard <a> anchor link clicks
+    const handleGlobalClick = (e: MouseEvent) => {
+      const isLaptopView = window.innerWidth >= 1024;
+      if (!isLaptopView) return;
+
+      let target = e.target as HTMLElement | null;
+      while (target && target.tagName !== "A") {
+        target = target.parentElement;
+      }
+
+      if (target && target.tagName === "A") {
+        const href = target.getAttribute("href");
+        const linkTarget = target.getAttribute("target");
+
+        if (href) {
+          const isExternal = href.startsWith("http://") || href.startsWith("https://") || href.startsWith("//");
+          const isCurrentOrigin = href.includes(window.location.host);
+          const isYouTube = href.includes("youtube.com") || href.includes("youtu.be");
+
+          // Block external links or links opening in another tab
+          if ((isExternal && !isCurrentOrigin) || isYouTube || linkTarget === "_blank") {
+            e.preventDefault();
+            e.stopPropagation();
+
+            window.dispatchEvent(new CustomEvent("show-policy", {
+              detail: {
+                titleMain: "External Link",
+                titleHighlight: "Blocked",
+                desc: "Restricted Navigation",
+                content: "External links and new browser tabs are not allowed on laptop view.",
+                sub: "Please continue your journey within this curated library."
+              }
+            }));
+          }
+        }
+      }
+    };
+
+    // 2. Intercept programmatic window.open calls
+    const originalOpen = window.open;
+    window.open = function(url, target, features) {
+      const isLaptopView = window.innerWidth >= 1024;
+      if (isLaptopView) {
+        const urlStr = String(url || "");
+        const isExternal = urlStr.startsWith("http://") || urlStr.startsWith("https://") || urlStr.startsWith("//");
+        const isCurrentOrigin = urlStr.includes(window.location.host);
+        const isYouTube = urlStr.includes("youtube.com") || urlStr.includes("youtu.be");
+        const isBlankOrSystem = target === "_blank" || target === "_system";
+
+        if ((isExternal && !isCurrentOrigin) || isYouTube || isBlankOrSystem) {
+          console.warn("[BLOCKED] window.open blocked on laptop view:", url);
+          window.dispatchEvent(new CustomEvent("show-policy", {
+            detail: {
+              titleMain: "External Link",
+              titleHighlight: "Blocked",
+              desc: "Restricted Navigation",
+              content: "External links and new browser tabs are not allowed on laptop view.",
+              sub: "Please continue your journey within this curated library."
+            }
+          }));
+          return null;
+        }
+      }
+      return originalOpen.call(window, url, target, features);
+    };
+
+    document.addEventListener("click", handleGlobalClick, true);
+
+    return () => {
+      document.removeEventListener("click", handleGlobalClick, true);
+      window.open = originalOpen;
+    };
+  }, []);
+
+  /**
+   * IFRAME NEW-TAB DETECTOR
+   *
+   * Cross-origin iframes (like YouTube) run in their own JS sandbox,
+   * so we cannot override window.open inside them. But the browser
+   * gives us an indirect signal:
+   *
+   *   1. window "blur"  → focus left our window (user clicked inside iframe)
+   *   2. document "visibilitychange" → hidden  → a new tab actually opened
+   *
+   * If BOTH happen within a short window (~300 ms), a new tab was opened
+   * from inside the iframe. We respond by:
+   *   a. Showing the policy modal immediately
+   *   b. Calling window.focus() to pull the user back to our page
+   *
+   * Normal iframe interaction (play/pause video) only fires blur — the
+   * page never becomes hidden — so this does NOT trigger false positives.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let lastBlurTime = 0;
+
+    const handleWindowBlur = () => {
+      lastBlurTime = Date.now();
+    };
+
+    const handleVisibilityChange = () => {
+      const timeSinceBlur = Date.now() - lastBlurTime;
+
+      // If page became hidden within 300ms of a blur, a new tab was opened
+      if (document.hidden && timeSinceBlur < 300 && lastBlurTime > 0) {
+        // Show the policy modal
+        window.dispatchEvent(new CustomEvent("show-policy", {
+          detail: {
+            titleMain: "External Link",
+            titleHighlight: "Blocked",
+            desc: "New Tab Detected",
+            content: "Opening YouTube or external links in a new browser tab is not permitted. Please stay within the curated library.",
+            sub: "Please continue your journey within this curated library."
+          }
+        }));
+
+        // Immediately bring focus back to our page
+        setTimeout(() => {
+          window.focus();
+        }, 50);
+      }
+
+      // Reset blur tracking when user returns to this tab
+      if (!document.hidden) {
+        lastBlurTime = 0;
+      }
+    };
+
+    window.addEventListener("blur", handleWindowBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("blur", handleWindowBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   if (!isOpen) return null;
@@ -43,21 +207,21 @@ export default function PolicyModal() {
 
           <div className="space-y-2">
             <h2 className="text-xl sm:text-2xl font-outfit font-black text-devo-950 tracking-tight leading-tight">
-              Ashram <span className="text-devo-600">Media Policy</span>
+              {modalTitleMain} <span className="text-devo-600">{modalTitleHighlight}</span>
             </h2>
-            <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-devo-400 opacity-60">Restricted Device Access</p>
+            <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-devo-400 opacity-60">{modalDesc}</p>
           </div>
 
           <div className="bg-slate-50/50 p-5 sm:p-7 rounded-[1.5rem] border border-slate-100 text-left">
             <p className="text-xs sm:text-base text-slate-700 font-medium leading-relaxed">
-              As per our <span className="font-bold text-devo-950 italic">Temple Policy</span>, external YouTube navigation is restricted to maintain a focused spiritual atmosphere.
+              {modalContent}
             </p>
             <div className="mt-4 flex items-start gap-3">
               <div className="mt-0.5 p-1 bg-devo-500/10 rounded">
                 <BookOpen className="w-3.5 h-3.5 text-devo-600" />
               </div>
               <p className="text-[11px] sm:text-sm text-slate-500 font-bold leading-normal">
-                Please continue your journey within this curated library.
+                {modalSub}
               </p>
             </div>
           </div>
