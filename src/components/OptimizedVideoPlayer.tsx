@@ -183,7 +183,36 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
     if (!playerReady || !videoId || timedOut) return;
 
     if (!playerInstance.current) {
-      playerInstance.current = new window.YT.Player(playerContainerId.current, {
+      // ── POPUP BLOCK via pre-created iframe ────────────────────────────────
+      // Problem with setting sandbox after load: browser reloads the iframe
+      //   → autoplay breaks.
+      // Solution: pre-create the <iframe> with sandbox already set, then pass
+      //   it to YT.Player. YT.Player sets the src (and allow="autoplay; ...")
+      //   on our pre-existing iframe — sandbox stays, autoplay works.
+      //
+      // Why this doesn't break autoplay:
+      //   - sandbox (no allow-popups) → blocks new tab/window ✅
+      //   - YT.Player sets allow="autoplay; ..." on the same iframe ✅
+      //   - These two attributes are independent — no conflict.
+      // ─────────────────────────────────────────────────────────────────────
+      const SANDBOX_VALUE =
+        'allow-scripts allow-same-origin allow-presentation allow-pointer-lock allow-orientation-lock allow-forms';
+        // NOTE: 'allow-popups' intentionally absent — blocks all new tab/window.
+
+      const container = document.getElementById(playerContainerId.current);
+      let playerTarget: string | HTMLIFrameElement = playerContainerId.current;
+
+      if (container) {
+        const preIframe = document.createElement('iframe');
+        preIframe.setAttribute('sandbox', SANDBOX_VALUE);
+        preIframe.style.width = '100%';
+        preIframe.style.height = '100%';
+        preIframe.style.border = 'none';
+        container.appendChild(preIframe);
+        playerTarget = preIframe; // YT.Player uses this element, not the div ID
+      }
+
+      playerInstance.current = new window.YT.Player(playerTarget, {
         height: "100%",
         width: "100%",
         videoId: videoId,
@@ -328,8 +357,13 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
           className="w-full h-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-pointer-lock allow-orientation-lock allow-forms"
+          // NOTE: 'allow-popups' is intentionally absent — this is the
+          // browser-level block for YouTube logo / More Videos / title links.
         />
       )}
+
+
 
       {!playerReady && !timedOut && videoId && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">

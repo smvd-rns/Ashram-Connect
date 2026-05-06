@@ -8,6 +8,21 @@
 export const openExternal = (url: string) => {
   if (typeof window === "undefined") return;
 
+  const isLaptopView = window.innerWidth >= 1024;
+  if (isLaptopView) {
+    console.warn("[BLOCKED] External link blocked in laptop view:", url);
+    window.dispatchEvent(new CustomEvent("show-policy", {
+      detail: {
+        titleMain: "External Link",
+        titleHighlight: "Blocked",
+        desc: "Restricted Navigation",
+        content: "External links and new browser tabs are not allowed on laptop view.",
+        sub: "Please continue your journey within this curated library."
+      }
+    }));
+    return;
+  }
+
   // 1. Check for Ashram Policy (YouTube restriction)
   const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
   if (isYouTube) {
