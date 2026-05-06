@@ -183,34 +183,34 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
     if (!playerReady || !videoId || timedOut) return;
 
     if (!playerInstance.current) {
-      // ── POPUP BLOCK via pre-created iframe ────────────────────────────────
-      // Problem with setting sandbox after load: browser reloads the iframe
-      //   → autoplay breaks.
-      // Solution: pre-create the <iframe> with sandbox already set, then pass
-      //   it to YT.Player. YT.Player sets the src (and allow="autoplay; ...")
-      //   on our pre-existing iframe — sandbox stays, autoplay works.
-      //
-      // Why this doesn't break autoplay:
-      //   - sandbox (no allow-popups) → blocks new tab/window ✅
-      //   - YT.Player sets allow="autoplay; ..." on the same iframe ✅
-      //   - These two attributes are independent — no conflict.
-      // ─────────────────────────────────────────────────────────────────────
+      // ── POPUP BLOCK (laptop only) ──────────────────────────────────────────
+      // On laptop (≥1024px): pre-create iframe with sandbox (no allow-popups)
+      //   so YouTube logo / More Videos buttons cannot open new tabs.
+      //   YT.Player still sets allow="autoplay; ..." on the same iframe → autoplay works.
+      // On mobile / APK: skip sandbox entirely — the mobile WebView handles
+      //   navigation differently and sandbox breaks the YT.Player API init.
+      // ───────────────────────────────────────────────────────────────────────
+      const isLaptop = window.innerWidth >= 1024;
+      const isCapacitor = !!(window as any).Capacitor;
+
       const SANDBOX_VALUE =
         'allow-scripts allow-same-origin allow-presentation allow-pointer-lock allow-orientation-lock allow-forms';
-        // NOTE: 'allow-popups' intentionally absent — blocks all new tab/window.
+        // NOTE: 'allow-popups' intentionally absent — blocks new tab/window.
 
       const container = document.getElementById(playerContainerId.current);
       let playerTarget: string | HTMLIFrameElement = playerContainerId.current;
 
-      if (container) {
+      if (isLaptop && !isCapacitor && container) {
+        // Laptop browser only: pre-create iframe with sandbox
         const preIframe = document.createElement('iframe');
         preIframe.setAttribute('sandbox', SANDBOX_VALUE);
         preIframe.style.width = '100%';
         preIframe.style.height = '100%';
         preIframe.style.border = 'none';
         container.appendChild(preIframe);
-        playerTarget = preIframe; // YT.Player uses this element, not the div ID
+        playerTarget = preIframe;
       }
+      // Mobile / APK: playerTarget stays as the div ID → normal YT.Player init
 
       playerInstance.current = new window.YT.Player(playerTarget, {
         height: "100%",
