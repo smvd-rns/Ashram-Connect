@@ -132,12 +132,36 @@ export async function GET(req: NextRequest) {
     if (startDate) query = query.gte("date", startDate);
     if (endDate) query = query.lte("date", endDate);
 
-    const { data, error } = await query.order("date", { ascending: true });
+    const { data, error } = await query.order("date", { ascending: false }); // Show newest first
 
     if (error) throw error;
 
     return NextResponse.json({ data });
 
+  } catch (error: any) {
+    console.error("Exception API Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing required parameter: id" }, { status: 400 });
+    }
+
+    const ids = id.split(",");
+    const { error } = await supabase
+      .from("attendance_exceptions")
+      .delete()
+      .in("id", ids);
+
+    if (error) throw error;
+
+    return NextResponse.json({ message: "Exceptions deleted successfully" });
   } catch (error: any) {
     console.error("Exception API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

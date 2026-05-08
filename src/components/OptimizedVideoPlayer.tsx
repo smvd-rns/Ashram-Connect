@@ -85,13 +85,22 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
 
     if (checkYT()) return;
 
-    // AUTO-FALLBACK: If the API still doesn't load after a longer grace period, use standard iframe
+    // AUTO-FALLBACK: Fall back to plain iframe quickly if API is slow/blocked
     const fallbackTimer = setTimeout(() => {
       if (!window.YT || !window.YT.Player) {
         console.warn("[YT-PLAYER] Using Standard Fallback (API slow/blocked)");
         setTimedOut(true);
       }
-    }, 12000);
+    }, 3000);
+
+    // Always chain onYouTubeIframeAPIReady — even if script tag already exists
+    // (it may be mid-load from a previous mount, so the callback hasn't fired yet)
+    const previousOnReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (previousOnReady) previousOnReady();
+      clearTimeout(fallbackTimer);
+      setPlayerReady(true);
+    };
 
     if (!document.getElementById("youtube-api-script")) {
       const tag = document.createElement("script");
@@ -99,12 +108,6 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
       tag.src = "https://www.youtube.com/iframe_api";
       const firstScriptTag = document.getElementsByTagName("script")[0];
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-      const previousOnReady = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        if (previousOnReady) previousOnReady();
-        setPlayerReady(true);
-      };
     }
 
     // Polling as a safety net
@@ -183,36 +186,7 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
     if (!playerReady || !videoId || timedOut) return;
 
     if (!playerInstance.current) {
-      // ── POPUP BLOCK (laptop only) ──────────────────────────────────────────
-      // On laptop (≥1024px): pre-create iframe with sandbox (no allow-popups)
-      //   so YouTube logo / More Videos buttons cannot open new tabs.
-      //   YT.Player still sets allow="autoplay; ..." on the same iframe → autoplay works.
-      // On mobile / APK: skip sandbox entirely — the mobile WebView handles
-      //   navigation differently and sandbox breaks the YT.Player API init.
-      // ───────────────────────────────────────────────────────────────────────
-      const isLaptop = window.innerWidth >= 1024;
-      const isCapacitor = !!(window as any).Capacitor;
-
-      const SANDBOX_VALUE =
-        'allow-scripts allow-same-origin allow-presentation allow-pointer-lock allow-orientation-lock allow-forms';
-        // NOTE: 'allow-popups' intentionally absent — blocks new tab/window.
-
-      const container = document.getElementById(playerContainerId.current);
-      let playerTarget: string | HTMLIFrameElement = playerContainerId.current;
-
-      if (isLaptop && !isCapacitor && container) {
-        // Laptop browser only: pre-create iframe with sandbox
-        const preIframe = document.createElement('iframe');
-        preIframe.setAttribute('sandbox', SANDBOX_VALUE);
-        preIframe.style.width = '100%';
-        preIframe.style.height = '100%';
-        preIframe.style.border = 'none';
-        container.appendChild(preIframe);
-        playerTarget = preIframe;
-      }
-      // Mobile / APK: playerTarget stays as the div ID → normal YT.Player init
-
-      playerInstance.current = new window.YT.Player(playerTarget, {
+      playerInstance.current = new window.YT.Player(playerContainerId.current, {
         height: "100%",
         width: "100%",
         videoId: videoId,
