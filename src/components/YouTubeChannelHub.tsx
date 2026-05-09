@@ -879,7 +879,19 @@ export default function YouTubeChannelHub() {
                   <button onClick={() => { setSearchQuery(""); setSelectedChannelIds([]); setGlobalResults({ playlists: [], videos: [] }); }} className="px-6 py-2 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg">Back to Library</button>
                 </div>
 
-                {globalResults.playlists.length === 0 && globalResults.videos.length === 0 && !isSearchingGlobal ? (
+                {isSearchingGlobal && globalResults.playlists.length === 0 && globalResults.videos.length === 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10 py-10">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} className="space-y-4 animate-pulse">
+                        <div className="w-full aspect-video rounded-[2rem] bg-slate-200" />
+                        <div className="space-y-2">
+                          <div className="h-4 bg-slate-200 rounded-full w-full" />
+                          <div className="h-3 bg-slate-200 rounded-full w-2/3" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : globalResults.playlists.length === 0 && globalResults.videos.length === 0 && !isSearchingGlobal ? (
                   <div className="py-20 text-center">
                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
                       <X className="w-8 h-8 text-slate-300" />

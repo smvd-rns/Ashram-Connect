@@ -141,9 +141,10 @@ export default function PolicyModal() {
 
     const handleVisibilityChange = () => {
       const timeSinceBlur = Date.now() - lastBlurTime;
+      const isIframeActive = document.activeElement?.tagName === "IFRAME";
 
-      // If page became hidden within 300ms of a blur, a new tab was opened
-      if (document.hidden && timeSinceBlur < 300 && lastBlurTime > 0) {
+      // If page became hidden within 300ms of a blur, and an iframe was active, a new tab was opened from it
+      if (document.hidden && timeSinceBlur < 300 && lastBlurTime > 0 && isIframeActive) {
         // Show the policy modal
         window.dispatchEvent(new CustomEvent("show-policy", {
           detail: {
