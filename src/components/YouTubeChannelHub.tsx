@@ -22,6 +22,7 @@ interface VideoItem {
   type: "video" | "live" | "short" | "playlist";
   playlistCount?: number;
   channelId?: string;
+  channel_id?: string;
   channelTitle?: string;
   lastPosition?: number;
   duration?: number;
