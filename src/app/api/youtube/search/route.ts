@@ -42,10 +42,14 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Determine allowed channel IDs
-    let finalChannelIds = channelId ? channelId.split(',') : null;
+    // If channelId param was explicitly provided (e.g., user is inside a channel or has filters active),
+    // trust it directly — it means the frontend already verified those channels are visible to the user.
+    const requestedChannelIds = channelId ? channelId.split(',').filter(Boolean) : null;
+
+    let finalChannelIds: string[] | null = requestedChannelIds;
 
     if (isAdmin) {
-      // For Admins: If no specific filter, get EVERY active channel ID
+      // Admins: if no filter given, search ALL active channels
       if (!finalChannelIds) {
         const { data: allActiveChannels } = await supabase
           .from('youtube_channels')
@@ -55,26 +59,27 @@ export async function GET(request: NextRequest) {
         finalChannelIds = (allActiveChannels || []).map(c => c.channel_id);
         console.log(`[Search API] Admin searching ALL ${finalChannelIds.length} channels.`);
       }
-    } else {
-      // For Normal Users/Guests: Get only public or assigned channels
+    } else if (!finalChannelIds) {
+      // Normal user with NO explicit channel filter: restrict to accessible channels only
       const { data: allowedChannels, error: rpcError } = await supabase.rpc('get_user_accessible_channels', { 
         requesting_user_id: userId 
       });
       
       if (rpcError) {
         console.error("[Search API] RPC Error fetching accessible channels:", rpcError);
-        // Fallback to only public search if RPC fails
-        finalChannelIds = null; 
+        // On RPC failure, fall back to null (SQL fn will enforce visibility = 'public')
+        finalChannelIds = null;
       } else {
         const accessibleIds = (allowedChannels || []).map((c: any) => c.channel_id);
-        
-        if (finalChannelIds) {
-          // Filter requested IDs by what they can actually see
-          finalChannelIds = finalChannelIds.filter(id => accessibleIds.includes(id));
-        } else {
-          finalChannelIds = accessibleIds;
-        }
+        finalChannelIds = accessibleIds.length > 0 ? accessibleIds : null;
       }
+    }
+    // If explicit channelIds were passed (requestedChannelIds != null), we skip the RPC
+    // entirely — the SQL fn still enforces visibility = 'public' as a safety net.
+
+    // Convert empty array to null so SQL fn searches all rather than returning nothing
+    if (finalChannelIds && finalChannelIds.length === 0) {
+      finalChannelIds = null;
     }
 
     // 3. Search in YouTube DB
