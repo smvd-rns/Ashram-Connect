@@ -345,7 +345,8 @@ export default function YouTubeChannelHub() {
     
   const videos = currentTabContent.items;
   const nextPageToken = currentTabContent.token;
-  const activeLogo = activeChannel?.custom_logo || (activeChannel ? logoCache[activeChannel.channel_id] : null);
+  const activeLogo = (typeof activeChannel?.custom_logo === 'string' && activeChannel.custom_logo) || 
+    (activeChannel && typeof logoCache[activeChannel.channel_id] === 'string' ? logoCache[activeChannel.channel_id] : null);
 
   const fetchContent = useCallback(async (channel: Channel, tab: string, isLoadMore = false) => {
     if (!channel) return;
@@ -441,33 +442,65 @@ export default function YouTubeChannelHub() {
         return;
       }
 
-      // If we are in a channel view, or have filters, or a long enough query
-      if (selectedChannelIds.length === 0 && activeChannel && searchQuery.length < 3) {
+      // Require at least 3 chars when on the home page with no filters
+      if (selectedChannelIds.length === 0 && !activeChannel && searchQuery.length < 3) {
         setGlobalResults({ playlists: [], videos: [] });
         return;
       }
 
       setIsSearchingGlobal(true);
       try {
-        let url = `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`;
-        if (selectedChannelIds.length > 0) {
-          url += `&channelId=${selectedChannelIds.join(',')}`;
-        }
-        
         const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
         const headers: Record<string, string> = {};
         if (session) {
           headers["Authorization"] = `Bearer ${session.access_token}`;
         }
         
-        const res = await fetch(url, { headers });
-        const data = await res.json();
-        if (res.ok) {
-          setGlobalResults({
-            playlists: data.playlists || [],
-            videos: data.videos || []
-          });
+        let playlists: any[] = [];
+        let videos: any[] = [];
+
+        if (activeChannel && selectedChannelIds.length === 0) {
+          // Inside a channel: make TWO parallel requests to ensure channel results aren't drowned out by global results
+          const channelUrl = `/api/youtube/search?q=${encodeURIComponent(searchQuery)}&channelId=${activeChannel.channel_id}`;
+          const globalUrl = `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`;
+          
+          const [channelRes, globalRes] = await Promise.all([
+            fetch(channelUrl, { headers }),
+            fetch(globalUrl, { headers })
+          ]);
+          
+          if (channelRes.ok) {
+            const cData = await channelRes.json();
+            playlists = [...(cData.playlists || [])];
+            videos = [...(cData.videos || [])];
+          }
+          if (globalRes.ok) {
+             const gData = await globalRes.json();
+             // Merge, prioritizing channel results and avoiding duplicates
+             const seenP = new Set(playlists.map(p => p.id));
+             for (const p of (gData.playlists || [])) {
+               if (!seenP.has(p.id)) playlists.push(p);
+             }
+             const seenV = new Set(videos.map(v => v.id));
+             for (const v of (gData.videos || [])) {
+               if (!seenV.has(v.id)) videos.push(v);
+             }
+          }
+        } else {
+          // Standard search (Home page, or with explicit filters)
+          let url = `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`;
+          if (selectedChannelIds.length > 0) {
+            url += `&channelId=${selectedChannelIds.join(',')}`;
+          }
+          const res = await fetch(url, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            playlists = data.playlists || [];
+            videos = data.videos || [];
+          }
         }
+
+        setGlobalResults({ playlists, videos });
       } catch (err) {
         console.error("Global search error:", err);
       } finally {
@@ -531,9 +564,45 @@ export default function YouTubeChannelHub() {
 
   const displayVideos = activeTab === "favorites" ? favoriteVideos : videos;
 
-  const filteredVideos = displayVideos.filter((v: VideoItem) =>
-    v.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredVideos = (() => {
+    const localMatches = displayVideos.filter((v: VideoItem) =>
+      v.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    if (!searchQuery.trim() || !activeChannel) {
+      return localMatches;
+    }
+
+    // Determine if we should pull from server-side playlists or videos based on active tab
+    const serverSource = activeTab === "playlists" ? globalResults.playlists : globalResults.videos;
+    
+    const serverMatches = serverSource
+      .filter((v: any) => (v.channelId || v.channel_id) === activeChannel.channel_id)
+      .map((v: any) => ({
+        id: v.id,
+        title: v.title,
+        thumbnail: v.thumbnail,
+        date: v.published ? new Date(v.published).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : undefined,
+        published: v.published,
+        type: v.type || (activeTab === "playlists" ? "playlist" : "video"),
+        playlistCount: v.playlistCount,
+        channelId: v.channelId || v.channel_id,
+        channelTitle: v.channelTitle
+      }));
+
+    // Merge matches, prioritizing local ones (which may have duration, progress, etc.)
+    const merged = [...localMatches];
+    const seenIds = new Set(merged.map(v => v.id));
+
+    for (const sm of serverMatches) {
+      if (!seenIds.has(sm.id)) {
+        merged.push(sm as any);
+        seenIds.add(sm.id);
+      }
+    }
+
+    return merged;
+  })();
 
   const activeVideo = (() => {
     if (!activeVideoId) return null;
@@ -775,8 +844,14 @@ export default function YouTubeChannelHub() {
                               }`}>
                                 {isSelected && <Check className="w-3 h-3 text-white" />}
                               </div>
-                              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-100">
-                                <Image src={ch.custom_logo || logoCache[ch.channel_id]} alt={ch.name} width={32} height={32} className="object-cover" unoptimized />
+                              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-100 flex items-center justify-center">
+                                {typeof ch.custom_logo === 'string' && ch.custom_logo ? (
+                                  <Image src={ch.custom_logo} alt={ch.name} width={32} height={32} className="object-cover" unoptimized />
+                                ) : typeof logoCache[ch.channel_id] === 'string' && logoCache[ch.channel_id] ? (
+                                  <Image src={logoCache[ch.channel_id]} alt={ch.name} width={32} height={32} className="object-cover" unoptimized />
+                                ) : (
+                                  <Video className="w-4 h-4 text-slate-300" />
+                                )}
                               </div>
                               <span className="text-[11px] font-bold truncate text-left flex-1">{ch.name}</span>
                             </button>
@@ -870,9 +945,9 @@ export default function YouTubeChannelHub() {
                     style={{ animationDelay: `${i * 50}ms` }}
                   >
                     <div className="relative w-full aspect-[4/5] sm:aspect-[3/4] h-auto rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:shadow-2xl group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-slate-100">
-                      {channel.custom_logo || logoCache[channel.channel_id] ? (
+                      {(typeof channel.custom_logo === 'string' && channel.custom_logo) || (typeof logoCache[channel.channel_id] === 'string' && logoCache[channel.channel_id]) ? (
                         <Image 
-                          src={channel.custom_logo || logoCache[channel.channel_id]} 
+                          src={(typeof channel.custom_logo === 'string' && channel.custom_logo) || logoCache[channel.channel_id]} 
                           alt={channel.name} 
                           fill 
                           className="object-cover group-hover:scale-110 transition-transform duration-700" 
@@ -924,9 +999,9 @@ export default function YouTubeChannelHub() {
               }`}
             >
               <div className="w-10 h-10 xl:w-14 xl:h-14 rounded-lg xl:rounded-xl overflow-hidden shadow-md border-2 border-white bg-slate-200 flex items-center justify-center">
-                {channel.custom_logo || logoCache[channel.channel_id] ? (
+                {(typeof channel.custom_logo === 'string' && channel.custom_logo) || (typeof logoCache[channel.channel_id] === 'string' && logoCache[channel.channel_id]) ? (
                   <Image
-                    src={channel.custom_logo || logoCache[channel.channel_id]}
+                    src={(typeof channel.custom_logo === 'string' && channel.custom_logo) || logoCache[channel.channel_id]}
                     alt={channel.name}
                     width={56}
                     height={56}
@@ -958,9 +1033,9 @@ export default function YouTubeChannelHub() {
                <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 shadow-sm ${
                 activeChannel?.id === channel.id ? "border-devo-500 ring-2 ring-devo-100" : "border-white"
               }`}>
-                {channel.custom_logo || logoCache[channel.channel_id] ? (
+                {(typeof channel.custom_logo === 'string' && channel.custom_logo) || (typeof logoCache[channel.channel_id] === 'string' && logoCache[channel.channel_id]) ? (
                   <Image
-                    src={channel.custom_logo || logoCache[channel.channel_id]}
+                    src={(typeof channel.custom_logo === 'string' && channel.custom_logo) || logoCache[channel.channel_id]}
                     alt={channel.name}
                     width={56}
                     height={56}
@@ -990,7 +1065,7 @@ export default function YouTubeChannelHub() {
           <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
           <div className="absolute -bottom-16 sm:-bottom-20 left-1/2 sm:left-8 -translate-x-1/2 sm:translate-x-0 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 w-full sm:w-auto px-4 sm:px-0">
             <div className="relative w-28 h-28 sm:w-44 sm:h-44 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden border-4 sm:border-8 border-white shadow-2xl bg-slate-100 flex items-center justify-center shrink-0">
-              {(activeLogo) ? (
+              {typeof activeLogo === 'string' && activeLogo ? (
                 <Image
                   src={activeLogo}
                   alt={activeChannel?.name || "My Favorites"}
@@ -1212,7 +1287,7 @@ export default function YouTubeChannelHub() {
             </div>
 
             <div className="space-y-3 max-h-[1200px] overflow-y-auto pr-1 custom-scrollbar">
-              {loading ? (
+              {loading || (isSearchingGlobal && filteredVideos.length === 0) ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="flex gap-4 p-4 bg-white rounded-[2rem] border-2 border-transparent animate-pulse">
                     <div className="w-32 sm:w-40 aspect-video rounded-2xl bg-slate-200 shrink-0" />
@@ -1239,8 +1314,9 @@ export default function YouTubeChannelHub() {
                         </p>
                       )}
                       {searchQuery && (
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600 pl-2">
-                          Matches in this Channel
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600 pl-2 flex items-center gap-2">
+                          <span>Matches in this Channel</span>
+                          {isSearchingGlobal && <Loader2 className="w-3.5 h-3.5 animate-spin text-devo-500" />}
                         </p>
                       )}
                       {filteredVideos.map((vid: VideoItem) => {
@@ -1255,7 +1331,13 @@ export default function YouTubeChannelHub() {
                               }`}
                           >
                             <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
-                              <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
+                              {typeof vid.thumbnail === 'string' && vid.thumbnail ? (
+                                <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
+                              ) : (
+                                <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
+                                  <Video className="w-8 h-8 text-slate-300" />
+                                </div>
+                              )}
                               
                               {/* Watch Later Progress Bar */}
                               {vid.lastPosition !== undefined && vid.lastPosition > 0 && vid.duration && (
@@ -1295,9 +1377,9 @@ export default function YouTubeChannelHub() {
                     </div>
                   )}
 
-                  {/* Separator if both have results */}
-                  {filteredVideos.length > 0 && (globalResults.videos.length > 0 || globalResults.playlists.length > 0) && (
-                    <div className="h-px bg-slate-200 my-6 mx-4" />
+                  {/* Separator between channel results and global results */}
+                  {searchQuery && (
+                    <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent my-6 mx-4" />
                   )}
 
                   {/* Global Results Section */}
@@ -1307,14 +1389,14 @@ export default function YouTubeChannelHub() {
                          <>
                            <div className="flex items-center justify-between px-2">
                              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600">
-                               Global Spiritual Search
+                               {activeChannel ? "Also Found In Other Channels" : "Global Spiritual Search"}
                              </p>
                              {isSearchingGlobal && <Loader2 className="w-3 h-3 animate-spin text-devo-400" />}
                            </div>
                            
                            <div className="space-y-3">
                              {[...globalResults.videos, ...globalResults.playlists]
-                               .filter(gr => gr.channelId !== activeChannel?.channel_id)
+                               .filter(gr => gr.channelId !== activeChannel?.channel_id && gr.channel_id !== activeChannel?.channel_id)
                                .slice(0, 10)
                                .map((item: any, i) => (
                                <button
@@ -1329,8 +1411,14 @@ export default function YouTubeChannelHub() {
                                  }}
                                  className="w-full group flex items-start gap-3 p-3 rounded-2xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 text-left"
                                >
-                                 <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 shadow-sm">
-                                   <Image src={item.thumbnail} alt={item.title} fill className="object-cover" unoptimized />
+                                  <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 shadow-sm">
+                                    {typeof item.thumbnail === 'string' && item.thumbnail ? (
+                                      <Image src={item.thumbnail} alt={item.title} fill className="object-cover" unoptimized />
+                                    ) : (
+                                      <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
+                                        <Video className="w-6 h-6 text-slate-300" />
+                                      </div>
+                                    )}
                                    
                                    {/* Shared Attributes */}
                                  </div>
@@ -1348,7 +1436,7 @@ export default function YouTubeChannelHub() {
                          </>
                         )}
                         
-                        {!isSearchingGlobal && (globalResults.videos.length === 0 && globalResults.playlists.length === 0) && searchQuery.length >= 2 && filteredVideos.length === 0 && (
+                        {!isSearchingGlobal && (globalResults.videos.length === 0 && globalResults.playlists.length === 0) && searchQuery.length >= 2 && filteredVideos.length === 0 && !activeChannel && (
                           <div className="text-center py-10 bg-white/30 rounded-3xl border-2 border-dashed border-slate-100">
                             <Search className="w-8 h-8 text-slate-200 mx-auto mb-2 opacity-50" />
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
@@ -1435,14 +1523,20 @@ function SearchResultItem({ item, isPlaylist }: { item: any, isPlaylist: boolean
         className="group flex flex-col text-left"
     >
         <div className="relative w-full pb-[56.25%] rounded-3xl overflow-hidden shadow-sm group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-500 border border-slate-100 bg-slate-200">
-              <Image 
-                src={item.thumbnail} 
-                alt={item.title} 
-                fill 
-                className="object-cover object-center group-hover:scale-110 transition-all duration-700 opacity-0 data-[loaded=true]:opacity-100" 
-                onLoadingComplete={(img) => img.setAttribute('data-loaded', 'true')}
-                unoptimized 
-              />
+              {typeof item.thumbnail === 'string' && item.thumbnail ? (
+                <Image 
+                  src={item.thumbnail} 
+                  alt={item.title} 
+                  fill 
+                  className="object-cover object-center group-hover:scale-110 transition-all duration-700 opacity-0 data-[loaded=true]:opacity-100" 
+                  onLoadingComplete={(img) => img.setAttribute('data-loaded', 'true')}
+                  unoptimized 
+                />
+              ) : (
+                <div className="absolute inset-0 bg-slate-200 flex items-center justify-center">
+                  <Video className="w-12 h-12 text-slate-300" />
+                </div>
+              )}
               
               {/* Overlay Icons */}
               <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
