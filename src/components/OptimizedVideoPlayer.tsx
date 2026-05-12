@@ -86,12 +86,13 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
     if (checkYT()) return;
 
     // AUTO-FALLBACK: Fall back to plain iframe quickly if API is slow/blocked
+    // Reduced to 1.5s to provide snap-quick experience on restricted networks.
     const fallbackTimer = setTimeout(() => {
       if (!window.YT || !window.YT.Player) {
         console.warn("[YT-PLAYER] Using Standard Fallback (API slow/blocked)");
         setTimedOut(true);
       }
-    }, 3000);
+    }, 1500);
 
     // Always chain onYouTubeIframeAPIReady — even if script tag already exists
     // (it may be mid-load from a previous mount, so the callback hasn't fired yet)
@@ -106,6 +107,11 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
       const tag = document.createElement("script");
       tag.id = "youtube-api-script";
       tag.src = "https://www.youtube.com/iframe_api";
+      tag.onerror = () => {
+        console.warn("[YT-PLAYER] API Script Blocked by network policy. Activated fallback.");
+        clearTimeout(fallbackTimer);
+        setTimedOut(true);
+      };
       const firstScriptTag = document.getElementsByTagName("script")[0];
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
     }
@@ -190,6 +196,7 @@ const OptimizedVideoPlayer = forwardRef<VideoPlayerHandle, OptimizedVideoPlayerP
         height: "100%",
         width: "100%",
         videoId: videoId,
+        host: "https://www.youtube-nocookie.com",
         playerVars: {
           autoplay: 1,
           rel: 0,
