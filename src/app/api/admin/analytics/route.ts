@@ -28,29 +28,58 @@ export async function GET(request: NextRequest) {
     const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
     if (!roles.includes(1)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    // 2. Fetch All Historical Daily Visits
-    const { data: visitsData, error: visitError } = await supabase
-      .from("user_visits")
-      .select("visit_date, visited_at, user_id")
-      .order("visit_date", { ascending: false });
+    // 2. Fetch All Historical Daily Visits using recursive pagination to bypass 1000 row configuration limit
+    let visitsData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+    const maxPages = 50; // Safety circuit breaker (50,000 rows cap)
 
-    if (visitError) {
-      console.error("Visit Fetch Error:", visitError);
-      throw visitError;
+    while (hasMore && page < maxPages) {
+      const { data, error: visitError } = await supabase
+        .from("user_visits")
+        .select("visit_date, visited_at, user_id")
+        .order("visit_date", { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (visitError) {
+        console.error("Visit Fetch Error:", visitError);
+        throw visitError;
+      }
+
+      if (data && data.length > 0) {
+        visitsData = [...visitsData, ...data];
+      }
+
+      if (!data || data.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
     }
 
-    // 3. Fetch Profiles for those users to get names/emails
-    const userIds = Array.from(new Set((visitsData || []).map(v => v.user_id)));
-    const { data: profilesData, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, temple, role")
-      .in("id", userIds);
+    // 3. Fetch Profiles for those users to get names/emails (Chunked to bypass limits)
+    const userIds = Array.from(new Set(visitsData.map(v => v.user_id)));
+    let profilesData: any[] = [];
+    const profileChunkSize = 1000;
+    
+    for (let i = 0; i < userIds.length; i += profileChunkSize) {
+      const chunk = userIds.slice(i, i + profileChunkSize);
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, temple, role")
+        .in("id", chunk);
 
-    if (profileError) console.error("Profile Fetch Error (Non-fatal):", profileError);
+      if (profileError) {
+        console.error("Profile Fetch Error (Non-fatal):", profileError);
+      } else if (data) {
+        profilesData = [...profilesData, ...data];
+      }
+    }
 
     // Map profiles for quick lookup
     const profileMap: Record<string, any> = {};
-    (profilesData || []).forEach(p => { profileMap[p.id] = p; });
+    profilesData.forEach(p => { profileMap[p.id] = p; });
 
     // 4. Process Aggregate Data
     const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());

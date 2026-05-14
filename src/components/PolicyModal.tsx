@@ -56,9 +56,10 @@ export default function PolicyModal() {
           const isExternal = href.startsWith("http://") || href.startsWith("https://") || href.startsWith("//");
           const isCurrentOrigin = href.includes(window.location.host);
           const isYouTube = href.includes("youtube.com") || href.includes("youtu.be");
+          const isDriveLink = href.includes("drive.google.com");
 
-          // Block external links or links opening in another tab
-          if ((isExternal && !isCurrentOrigin) || isYouTube || linkTarget === "_blank") {
+          // Block external links or links opening in another tab (exclude whitelisted Drive links for APK install)
+          if (((isExternal && !isCurrentOrigin) || isYouTube || linkTarget === "_blank") && !isDriveLink) {
             e.preventDefault();
             e.stopPropagation();
 
@@ -86,8 +87,9 @@ export default function PolicyModal() {
         const isCurrentOrigin = urlStr.includes(window.location.host);
         const isYouTube = urlStr.includes("youtube.com") || urlStr.includes("youtu.be");
         const isBlankOrSystem = target === "_blank" || target === "_system";
+        const isDriveLink = urlStr.includes("drive.google.com");
 
-        if ((isExternal && !isCurrentOrigin) || isYouTube || isBlankOrSystem) {
+        if (((isExternal && !isCurrentOrigin) || isYouTube || isBlankOrSystem) && !isDriveLink) {
           console.warn("[BLOCKED] window.open blocked on laptop view:", url);
           window.dispatchEvent(new CustomEvent("show-policy", {
             detail: {

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell, Music } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell, Music, Download } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -208,6 +208,17 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
+                    <a 
+                      href="https://drive.google.com/file/d/14zhPYRBLjcnSBgT7GHmAKpWDKvZ48L9k/view?usp=drive_link" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      onClick={() => setShowDesktopMore(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all hover:bg-emerald-50 text-slate-600 hover:text-emerald-700"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span className="text-[10px] font-black uppercase tracking-widest flex-1">Download Android App</span>
+                    </a>
+
                     <div className="my-2 border-t border-slate-100" />
                     
                     <button 
@@ -384,6 +395,17 @@ export default function Navbar() {
                   <div className={`w-1.5 h-1.5 rounded-full bg-devo-500 ${pathname.startsWith('/admin') ? 'opacity-100' : 'opacity-0'}`} />
                 </NextLink>
               )}
+
+              <a 
+                href="https://drive.google.com/file/d/14zhPYRBLjcnSBgT7GHmAKpWDKvZ48L9k/view?usp=drive_link" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={() => setShowMoreMenu(false)}
+                className="flex items-center gap-4 px-6 py-3.5 hover:bg-emerald-50 transition-all text-left group"
+              >
+                <Download className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+                <span className="text-[11px] font-black uppercase tracking-widest flex-1 text-slate-600 group-hover:text-emerald-700 transition-colors">Download Android App</span>
+              </a>
 
               <div className="my-2 mx-4 border-t border-slate-100" />
 
