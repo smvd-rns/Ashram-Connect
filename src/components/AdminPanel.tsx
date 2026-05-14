@@ -2200,13 +2200,21 @@ export default function AdminPanel() {
                 <h3 className="text-3xl sm:text-4xl font-black">{stats?.totalDaysActive || "0"}</h3>
               </div>
 
-              <div className="bg-gradient-to-tr from-purple-600 to-fuchsia-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-purple-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">
+              <div 
+                className="bg-gradient-to-tr from-purple-600 to-fuchsia-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-purple-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group cursor-help"
+                title={stats?.visitorsInView ? `${stats.visitorsInView.toLocaleString()} Total Visitors` : undefined}
+              >
                 <Users className="absolute right-[-5px] top-[-5px] w-16 sm:w-20 h-16 sm:h-20 opacity-10 group-hover:scale-110 transition-transform" strokeWidth={3} />
                 <div className="flex items-center gap-2">
                   <Users className="w-3.5 h-3.5 opacity-70" />
                   <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80">Visitors</span>
                 </div>
-                <h3 className="text-3xl sm:text-4xl font-black">{stats?.visitorsInView || "0"}</h3>
+                <h3 className="text-3xl sm:text-4xl font-black">
+                  {stats?.visitorsInView 
+                    ? Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(stats.visitorsInView)
+                    : "0"
+                  }
+                </h3>
               </div>
 
               <div className="bg-gradient-to-tr from-emerald-600 to-teal-500 p-4 sm:p-5 rounded-3xl text-white shadow-lg shadow-emerald-100 flex flex-col justify-between h-[130px] sm:h-[150px] relative overflow-hidden group">

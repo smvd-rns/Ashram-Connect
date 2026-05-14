@@ -9,7 +9,9 @@ export const openExternal = (url: string) => {
   if (typeof window === "undefined") return;
 
   const isLaptopView = window.innerWidth >= 1024;
-  if (isLaptopView) {
+  const isDriveLink = url.includes("drive.google.com");
+  
+  if (isLaptopView && !isDriveLink) {
     console.warn("[BLOCKED] External link blocked in laptop view:", url);
     window.dispatchEvent(new CustomEvent("show-policy", {
       detail: {
