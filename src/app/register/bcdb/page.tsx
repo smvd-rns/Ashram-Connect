@@ -197,7 +197,6 @@ export default function BCDBRegistration() {
     
     if (!formData.email_id.trim()) missing.push("Email Address");
     if (!formData.contact_no.trim()) missing.push("Phone Contact");
-    if (!formData.whatsapp_no.trim()) missing.push("WhatsApp Number");
     if (!formData.center.trim()) missing.push("Base Center");
     if (!formData.spiritual_master.trim()) missing.push("Spiritual Master");
     if (!formData.counsellor.trim()) missing.push("Counsellor");
@@ -449,10 +448,10 @@ export default function BCDBRegistration() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-black text-emerald-600 uppercase tracking-wider pl-1">WhatsApp Number*</label>
+                    <label className="text-[11px] font-black text-emerald-600 uppercase tracking-wider pl-1">WhatsApp Number</label>
                     <div className="relative">
                       <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-300" />
-                      <input type="tel" name="whatsapp_no" required value={formData.whatsapp_no} onChange={handleChange} placeholder="WhatsApp contact" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-emerald-50/30 border border-emerald-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all" />
+                      <input type="tel" name="whatsapp_no" value={formData.whatsapp_no} onChange={handleChange} placeholder="WhatsApp contact (Optional)" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-emerald-50/30 border border-emerald-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all" />
                     </div>
                   </div>
 
