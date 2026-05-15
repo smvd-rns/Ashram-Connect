@@ -14,8 +14,10 @@ export async function GET(req: NextRequest) {
     
     let dbQuery = supabase.from("bcdb").select("*").order("created_at", { ascending: false });
     
-    // Default: Only show non-deleted records
-    if (!showDeleted) {
+    // Toggle strictly between active and archived pools based on parameter
+    if (showDeleted) {
+      dbQuery = dbQuery.eq("is_deleted", true);
+    } else {
       dbQuery = dbQuery.eq("is_deleted", false);
     }
     
