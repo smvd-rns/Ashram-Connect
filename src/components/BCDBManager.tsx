@@ -11,11 +11,14 @@ import {
   MoreVertical,
   CheckCircle,
   FileSpreadsheet,
-  UserCheck,
+  UserCheck, User,
   RefreshCcw,
   Eye,
   EyeOff,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Inbox,
+  Check, Link,
+  UserX
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -36,6 +39,24 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
   const [confirmConfig, setConfirmConfig] = useState<{ title: string, message: string, onConfirm: () => void } | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [showDeleted, setShowDeleted] = useState(false);
+  
+  // -- SUBMISSIONS SYSTEM STATES --
+  const [viewSubmissions, setViewSubmissions] = useState(false);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isReviewingSubmission, setIsReviewingSubmission] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
+  const [processingSubmission, setProcessingSubmission] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [lightbox, setLightbox] = useState<{ url: string, title: string } | null>(null);
+  
+  const [copiedLink, setCopiedLink] = useState(false);
+  const handleCopyRegistrationLink = () => {
+    const link = `${window.location.origin}/register/bcdb`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
   
   const topScrollRef = React.useRef<HTMLDivElement>(null);
   const tableContainerRef = React.useRef<HTMLDivElement>(null);
@@ -111,6 +132,104 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
     }, 500); // 500ms debounce
     return () => clearTimeout(timer);
   }, [session, showDeleted, searchQuery]);
+
+  useEffect(() => {
+    // Always track count of pending submissions in background
+    if (session) {
+      fetch(`/api/admin/bcdb/submissions?status=pending`, {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.data) setPendingCount(res.data.length);
+      }).catch(console.error);
+    }
+  }, [session, data]);
+
+  useEffect(() => {
+    if (viewSubmissions) {
+      fetchSubmissions();
+    } else {
+      fetchData();
+    }
+  }, [viewSubmissions, searchQuery]);
+
+  const fetchSubmissions = async () => {
+    if (!session) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/bcdb/submissions?status=pending&query=${searchQuery}`, {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      const result = await res.json();
+      if (result.data) {
+        setSubmissions(result.data);
+        setPendingCount(result.data.length);
+      }
+    } catch (err) {
+      console.error("Failed to fetch submissions:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApproveSubmission = async (id: string) => {
+    setProcessingSubmission(true);
+    try {
+      const res = await fetch(`/api/admin/bcdb/submissions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ action: "approve", submissionId: id })
+      });
+      
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "Approval failed.");
+      }
+
+      setStatusMsg({ type: 'success', text: "Registration approved and devotee added to master directory!" });
+      setIsReviewingSubmission(false);
+      fetchSubmissions();
+      fetchData(); // Refresh main dataset
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message);
+    } finally {
+      setProcessingSubmission(false);
+    }
+  };
+
+  const handleRejectSubmission = async (id: string, reason: string) => {
+    setProcessingSubmission(true);
+    try {
+      const res = await fetch(`/api/admin/bcdb/submissions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ action: "reject", submissionId: id, reason })
+      });
+      
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "Rejection failed.");
+      }
+
+      setStatusMsg({ type: 'success', text: "Registration submission rejected." });
+      setIsReviewingSubmission(false);
+      setRejectionReason("");
+      fetchSubmissions();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message);
+    } finally {
+      setProcessingSubmission(false);
+    }
+  };
 
   const fetchData = async () => {
     if (!session) return;
@@ -407,33 +526,62 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
             <input type="text" placeholder="Search by name, email, center or contact..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-16 pr-8 py-5 bg-white/50 backdrop-blur-xl border-2 border-white rounded-[2rem] focus:ring-[12px] focus:ring-indigo-100/50 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] placeholder:text-slate-300" />
          </form>
 
-         <div className="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-row gap-3 sm:gap-4 w-full lg:w-auto">
+         <div className="flex flex-wrap gap-2.5 sm:gap-3 w-full lg:w-auto lg:justify-end">
             <label className="flex-1 lg:flex-none">
               <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImport} disabled={importing} />
-              <div className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest text-slate-600 hover:border-indigo-500 hover:text-indigo-600 transition-all cursor-pointer shadow-sm">
+              <div className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest text-slate-600 hover:border-indigo-500 hover:text-indigo-600 transition-all cursor-pointer shadow-sm">
                 {importing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
                 <span className="hidden sm:inline">Import Excel</span><span className="sm:hidden">Import</span>
               </div>
             </label>
-            <button onClick={handleExport} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-slate-900 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
+            <button onClick={handleExport} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-slate-900 text-white px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
                <Download className="w-5 h-5 text-indigo-400" />
                <span className="hidden sm:inline">Export Master</span><span className="sm:hidden">Export</span>
             </button>
-            <button onClick={() => { setSelectedRecord({}); setIsEditing(true); }} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-indigo-600 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-200">
+            <button 
+              onClick={() => setViewSubmissions(!viewSubmissions)} 
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all relative shadow-sm ${
+                viewSubmissions 
+                  ? 'bg-orange-500 text-white shadow-orange-200 shadow-lg' 
+                  : 'bg-white border-2 border-slate-100 text-slate-600 hover:border-orange-500 hover:text-orange-600'
+              }`}
+            >
+               <Inbox className="w-5 h-5" />
+               <span className="hidden sm:inline">{viewSubmissions ? "Exit Submissions" : "Review Submissions"}</span>
+               <span className="sm:hidden">{viewSubmissions ? "Exit" : "Submissions"}</span>
+               {pendingCount > 0 && (
+                 <span className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md animate-bounce">
+                   {pendingCount}
+                 </span>
+               )}
+            </button>
+             <button 
+               onClick={handleCopyRegistrationLink} 
+               className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all relative shadow-sm hover:scale-105 active:scale-95 ${
+                 copiedLink 
+                   ? 'bg-teal-500 text-white shadow-teal-200 animate-pulse border-2 border-teal-600' 
+                   : 'bg-indigo-50 border-2 border-indigo-100 text-indigo-600 hover:border-indigo-500 hover:bg-indigo-500 hover:text-white shadow-indigo-50 shadow-md'
+               }`}
+             >
+                {copiedLink ? <Check className="w-5 h-5" /> : <Link className="w-5 h-5" />}
+                <span className="hidden sm:inline">{copiedLink ? "Link Copied!" : "Copy Reg. Link"}</span>
+                <span className="sm:hidden">{copiedLink ? "Copied!" : "Link"}</span>
+             </button>
+             <button onClick={() => { setSelectedRecord({}); setIsEditing(true); }} className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-indigo-600 text-white px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-200">
                <Plus className="w-5 h-5" />
                Add New
             </button>
             <button 
               onClick={syncToProfiles} 
               disabled={syncing}
-              className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-emerald-600 text-white px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200"
+              className="flex-1 lg:flex-none flex items-center justify-center gap-3 bg-emerald-600 text-white px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200"
             >
                {syncing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
                <span className="hidden sm:inline">Sync to Profiles</span><span className="sm:hidden">Sync PF</span>
             </button>
             <button 
               onClick={() => setShowDeleted(!showDeleted)} 
-              className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest transition-all ${
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${
                 showDeleted ? 'bg-rose-100 text-rose-600 border-2 border-rose-200' : 'bg-slate-100 text-slate-500 border-2 border-transparent'
               }`}
             >
@@ -460,7 +608,109 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
       </div>
 
       {/* Main Table View */}
-      <div className="bg-white/90 backdrop-blur-2xl rounded-[3rem] border border-white shadow-[0_40px_80px_-24px_rgba(0,0,0,0.08)] overflow-hidden">
+      {/* Submissions Queue or Main Table View */}
+      {viewSubmissions ? (
+         <div className="bg-gradient-to-br from-orange-50 via-white to-amber-50 rounded-[3rem] border-2 border-orange-100 shadow-2xl shadow-orange-950/5 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="p-6 sm:p-10 border-b border-orange-100 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/50 backdrop-blur-md">
+               <div>
+                  <h3 className="text-2xl font-black text-orange-900 tracking-tight uppercase flex items-center gap-3">
+                     <Inbox className="w-7 h-7 text-orange-500" /> 
+                     Review Registration Pool
+                  </h3>
+                  <p className="text-orange-600/80 text-sm font-bold mt-1">Audit public devotee submissions before writing to the authoritative BCDB ledger.</p>
+               </div>
+               <div className="bg-orange-100 text-orange-700 font-black px-5 py-2 rounded-2xl text-xs tracking-wider uppercase shadow-inner border border-orange-200 flex items-center gap-2">
+                  <Activity className="w-4 h-4 animate-pulse" /> {submissions.length} Pending
+               </div>
+            </div>
+            
+            <div className="overflow-x-auto">
+               <table className="w-full text-left border-collapse">
+                  <thead>
+                     <tr className="bg-slate-900 text-slate-300">
+                        <th className="px-8 py-6 text-[11px] font-black uppercase tracking-widest">Applicant Identity</th>
+                        <th className="px-8 py-6 text-[11px] font-black uppercase tracking-widest">Direct Contact</th>
+                        <th className="px-8 py-6 text-[11px] font-black uppercase tracking-widest">Verification File</th>
+                        <th className="px-8 py-6 text-[11px] font-black uppercase tracking-widest">Recorded On</th>
+                        <th className="px-8 py-6 text-[11px] font-black uppercase tracking-widest text-center">Review Controls</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-orange-50 bg-white/40 backdrop-blur-sm">
+                     {loading ? (
+                        <tr>
+                           <td colSpan={5} className="py-32 text-center">
+                              <Loader2 className="w-10 h-10 animate-spin text-orange-500 mx-auto" />
+                              <div className="text-orange-600/60 text-xs font-black uppercase tracking-widest mt-4">Buffering Submissions Queue...</div>
+                           </td>
+                        </tr>
+                     ) : submissions.length === 0 ? (
+                        <tr>
+                           <td colSpan={5} className="py-32 text-center">
+                              <div className="w-20 h-20 bg-orange-50 text-orange-300 rounded-full flex items-center justify-center mx-auto mb-6"><Check className="w-10 h-10" /></div>
+                              <h4 className="text-slate-700 font-black text-base uppercase tracking-widest">Queue Cleared</h4>
+                              <p className="text-slate-400 font-bold text-xs mt-1">All submitted registration forms have been reviewed and actioned.</p>
+                           </td>
+                        </tr>
+                     ) : (
+                        submissions.map((sub) => (
+                           <tr key={sub.id} className="hover:bg-white transition-colors group">
+                              <td className="px-8 py-6">
+                                 <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 bg-gradient-to-br from-orange-100 to-amber-200 rounded-[1.2rem] flex items-center justify-center font-black text-orange-700 relative overflow-hidden border border-orange-200 group-hover:scale-105 transition-transform shadow-inner">
+                                       {sub.photo_url ? (
+                                          <img src={sub.photo_url} alt="devotee" className="absolute inset-0 w-full h-full object-cover" onError={(e:any)=>e.target.style.display='none'} />
+                                       ) : null}
+                                       <span className="relative z-10 tracking-tighter uppercase">{(sub.initiated_name || sub.legal_name || "?")[0]}</span>
+                                    </div>
+                                    <div>
+                                       <div className="font-black text-slate-800 text-[17px] tracking-tight leading-tight group-hover:text-indigo-600 transition-colors">{sub.initiated_name || "Uninitiated Devotee"}</div>
+                                       <div className="text-slate-400 font-bold text-[11px] uppercase tracking-wider mt-1 flex items-center gap-1.5">
+                                          <User className="w-3 h-3" /> {sub.legal_name}
+                                       </div>
+                                    </div>
+                                 </div>
+                              </td>
+                              <td className="px-8 py-6 font-bold text-[13px]">
+                                 <div className="text-slate-700 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-300" /> {sub.email_id}</div>
+                                 <div className="text-emerald-600 font-black text-xs mt-1.5 flex items-center gap-1.5 tracking-wider"><Phone className="w-3.5 h-3.5 text-emerald-400" /> {sub.contact_no}</div>
+                              </td>
+                              <td className="px-8 py-6">
+                                 <div className="flex flex-wrap gap-2">
+                                    {sub.adhar_card_copy_url ? (
+                                       <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-lg uppercase text-[9px] font-black tracking-widest">Aadhar Submitted</span>
+                                    ) : (
+                                       <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg uppercase text-[9px] font-black tracking-widest">No Aadhar</span>
+                                    )}
+                                    {sub.pan_card_copy_url ? (
+                                       <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg uppercase text-[9px] font-black tracking-widest">PAN Submitted</span>
+                                    ) : (
+                                       <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg uppercase text-[9px] font-black tracking-widest">No PAN</span>
+                                    )}
+                                 </div>
+                              </td>
+                              <td className="px-8 py-6 text-slate-500 text-xs font-bold">
+                                 <div className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-300" />
+                                    {new Date(sub.submitted_at).toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' })}
+                                 </div>
+                              </td>
+                              <td className="px-8 py-6 text-center">
+                                 <button 
+                                    onClick={() => { setSelectedSubmission(sub); setIsReviewingSubmission(true); }}
+                                    className="bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] uppercase tracking-[0.18em] px-6 py-3 rounded-2xl transition-all shadow-lg shadow-orange-200 hover:scale-105 active:scale-95"
+                                 >
+                                    Inspect Profile
+                                 </button>
+                              </td>
+                           </tr>
+                        ))
+                     )}
+                  </tbody>
+               </table>
+            </div>
+         </div>
+      ) : (
+         <div className="bg-white/90 backdrop-blur-2xl rounded-[3rem] border border-white shadow-[0_40px_80px_-24px_rgba(0,0,0,0.08)] overflow-hidden">
          <div 
             ref={tableContainerRef}
             onScroll={() => syncScroll(tableContainerRef, topScrollRef)}
@@ -544,11 +794,8 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                      sortedData.map((r, i) => (
                                                <tr 
                           key={r.id || i} 
-                          className={`group transition-colors relative ${getRowColor(r.colour)} ${r.is_deleted ? 'opacity-50 grayscale-[0.5]' : ''}`}
+                                                     className={`group transition-colors relative ${getRowColor(r.colour)} ${r.is_deleted ? 'opacity-50 grayscale-[0.5] bg-rose-50/20' : ''}`}
                         >
-                          {r.is_deleted && (
-                             <div className="absolute inset-0 bg-rose-50/10 pointer-events-none z-0"></div>
-                          )}
 
                          <td 
                             onClick={() => { setSelectedRecord(r); setIsEditing(true); }}
@@ -660,25 +907,28 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                         <td className="px-8 py-5">
                            <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.address_adhar || "-"}</div>
                         </td>
+                         <td className="px-8 py-5">
+                            {r.adhar_card_copy_url ? (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setLightbox({ url: r.adhar_card_copy_url, title: `${r.initiated_name || r.legal_name} - Aadhar Copy` }); }}
+                                className="text-indigo-500 hover:text-indigo-700 font-black text-[10px] uppercase tracking-tighter flex items-center gap-1 transition-all hover:scale-105 active:scale-95"
+                              >
+                                 <Eye className="w-3 h-3" /> View Adhar
+                              </button>
+                            ) : "- "}
+                         </td>
+                         <td className="px-8 py-5">
+                            {r.pan_card_copy_url ? (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setLightbox({ url: r.pan_card_copy_url, title: `${r.initiated_name || r.legal_name} - PAN Copy` }); }}
+                                className="text-indigo-500 hover:text-indigo-700 font-black text-[10px] uppercase tracking-tighter flex items-center gap-1 transition-all hover:scale-105 active:scale-95"
+                              >
+                                 <Eye className="w-3 h-3" /> View Pan
+                              </button>
+                            ) : "- "}
+                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-[10px] leading-relaxed max-w-[220px] line-clamp-1 hover:line-clamp-none transition-all">{r.parents_address || "-"}</div>
-                        </td>
-                        <td className="px-8 py-5">
-                           {r.adhar_card_copy_url ? (
-                             <a href={r.adhar_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[10px] uppercase tracking-tighter flex items-center gap-1">
-                                <Download className="w-3 h-3" /> View Adhar
-                             </a>
-                           ) : "-"}
-                        </td>
-                        <td className="px-8 py-5">
-                           {r.pan_card_copy_url ? (
-                             <a href={r.pan_card_copy_url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 font-black text-[10px] uppercase tracking-tighter flex items-center gap-1">
-                                <Download className="w-3 h-3" /> View Pan
-                             </a>
-                           ) : "-"}
-                        </td>
-                        <td className="px-8 py-5">
-                           <div className="text-slate-400 font-medium text-xs italic">{r.custom_counsellor || "-"}</div>
+                           <div className="text-slate-400 font-medium text-xs italic">{r.custom_counsellor || "- "}</div>
                         </td>
                         <td className="px-8 py-5">
                            <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -703,6 +953,8 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
             </table>
          </div>
       </div>
+
+      )}
 
       {/* Edit Slide-over or Modal */}
       {isEditing && (
@@ -898,9 +1150,162 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
        )}
       </div>
 
+      {/* Registration Review Modal */}
+      {isReviewingSubmission && selectedSubmission && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-t-[2rem] sm:rounded-[4rem] shadow-2xl border-t sm:border border-white/20 p-8 sm:p-12 space-y-10 animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 relative">
+              
+              <button onClick={() => setIsReviewingSubmission(false)} className="absolute top-8 right-8 w-12 h-12 bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-sm">
+                <X className="w-6 h-6" />
+              </button>
+
+              <div>
+                 <span className="bg-orange-50 text-orange-600 border border-orange-100 px-4 py-1 rounded-xl text-[10px] font-black tracking-widest uppercase">Profile Audit</span>
+                 <h3 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter font-outfit uppercase mt-2">{selectedSubmission.initiated_name || "Uninitiated Devotee"}</h3>
+                 <p className="text-slate-400 font-bold mt-1">Legal: {selectedSubmission.legal_name}</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 
+                 {/* Contact & Personal Metadata */}
+                 <div className="space-y-6 bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-3">Personal File</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm font-bold text-slate-700">
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">Initiation</div>{selectedSubmission.initiation || "N/A"}</div>
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">Color Cat.</div>{selectedSubmission.colour || "N/A"}</div>
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">Phone</div>{selectedSubmission.contact_no}</div>
+                       <div><div className="text-[10px] text-emerald-600 font-black uppercase">WhatsApp</div>{selectedSubmission.whatsapp_no || "N/A"}</div>
+                       <div className="col-span-2"><div className="text-[10px] text-slate-400 font-black uppercase">Email Address</div>{selectedSubmission.email_id}</div>
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">Base Center</div>{selectedSubmission.center || "N/A"}</div>
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">Counsellor</div>{selectedSubmission.counsellor || selectedSubmission.custom_counsellor || "N/A"}</div>
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">Aadhar No</div>{selectedSubmission.aadhar_number || "N/A"}</div>
+                       <div><div className="text-[10px] text-slate-400 font-black uppercase">PAN No</div>{selectedSubmission.pan_card || "N/A"}</div>
+                    </div>
+                    
+                    
+                    <div className="border-t border-slate-200 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                          <div className="text-[10px] text-slate-400 font-black uppercase block mb-1">Primary Service</div>
+                          <p className="text-xs font-bold text-slate-500 leading-relaxed">{selectedSubmission.primary_services || "None declared."}</p>
+                       </div>
+                       <div>
+                          <div className="text-[10px] text-slate-400 font-black uppercase block mb-1">Secondary Service</div>
+                          <p className="text-xs font-bold text-slate-500 leading-relaxed">{selectedSubmission.secondary_services || "None declared."}</p>
+                       </div>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                          <div className="text-[10px] text-indigo-500 font-black uppercase block mb-1">Aadhar Address</div>
+                          <p className="text-xs font-bold text-slate-500 leading-relaxed">{selectedSubmission.address_adhar || "N/A"}</p>
+                       </div>
+                       <div>
+                          <div className="text-[10px] text-indigo-500 font-black uppercase block mb-1">Parents Town Address</div>
+                          <p className="text-xs font-bold text-slate-500 leading-relaxed">{selectedSubmission.parents_address || "N/A"}</p>
+                       </div>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-4 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
+                       <div className="text-[10px] text-indigo-700 font-black uppercase block mb-3 pl-1">Relative Contacts</div>
+                       <div className="grid grid-cols-1 gap-2 text-xs font-bold text-slate-600">
+                          <div className="flex justify-between border-b border-white/50 pb-1"><span>Relative 1:</span> <span className="text-slate-800">{selectedSubmission.relative_contact_1 || "—"}</span></div>
+                          <div className="flex justify-between border-b border-white/50 pb-1"><span>Relative 2:</span> <span className="text-slate-800">{selectedSubmission.relative_contact_2 || "—"}</span></div>
+                          <div className="flex justify-between"><span>Relative 3:</span> <span className="text-slate-800">{selectedSubmission.relative_contact_3 || "—"}</span></div>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Identity Uploads Visual Preview */}
+                 <div className="space-y-6">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">Document Proofs</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                       {/* Photo */}
+                       <div className="border border-slate-200 p-4 rounded-2xl bg-slate-50 text-center">
+                          <div className="text-[10px] text-slate-400 font-black uppercase mb-2">Profile Photo</div>
+                          {selectedSubmission.photo_url ? (
+                             <a href={selectedSubmission.photo_url} target="_blank" rel="noreferrer" className="block h-32 bg-white border rounded-xl overflow-hidden shadow-inner hover:opacity-90 transition-opacity">
+                                <img src={selectedSubmission.photo_url} alt="profile" className="w-full h-full object-cover" />
+                             </a>
+                          ) : (
+                             <div className="h-32 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-[10px] font-bold text-slate-300">No Upload</div>
+                          )}
+                       </div>
+                       {/* Aadhar */}
+                       <div className="border border-slate-200 p-4 rounded-2xl bg-slate-50 text-center">
+                          <div className="text-[10px] text-slate-400 font-black uppercase mb-2">Aadhar Proof</div>
+                          {selectedSubmission.adhar_card_copy_url ? (
+                             selectedSubmission.adhar_card_copy_url.toLowerCase().split(/[#?]/)[0].endsWith(".pdf") ? (
+                                 <div className="h-32 bg-white border rounded-xl overflow-hidden shadow-inner flex flex-col items-center justify-center">
+                                    <iframe src={selectedSubmission.adhar_card_copy_url} className="w-full h-full border-0" title="Aadhar Copy" />
+                                 </div>
+                              ) : (
+                                 <div className="block h-32 bg-slate-100 border rounded-xl overflow-hidden shadow-inner">
+                                    <img src={selectedSubmission.adhar_card_copy_url} alt="Aadhar Card" className="w-full h-full object-contain bg-slate-200/50" />
+                                 </div>
+                              )
+                          ) : (
+                             <div className="h-32 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-[10px] font-bold text-slate-300">No Upload</div>
+                          )}
+                       </div>
+                       {/* PAN */}
+                       <div className="border border-slate-200 p-4 rounded-2xl bg-slate-50 text-center col-span-2">
+                          <div className="text-[10px] text-slate-400 font-black uppercase mb-2">PAN Proof</div>
+                          {selectedSubmission.pan_card_copy_url ? (
+                             selectedSubmission.pan_card_copy_url.toLowerCase().split(/[#?]/)[0].endsWith(".pdf") ? (
+                                 <div className="h-48 bg-white border rounded-xl overflow-hidden shadow-inner">
+                                    <iframe src={selectedSubmission.pan_card_copy_url} className="w-full h-full border-0" title="PAN Copy" />
+                                 </div>
+                              ) : (
+                                 <div className="block h-48 bg-slate-100 border rounded-xl overflow-hidden shadow-inner">
+                                    <img src={selectedSubmission.pan_card_copy_url} alt="PAN Card" className="w-full h-full object-contain bg-slate-200/50" />
+                                 </div>
+                              )
+                          ) : (
+                             <div className="py-4 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-[10px] font-bold text-slate-300">No PAN Copy Supplied</div>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Rejection Audit Container */}
+              <div className="border-t border-slate-100 pt-8">
+                 <div className="flex flex-col md:flex-row gap-6 justify-between items-end">
+                    <div className="flex-1 w-full relative group">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 pl-1">Rejection Feed (Optional)</span>
+                       <input 
+                          type="text" 
+                          value={rejectionReason} 
+                          onChange={(e) => setRejectionReason(e.target.value)}
+                          placeholder="Provide brief reason if rejecting submission..." 
+                          className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-rose-50 focus:border-rose-400 outline-none transition-all font-bold text-slate-700 text-sm" 
+                       />
+                    </div>
+                    <div className="flex gap-3 w-full md:w-auto">
+                       <button 
+                          onClick={() => handleRejectSubmission(selectedSubmission.id, rejectionReason)}
+                          disabled={processingSubmission}
+                          className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-4 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 font-black text-[11px] uppercase tracking-[0.18em] rounded-2xl transition-all shadow-sm"
+                       >
+                          <UserX className="w-4 h-4" /> Reject
+                       </button>
+                       <button 
+                          onClick={() => handleApproveSubmission(selectedSubmission.id)}
+                          disabled={processingSubmission}
+                          className="flex-1 md:flex-none flex items-center justify-center gap-2 px-10 py-5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:scale-105 text-white font-black text-[11px] uppercase tracking-[0.18em] rounded-[1.5rem] shadow-xl shadow-emerald-200 transition-all"
+                       >
+                          {processingSubmission ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4" /> Approve & Transfer</>}
+                       </button>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Floating Status Toast */}
       {statusMsg && (
-        <div className={`fixed bottom-10 right-10 z-[9999] px-8 py-5 rounded-[2rem] shadow-2xl backdrop-blur-xl border-2 flex items-center gap-4 animate-in slide-in-from-bottom-10 duration-500 font-bold ${
+        <div className={`fixed bottom-10 right-10 z-[9999] px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl shadow-2xl backdrop-blur-xl border-2 flex items-center gap-4 animate-in slide-in-from-bottom-10 duration-500 font-bold ${
           statusMsg.type === 'success' 
             ? 'bg-emerald-500/90 text-white border-emerald-400/50' 
             : 'bg-rose-500/90 text-white border-rose-400/50'
@@ -944,6 +1349,57 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
                    Cancel
                 </button>
              </div>
+          </div>
+        </div>
+      )}
+      {/* Native Local Inline Proof Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4 sm:p-8 animate-in fade-in duration-200" onClick={() => setLightbox(null)}>
+          <div 
+            className="bg-white rounded-[2rem] max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col animate-in zoom-in-95 duration-250" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 sm:px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <div>
+                 <h3 className="font-black text-slate-800 uppercase text-[11px] sm:text-xs tracking-widest">{lightbox.title}</h3>
+              </div>
+              <button 
+                onClick={() => setLightbox(null)} 
+                className="w-10 h-10 rounded-full bg-slate-50 hover:bg-rose-50 hover:text-rose-500 text-slate-400 flex items-center justify-center transition-colors active:scale-90"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 bg-slate-50/50 p-5 sm:p-8 flex items-center justify-center overflow-y-auto min-h-0 w-full">
+              {(() => {
+                 const url = lightbox.url || "";
+                 const match = url.match(/(?:id=|\/d\/|uc\?id=)([\w-]+)/);
+                 const isGoogle = match && match[1] && (url.includes("drive.google.com") || url.includes("docs.google.com"));
+
+                 if (isGoogle) {
+                    return (
+                       <iframe 
+                          src={`https://drive.google.com/file/d/${match[1]}/preview`} 
+                          className="w-full h-full min-h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-inner" 
+                          title="Google Drive View" 
+                          allow="autoplay"
+                       />
+                    );
+                 }
+
+                 if (url.toLowerCase().split(/[#?]/)[0].endsWith(".pdf")) {
+                    return (
+                       <iframe src={url} className="w-full h-full min-h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-inner" title="Document Proof PDF" />
+                    );
+                 }
+
+                 return (
+                    <div className="relative w-full h-full flex justify-center items-center bg-slate-100 rounded-2xl overflow-hidden p-4 border border-slate-200 shadow-inner min-h-[40vh]">
+                       <img src={url} alt="Proof View" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+                    </div>
+                 );
+              })()}
+            </div>
           </div>
         </div>
       )}
