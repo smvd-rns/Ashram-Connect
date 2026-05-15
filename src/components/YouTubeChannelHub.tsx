@@ -63,6 +63,7 @@ export default function YouTubeChannelHub() {
   const [isLive, setIsLive] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoriteVideos, setFavoriteVideos] = useState<VideoItem[]>([]);
+  const [favoriteChannels, setFavoriteChannels] = useState<string[]>([]);
   const [loadingFavorites, setLoadingFavorites] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -89,6 +90,63 @@ export default function YouTubeChannelHub() {
 
   const [contentCache, setContentCache] = useState<Record<string, any>>({});
   const [logoCache, setLogoCache] = useState<Record<string, string>>({});
+
+  const toggleFavoriteChannel = async (e: React.MouseEvent, channelId: string) => {
+    e.stopPropagation();
+    
+    const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+    if (!session) {
+      window.dispatchEvent(new CustomEvent("show-policy"));
+      return;
+    }
+
+    const isAlreadyFav = favoriteChannels.includes(channelId);
+    const requestIntent = isAlreadyFav ? "remove" : "add";
+
+    // OPTIMISTIC UPDATE: Update UI immediately
+    setFavoriteChannels(prev => {
+      const newFavs = isAlreadyFav 
+        ? prev.filter(id => id !== channelId) 
+        : [...prev, channelId];
+      notify(isAlreadyFav ? "Removed channel from favorites" : "Added channel to favorites");
+      return newFavs;
+    });
+
+    // BACKGROUND SYNC: Send to database
+    try {
+      const performSync = async (retryCount = 0) => {
+        try {
+          const res = await fetch("/api/user/favorite-channels", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}` 
+            },
+            body: JSON.stringify({ 
+              intent: requestIntent,
+              channel_id: channelId
+            })
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            console.warn(`[FavChannelSync] Save attempt ${retryCount + 1} failed (${res.status}):`, errorData.error);
+            
+            if (retryCount < 2 && (res.status === 503 || res.status === 504 || res.status === 429)) {
+              const delay = (retryCount + 1) * 5000; 
+              setTimeout(() => performSync(retryCount + 1), delay);
+            }
+          }
+        } catch (err) {
+          console.error("[FavChannelSync] Background network error:", err);
+        }
+      };
+
+      performSync();
+    } catch (err) {
+      console.error("Failed to start background favorite sync:", err);
+    }
+  };
 
   const notify = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
@@ -245,6 +303,23 @@ export default function YouTubeChannelHub() {
     }
   }, []);
 
+  const fetchFavoriteChannels = useCallback(async () => {
+    try {
+      const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch("/api/user/favorite-channels", {
+        headers: { "Authorization": `Bearer ${session.access_token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFavoriteChannels(data.favoriteIds || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch favorite channels:", err);
+    }
+  }, []);
+
   const toggleFavorite = async (e: React.MouseEvent, videoId: string) => {
     e.stopPropagation();
     
@@ -338,7 +413,8 @@ export default function YouTubeChannelHub() {
 
   useEffect(() => {
     fetchFavorites();
-  }, [fetchFavorites]);
+    fetchFavoriteChannels();
+  }, [fetchFavorites, fetchFavoriteChannels]);
 
   const currentTabContent = activeChannel 
     ? (contentCache[activeChannel.channel_id]?.[activeTab]?.[activePlaylistId || "main"] || { items: [], token: "" })
@@ -348,6 +424,14 @@ export default function YouTubeChannelHub() {
   const nextPageToken = currentTabContent.token;
   const activeLogo = (typeof activeChannel?.custom_logo === 'string' && activeChannel.custom_logo) || 
     (activeChannel && typeof logoCache[activeChannel.channel_id] === 'string' ? logoCache[activeChannel.channel_id] : null);
+
+  const sortedChannels = [...channels].sort((a, b) => {
+    const aFav = favoriteChannels.includes(a.channel_id);
+    const bFav = favoriteChannels.includes(b.channel_id);
+    if (aFav && !bFav) return -1;
+    if (!aFav && bFav) return 1;
+    return 0;
+  });
 
   const fetchContent = useCallback(async (channel: Channel, tab: string, isLoadMore = false) => {
     if (!channel) return;
@@ -826,7 +910,7 @@ export default function YouTubeChannelHub() {
                       </div>
                       
                       <div className="max-h-80 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
-                        {channels.map((ch) => {
+                        {sortedChannels.map((ch) => {
                           const isSelected = selectedChannelIds.includes(ch.channel_id);
                           return (
                             <button
@@ -948,16 +1032,29 @@ export default function YouTubeChannelHub() {
                   </div>
                 ))
               ) : (
-                channels
+                sortedChannels
                   .filter(c => selectedChannelIds.length === 0 || selectedChannelIds.includes(c.channel_id))
                   .map((channel, i) => (
-                  <button 
+                  <div 
                     key={channel.id}
                     onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
-                    className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700"
+                    className="group flex flex-col items-center gap-4 animate-in zoom-in duration-700 cursor-pointer relative"
                     style={{ animationDelay: `${i * 50}ms` }}
                   >
                     <div className="relative w-full aspect-[4/5] sm:aspect-[3/4] h-auto rounded-[2rem] sm:rounded-[3rem] overflow-hidden shadow-xl transition-all duration-500 group-hover:shadow-2xl group-hover:scale-[1.05] active:scale-95 border border-slate-100 bg-slate-100">
+                      {/* Favorite Toggle Button */}
+                      <button
+                        onClick={(e) => toggleFavoriteChannel(e, channel.channel_id)}
+                        className={`absolute top-4 right-4 z-20 p-2.5 rounded-full backdrop-blur-md border shadow-lg transition-all active:scale-90 ${
+                          favoriteChannels.includes(channel.channel_id)
+                            ? "bg-red-500 border-red-400 text-white scale-100"
+                            : "bg-white/70 hover:bg-white border-white/20 text-slate-400 hover:text-red-500 opacity-100 sm:opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100"
+                        }`}
+                        title={favoriteChannels.includes(channel.channel_id) ? "Remove from favorites" : "Add to favorites"}
+                      >
+                        <Heart className={`w-4 h-4 ${favoriteChannels.includes(channel.channel_id) ? "fill-current" : ""}`} />
+                      </button>
+
                       {(typeof channel.custom_logo === 'string' && channel.custom_logo) || (typeof logoCache[channel.channel_id] === 'string' && logoCache[channel.channel_id]) ? (
                         <Image 
                           src={(typeof channel.custom_logo === 'string' && channel.custom_logo) || logoCache[channel.channel_id]} 
@@ -979,7 +1076,7 @@ export default function YouTubeChannelHub() {
                        <h2 className="text-[11px] sm:text-[14px] font-black text-devo-950 leading-tight group-hover:text-devo-600 transition-colors uppercase tracking-tight">{channel.name}</h2>
                        <p className="text-slate-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-widest">{channel.handle}</p>
                     </div>
-                  </button>
+                  </div>
                 ))
               )}
             </div>
@@ -1000,7 +1097,7 @@ export default function YouTubeChannelHub() {
           <Grid className="w-5 h-5 group-hover:rotate-12 transition-transform" />
         </button>
         <div className="flex flex-col items-center gap-3 xl:gap-5 flex-grow overflow-y-auto w-full custom-scrollbar pb-6 px-1">
-          {channels.map((channel) => (
+          {sortedChannels.map((channel) => (
             <button
               key={channel.id}
               onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
@@ -1011,6 +1108,11 @@ export default function YouTubeChannelHub() {
                   : "hover:bg-slate-50"
               }`}
             >
+              {favoriteChannels.includes(channel.channel_id) && (
+                <div className="absolute -top-0.5 -right-0.5 bg-red-500 border-2 border-white rounded-full p-0.5 shadow-md z-10 animate-in zoom-in duration-300">
+                  <Heart className="w-2 h-2 text-white fill-current" />
+                </div>
+              )}
               <div className="w-10 h-10 xl:w-14 xl:h-14 rounded-lg xl:rounded-xl overflow-hidden shadow-md border-2 border-white bg-slate-200 flex items-center justify-center">
                 {(typeof channel.custom_logo === 'string' && channel.custom_logo) || (typeof logoCache[channel.channel_id] === 'string' && logoCache[channel.channel_id]) ? (
                   <Image
@@ -1035,17 +1137,22 @@ export default function YouTubeChannelHub() {
 
       <div className="lg:hidden relative z-[60] mt-0 bg-white border-b border-slate-200 px-4 py-4 shadow-sm">
         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-1">
-          {channels.map((channel) => (
+          {sortedChannels.map((channel) => (
             <button
               key={channel.id}
               onClick={() => router.push(`${pathname}?channel=${channel.channel_id}`)}
-              className={`flex-shrink-0 flex flex-col items-center gap-1.5 transition-all duration-300 ${
-                activeChannel?.id === channel.id ? "scale-105" : "opacity-60"
+              className={`flex-shrink-0 flex flex-col items-center gap-1.5 transition-all duration-300 relative ${
+                activeChannel?.id === channel.id ? "scale-105" : "opacity-80"
               }`}
             >
-               <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 shadow-sm ${
+               <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 shadow-sm relative ${
                 activeChannel?.id === channel.id ? "border-devo-500 ring-2 ring-devo-100" : "border-white"
               }`}>
+                {favoriteChannels.includes(channel.channel_id) && (
+                  <div className="absolute top-0.5 right-0.5 bg-red-500 border border-white rounded-full p-0.5 shadow-md z-10">
+                    <Heart className="w-1.5 h-1.5 text-white fill-current" />
+                  </div>
+                )}
                 {(typeof channel.custom_logo === 'string' && channel.custom_logo) || (typeof logoCache[channel.channel_id] === 'string' && logoCache[channel.channel_id]) ? (
                   <Image
                     src={(typeof channel.custom_logo === 'string' && channel.custom_logo) || logoCache[channel.channel_id]}
@@ -1093,11 +1200,26 @@ export default function YouTubeChannelHub() {
               )}
             </div>
             <div className="pb-3 space-y-1 text-center sm:text-left">
-              <div className="flex items-center justify-center sm:justify-start gap-2">
+              <div className="flex items-center justify-center sm:justify-start gap-3">
                 <h1 className="text-xl sm:text-4xl font-outfit font-black text-devo-950 tracking-tight drop-shadow-sm">
                   {activeChannel?.name || "My Spiritual Library"}
                 </h1>
-                <CheckCircle2 className="w-4 h-4 sm:w-6 sm:h-6 text-blue-500" />
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 sm:w-6 sm:h-6 text-blue-500" />
+                  {activeChannel && (
+                    <button
+                      onClick={(e) => toggleFavoriteChannel(e, activeChannel.channel_id)}
+                      className={`p-1.5 sm:p-2 rounded-full border shadow-md backdrop-blur-md transition-all hover:scale-110 active:scale-95 ${
+                        favoriteChannels.includes(activeChannel.channel_id)
+                          ? "bg-red-500 border-red-400 text-white"
+                          : "bg-white/80 border-slate-200 text-slate-400 hover:text-red-500"
+                      }`}
+                      title={favoriteChannels.includes(activeChannel.channel_id) ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <Heart className={`w-3 h-3 sm:w-4 sm:h-4 ${favoriteChannels.includes(activeChannel.channel_id) ? "fill-current" : ""}`} />
+                    </button>
+                  )}
+                </div>
               </div>
               <span className="inline-block text-white bg-black/25 backdrop-blur-md px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] border border-white/20">
                 {activeChannel?.handle || "FAVORITES COLLECTION"}
