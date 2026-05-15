@@ -28,125 +28,157 @@ export async function GET(request: NextRequest) {
     const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r != null);
     if (!roles.includes(1)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    // 2. Fetch All Historical Daily Visits using recursive pagination to bypass 1000 row configuration limit
-    let visitsData: any[] = [];
-    let page = 0;
-    const pageSize = 1000;
-    let hasMore = true;
-    const maxPages = 50; // Safety circuit breaker (50,000 rows cap)
-
-    while (hasMore && page < maxPages) {
-      const { data, error: visitError } = await supabase
-        .from("user_visits")
-        .select("visit_date, visited_at, user_id")
-        .order("visit_date", { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-
-      if (visitError) {
-        console.error("Visit Fetch Error:", visitError);
-        throw visitError;
-      }
-
-      if (data && data.length > 0) {
-        visitsData = [...visitsData, ...data];
-      }
-
-      if (!data || data.length < pageSize) {
-        hasMore = false;
-      } else {
-        page++;
-      }
-    }
-
-    // 3. Fetch Profiles for those users to get names/emails (Chunked to bypass limits)
-    const userIds = Array.from(new Set(visitsData.map(v => v.user_id)));
-    let profilesData: any[] = [];
-    const profileChunkSize = 1000;
-    
-    for (let i = 0; i < userIds.length; i += profileChunkSize) {
-      const chunk = userIds.slice(i, i + profileChunkSize);
-      const { data, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, temple, role")
-        .in("id", chunk);
-
-      if (profileError) {
-        console.error("Profile Fetch Error (Non-fatal):", profileError);
-      } else if (data) {
-        profilesData = [...profilesData, ...data];
-      }
-    }
-
-    // Map profiles for quick lookup
-    const profileMap: Record<string, any> = {};
-    profilesData.forEach(p => { profileMap[p.id] = p; });
-
-    // 4. Process Aggregate Data
-    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-    
-    // Grouping by Date
-    const dailyCounts: Record<string, number> = {};
-    const visitorsToday: any[] = [];
-    
-    // Process unique visits
-    (visitsData || []).forEach((v: any) => {
-      const date = v.visit_date;
-      dailyCounts[date] = (dailyCounts[date] || 0) + 1;
-      
-      const p = profileMap[v.user_id];
-      if (date === todayStr) {
-        visitorsToday.push({ 
-          id: v.user_id,
-          name: p?.full_name || (p?.email ? p.email.split('@')[0] : "Guest"),
-          email: p?.email || "Confidential",
-          time: v.visited_at 
-        });
-      }
-    });
-
-    // 5. Case: Fetch specific user list for a date (Deep-dive)
+    // 2. Route branch: Fetch specific user list for a date (Deep-dive)
     if (targetDate) {
-      const usersForDate = (visitsData || [])
-        .filter((v: any) => v.visit_date === targetDate)
-        .map((v: any) => {
-          const p = profileMap[v.user_id] || {};
-          return {
-            id: v.user_id,
-            name: p.full_name || (p.email ? p.email.split('@')[0] : "Guest"),
-            email: p.email || "Confidential",
-            temple: p.temple || "Unknown",
-            role: p.role || 6,
-            time: v.visited_at
-          };
-        });
+      const { data: dateVisits, error: dateError } = await supabase
+        .from("user_visits")
+        .select("visited_at, user_id")
+        .eq("visit_date", targetDate);
+
+      if (dateError) {
+        console.error("Date Visits Error:", dateError);
+        throw dateError;
+      }
+
+      const userIds = Array.from(new Set((dateVisits || []).map(v => v.user_id)));
+      let profilesData: any[] = [];
+      
+      if (userIds.length > 0) {
+        const { data: profiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, temple, role")
+          .in("id", userIds);
+        if (profileError) console.error("Profile Fetch Error:", profileError);
+        else if (profiles) profilesData = profiles;
+      }
+
+      const profileMap: Record<string, any> = {};
+      profilesData.forEach(p => { profileMap[p.id] = p; });
+
+      const usersForDate = (dateVisits || []).map((v: any) => {
+        const p = profileMap[v.user_id] || {};
+        return {
+          id: v.user_id,
+          name: p.full_name || (p.email ? p.email.split('@')[0] : "Guest"),
+          email: p.email || "Confidential",
+          temple: p.temple || "Unknown",
+          role: p.role || 6,
+          time: v.visited_at
+        };
+      });
 
       return NextResponse.json({ users: usersForDate });
     }
 
-    // 5. Generate Summary Results
-    const history = Object.entries(dailyCounts)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 30); // Last 30 active days
+    // 3. MAIN SUMMARY MODE
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
-    const totalActiveDays = Object.keys(dailyCounts).length;
-    const totalUniqueDailyVisitsAcrossHistory = (visitsData || []).length;
+    // A. Fetch TODAY'S Visitors directly
+    const { data: todayVisits, error: todayError } = await supabase
+      .from("user_visits")
+      .select("visited_at, user_id")
+      .eq("visit_date", todayStr);
     
-    // Compute Busiest Day
+    if (todayError) {
+      console.error("Today Visits Error:", todayError);
+      throw todayError;
+    }
+
+    // B. Fetch TOTAL unique daily visits across history (Extremely fast Indexed Only Scan)
+    const { count: totalUniqueDailyVisitsAcrossHistory, error: countErr } = await supabase
+      .from("user_visits")
+      .select("*", { count: "exact", head: true });
+    
+    if (countErr) {
+      console.error("Global Count Error:", countErr);
+      throw countErr;
+    }
+
+    // C. Fetch History and Aggregates (Pre-aggregated VIEW or limited fallback)
+    let history: any[] = [];
+    let totalActiveDays = 0;
     let busiestDay = "None";
     let busiestCount = 0;
-    Object.entries(dailyCounts).forEach(([date, count]) => {
-      if (count > busiestCount) {
-        busiestCount = count;
-        busiestDay = date;
-      }
+
+    // Try fetching aggregated stats from view (Super performant)
+    const { data: viewData, error: viewError } = await supabase
+      .from("analytics_daily_visits")
+      .select("visit_date, count")
+      .order("visit_date", { ascending: false });
+
+    if (!viewError && viewData) {
+      // SUCCESS: Using aggregated view
+      history = viewData.slice(0, 30).map(v => ({ date: v.visit_date, count: v.count }));
+      totalActiveDays = viewData.length;
+      viewData.forEach(v => {
+        if (v.count > busiestCount) {
+          busiestCount = v.count;
+          busiestDay = v.visit_date;
+        }
+      });
+    } else {
+      // FALLBACK: View does not exist yet. Limit scan to last 90 days to protect memory & Disk I/O
+      console.log("[Analytics Cache Fallback] Querying last 90 days raw user_visits...");
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const minDateStr = ninetyDaysAgo.toISOString().split('T')[0];
+
+      const { data: fallbackData } = await supabase
+        .from("user_visits")
+        .select("visit_date")
+        .gte("visit_date", minDateStr)
+        .order("visit_date", { ascending: false })
+        .limit(10000);
+
+      const dailyCounts: Record<string, number> = {};
+      (fallbackData || []).forEach((v: any) => {
+        dailyCounts[v.visit_date] = (dailyCounts[v.visit_date] || 0) + 1;
+      });
+
+      history = Object.entries(dailyCounts)
+        .map(([date, count]) => ({ date, count }))
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 30);
+
+      totalActiveDays = Object.keys(dailyCounts).length || 1;
+      Object.entries(dailyCounts).forEach(([date, count]) => {
+        if (count > busiestCount) {
+          busiestCount = count;
+          busiestDay = date;
+        }
+      });
+    }
+
+    // D. Fetch Profiles only for Today's Visitors
+    const todayUserIds = Array.from(new Set((todayVisits || []).map(v => v.user_id)));
+    let todayProfiles: any[] = [];
+    
+    if (todayUserIds.length > 0) {
+      const { data: pData } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", todayUserIds);
+      if (pData) todayProfiles = pData;
+    }
+
+    const todayProfileMap: Record<string, any> = {};
+    todayProfiles.forEach(p => { todayProfileMap[p.id] = p; });
+
+    const visitorsToday = (todayVisits || []).map(v => {
+      const p = todayProfileMap[v.user_id];
+      return {
+        id: v.user_id,
+        name: p?.full_name || (p?.email ? p.email.split('@')[0] : "Guest"),
+        email: p?.email || "Confidential",
+        time: v.visited_at
+      };
     });
 
     return NextResponse.json({
       stats: {
         totalDaysActive: totalActiveDays,
-        visitorsInView: totalUniqueDailyVisitsAcrossHistory,
-        avgVisitorsPerDay: totalActiveDays > 0 ? (totalUniqueDailyVisitsAcrossHistory / totalActiveDays).toFixed(1) : "0",
+        visitorsInView: totalUniqueDailyVisitsAcrossHistory || 0,
+        avgVisitorsPerDay: totalActiveDays > 0 ? ((totalUniqueDailyVisitsAcrossHistory || 0) / totalActiveDays).toFixed(1) : "0",
         busiestDay,
         busiestCount
       },

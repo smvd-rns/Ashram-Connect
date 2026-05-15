@@ -18,20 +18,64 @@ const AUTHORIZED_SNS = [
   "NCD8253500015"
 ];
 
+// --- CACHE OPTIMIZATION ---
+// Prevents ZKTeco device heartbeats (hitting every few seconds 24/7) from hammering the DB.
+let cacheTimestamp = 0;
+let cachedMachines: Record<string, any> = {};
+let cachedSettings: any = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedConfiguration() {
+  const now = Date.now();
+  const isCacheExpired = now - cacheTimestamp > CACHE_TTL;
+  
+  if (isCacheExpired || Object.keys(cachedMachines).length === 0 || !cachedSettings) {
+    try {
+      // Fetch active machines
+      const { data: machines } = await supabase
+        .from("attendance_machines")
+        .select("serial_number, is_active, ingestion_start, ingestion_end");
+
+      const mapping: Record<string, any> = {};
+      (machines || []).forEach(m => {
+        if (m.serial_number) {
+          mapping[m.serial_number.toUpperCase().trim()] = m;
+        }
+      });
+
+      // Fetch global settings
+      const { data: settings } = await supabase
+        .from("attendance_settings")
+        .select("*")
+        .eq("id", "global")
+        .single();
+
+      // Update cache
+      cachedMachines = mapping;
+      cachedSettings = settings;
+      cacheTimestamp = now;
+    } catch (err) {
+      console.error("[ZK API CACHE ERROR] Serving stale/empty config:", err);
+      // If cache was populated, we just continue using the expired cache to keep server up
+    }
+  }
+
+  return {
+    cachedMachines,
+    cachedSettings
+  };
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN")?.toUpperCase();
+  const sn = searchParams.get("SN")?.toUpperCase().trim();
 
   if (!sn) return new Response("SN_REQUIRED", { status: 400 });
 
-  const { data: machine } = await supabase
-    .from("attendance_machines")
-    .select("is_active, ingestion_start, ingestion_end")
-    .eq("serial_number", sn)
-    .eq("is_active", true)
-    .single();
+  const { cachedMachines } = await getCachedConfiguration();
+  const machine = cachedMachines[sn];
 
-  if (!machine) {
+  if (!machine || !machine.is_active) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
@@ -42,32 +86,22 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const sn = searchParams.get("SN")?.toUpperCase();
+  const sn = searchParams.get("SN")?.toUpperCase().trim();
   const table = searchParams.get("table");
   const text = await req.text();
 
   if (!sn) return new Response("SN_REQUIRED", { status: 400 });
 
-  const { data: machine } = await supabase
-    .from("attendance_machines")
-    .select("is_active, ingestion_start, ingestion_end")
-    .eq("serial_number", sn)
-    .eq("is_active", true)
-    .single();
+  const { cachedMachines, cachedSettings } = await getCachedConfiguration();
+  const machine = cachedMachines[sn];
 
-  if (!machine) {
+  if (!machine || !machine.is_active) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
-  const { data: settings } = await supabase
-    .from("attendance_settings")
-    .select("*")
-    .eq("id", "global")
-    .single();
-
   const startTime = machine.ingestion_start || "02:00:00";
   const endTime = machine.ingestion_end || "11:00:00";
-  const syncFromDate = settings?.sync_from_date ? new Date(settings.sync_from_date) : new Date();
+  const syncFromDate = cachedSettings?.sync_from_date ? new Date(cachedSettings.sync_from_date) : new Date();
 
   try {
     // Handle ATTLOG or OPLOG
