@@ -387,7 +387,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         items: mappedItems,
-        nextPageToken: data.nextPageToken ?? "",
+        nextPageToken: (!playlistId && isPage1)
+          ? (mappedItems.length === maxResults ? String(maxResults) : "")
+          : (data.nextPageToken ?? ""),
         channelTitle,
         channelLogo,
       },

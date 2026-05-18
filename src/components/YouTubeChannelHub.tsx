@@ -1228,59 +1228,11 @@ export default function YouTubeChannelHub() {
           </div>
         </div>
 
-        <div className="pt-24 px-4 sm:px-10 pb-20 grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 flex flex-col gap-6">
-            <div className="order-3 lg:order-1">
-              {!activePlaylistId ? (
-                <div className="flex bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px]">
-                  {tabs.map((tab) => {
-                    const Icon = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setActiveTab(tab.id);
-                          setActivePlaylistId(null);
-                        }}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 transition-all ${
-                          activeTab === tab.id ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-50"
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5 sm:w-4 h-4" />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex items-center justify-between bg-devo-950 p-4 rounded-2xl shadow-lg sticky top-20 z-40">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="p-2 bg-white/10 rounded-lg">
-                      <Layers className="w-4 h-4 text-white" />
-                    </div>
-                    <h3 className="text-white font-outfit font-black text-sm truncate uppercase tracking-widest">
-                      {activePlaylistName}
-                    </h3>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setActivePlaylistId(null);
-                      setActivePlaylistName(null);
-                      // Update URL to remove playlist and video ID
-                      const query = new URLSearchParams(searchParams.toString());
-                      query.delete("playlist");
-                      query.delete("v");
-                      router.push(`${pathname}?${query.toString()}`, { scroll: false });
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                  >
-                    <X className="w-3.5 h-3.5" /> Back to Channel
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div ref={playerRef} className="order-1 lg:order-2 scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative">
+        <div className="pt-24 px-4 sm:px-10 pb-20 flex flex-col gap-8 max-w-7xl mx-auto w-full">
+          
+          {/* Top Cinematic Player Area */}
+          <div className="flex flex-col gap-6 w-full">
+            <div ref={playerRef} className="scroll-mt-24 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl relative w-full">
               {activeVideoId ? (
                 <OptimizedVideoPlayer 
                   ref={playerInstanceRef}
@@ -1339,7 +1291,7 @@ export default function YouTubeChannelHub() {
             </div>
 
             {activeVideo && (
-              <div className="order-2 lg:order-3 bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+              <div className="bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm w-full">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                   <div className="space-y-3 flex-1">
                     <h2 className="text-xl sm:text-2xl font-outfit font-black text-devo-950 tracking-tight leading-tight">
@@ -1356,7 +1308,7 @@ export default function YouTubeChannelHub() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 w-full sm:w-auto justify-end">
                     <button 
                       onClick={() => openExternal(`https://www.youtube.com/watch?v=${activeVideoId}`)}
                       className="flex items-center gap-2 px-4 py-2 bg-[#FF0000] text-white rounded-xl hover:bg-[#cc0000] transition-all shadow-md active:scale-95"
@@ -1376,7 +1328,7 @@ export default function YouTubeChannelHub() {
                     </button>
                     <button 
                       onClick={handleShare}
-                      className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all active:scale-95"
+                      className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all active:scale-95 border border-slate-100"
                       title="Share this lecture"
                     >
                       <Share2 className="w-5 h-5 text-slate-400" />
@@ -1391,20 +1343,73 @@ export default function YouTubeChannelHub() {
             )}
           </div>
 
-          <div className="lg:col-span-4 space-y-4">
-            <div className="relative">
+          {/* Middle Toolbar Section (Tabs, Search, and Toggle) */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-[2.2rem] border border-slate-100 shadow-sm w-full">
+            {/* Tabs */}
+            <div className="w-full lg:w-auto min-w-[280px]">
+              {!activePlaylistId ? (
+                <div className="flex bg-slate-50 rounded-2xl overflow-hidden font-black uppercase tracking-widest text-[9px] sm:text-[10px] border border-slate-100">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setActivePlaylistId(null);
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 transition-all ${
+                          activeTab === tab.id ? "bg-devo-950 text-white" : "text-slate-400 hover:bg-slate-100"
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 sm:w-4 h-4" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-devo-950 py-2.5 px-4 rounded-2xl shadow-md">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="p-1.5 bg-white/10 rounded-lg">
+                      <Layers className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <h3 className="text-white font-outfit font-black text-xs truncate uppercase tracking-widest">
+                      {activePlaylistName}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActivePlaylistId(null);
+                      setActivePlaylistName(null);
+                      const query = new URLSearchParams(searchParams.toString());
+                      query.delete("playlist");
+                      query.delete("v");
+                      router.push(`${pathname}?${query.toString()}`, { scroll: false });
+                    }}
+                    className="flex items-center gap-1.5 ml-4 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shrink-0"
+                  >
+                    <X className="w-3 h-3" /> Back
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            {/* Search Input */}
+            <div className="relative flex-grow max-w-md w-full">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search this channel..."
+                placeholder="Search lectures in this channel..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl sm:rounded-2xl focus:border-devo-500 font-bold text-[11px] sm:text-xs outline-none transition-all shadow-sm"
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:border-devo-500 font-bold text-[11px] sm:text-xs outline-none transition-all focus:bg-white focus:shadow-sm"
               />
             </div>
-
-            <div className="flex items-center justify-between pl-2 pr-1">
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 flex items-center gap-2">
+            
+            {/* Autoplay & Count Controls */}
+            <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
                 <Play className="w-3 h-3" />
                 {loading ? "Loading…" : `${activePlaylistId ? "Playlist" : activeTab.toUpperCase()}: ${filteredVideos.length} Items`}
               </p>
@@ -1420,181 +1425,231 @@ export default function YouTubeChannelHub() {
                 </div>
               </button>
             </div>
-
-            <div className="space-y-3 max-h-[1200px] overflow-y-auto pr-1 custom-scrollbar">
-              {loading || (isSearchingGlobal && filteredVideos.length === 0) ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex gap-4 p-4 bg-white rounded-[2rem] border-2 border-transparent animate-pulse">
-                    <div className="w-32 sm:w-40 aspect-video rounded-2xl bg-slate-200 shrink-0" />
-                    <div className="flex-1 space-y-2 py-2">
-                      <div className="h-3 bg-slate-200 rounded-full w-full" />
-                      <div className="h-3 bg-slate-200 rounded-full w-3/4" />
-                      <div className="h-2 bg-slate-100 rounded-full w-1/3 mt-4" />
+          </div>
+          
+          {/* Bottom Grid Content Section */}
+          <div className="w-full">
+            {loading || (isSearchingGlobal && filteredVideos.length === 0) ? (
+              /* Skeleton Loader Grid */
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm animate-pulse space-y-4">
+                    <div className="aspect-video rounded-2xl bg-slate-200 w-full" />
+                    <div className="space-y-2 py-1">
+                      <div className="h-3.5 bg-slate-200 rounded-full w-full" />
+                      <div className="h-3.5 bg-slate-200 rounded-full w-2/3" />
+                      <div className="h-2.5 bg-slate-100 rounded-full w-1/2 mt-4" />
                     </div>
                   </div>
-                ))
-              ) : error ? (
-                <div className="text-center py-16 bg-white rounded-[2rem] border-2 border-dashed border-red-100 px-4">
-                  <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
-                  <p className="text-red-400 font-bold text-xs uppercase tracking-widest">Failed to load</p>
-                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider mt-2 max-w-xs mx-auto leading-normal">{error}</p>
-                </div>
-              ) : (
-                <>
-                  {/* Local Results Section */}
-                  {filteredVideos.length > 0 && (
-                    <div className="space-y-3">
-                      {activeChannel && !searchQuery && (
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 pl-2">
-                          All Content
-                        </p>
-                      )}
-                      {searchQuery && (
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600 pl-2 flex items-center gap-2">
-                          <span>Matches in this Channel</span>
-                          {isSearchingGlobal && <Loader2 className="w-3.5 h-3.5 animate-spin text-devo-500" />}
-                        </p>
-                      )}
-                      {filteredVideos.map((vid: VideoItem) => {
-                        const isFav = favorites.includes(vid.id);
-                        return (
-                          <button
-                            key={vid.id + vid.type}
-                            onClick={() => handleVideoSelect(vid)}
-                            className={`w-full group flex items-start gap-4 p-4 rounded-[2rem] transition-all duration-300 border-2 text-left relative ${activeVideoId === vid.id
-                                ? "bg-white border-devo-400 shadow-lg"
-                                : "bg-white/50 border-transparent hover:bg-white hover:border-slate-200"
-                              }`}
-                          >
-                            <div className="relative w-28 sm:w-40 aspect-video rounded-2xl overflow-hidden shrink-0 shadow-md">
-                              {typeof vid.thumbnail === 'string' && vid.thumbnail ? (
-                                <Image src={vid.thumbnail} alt={vid.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized loading="eager" />
-                              ) : (
-                                <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
-                                  <Video className="w-8 h-8 text-slate-300" />
-                                </div>
-                              )}
-                              
-                              {/* Watch Later Progress Bar */}
-                              {vid.lastPosition !== undefined && vid.lastPosition > 0 && vid.duration && (
-                                <div className="absolute bottom-0 left-0 right-0 h-1 sm:h-1.5 bg-black/40 z-10">
-                                  <div 
-                                    className="h-full bg-orange-500 transition-all duration-300"
-                                    style={{ width: `${Math.min(100, (vid.lastPosition / vid.duration) * 100)}%` }}
-                                  />
-                                </div>
-                              )}
-                              
-                              {/* Thumbnail Overlay Indicators */}
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-red-100 px-4">
+                <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
+                <p className="text-red-400 font-bold text-xs uppercase tracking-widest">Failed to load</p>
+                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider mt-2 max-w-xs mx-auto leading-normal">{error}</p>
+              </div>
+            ) : (
+              <div className="space-y-8 w-full">
+                {/* Real-time Video Grid */}
+                {filteredVideos.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {filteredVideos.map((vid: VideoItem, i: number) => {
+                      const isFav = favorites.includes(vid.id);
+                      return (
+                        <div
+                          key={`${vid.id}-${vid.type}-${i}`}
+                          onClick={() => handleVideoSelect(vid)}
+                          className={`group flex flex-col bg-white rounded-[2rem] overflow-hidden border-2 transition-all duration-300 cursor-pointer shadow-sm text-left hover:-translate-y-1 hover:shadow-xl ${
+                            activeVideoId === vid.id
+                              ? "border-devo-500 ring-2 ring-devo-100"
+                              : "border-slate-100 hover:border-slate-300"
+                          }`}
+                        >
+                          {/* Card Thumbnail Area */}
+                          <div className="relative aspect-video w-full overflow-hidden bg-slate-50 shrink-0">
+                            {typeof vid.thumbnail === 'string' && vid.thumbnail ? (
+                              <Image 
+                                src={vid.thumbnail} 
+                                alt={vid.title} 
+                                fill 
+                                className="object-cover group-hover:scale-105 transition-transform duration-500" 
+                                unoptimized 
+                                loading="lazy" 
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
+                                <Video className="w-8 h-8 text-slate-300" />
+                              </div>
+                            )}
+                            
+                            {/* Play Overlay Icon on Hover */}
+                            <div className="absolute inset-0 bg-black/15 group-hover:bg-black/25 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center z-10">
+                              <div className="bg-devo-500/90 text-white rounded-full p-3 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                                <Play className="w-5 h-5 fill-current ml-0.5" />
+                              </div>
+                            </div>
 
-                              {vid.type === "playlist" && (
-                                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
-                                  <Layers className="w-6 h-6 mb-1" />
-                                  <span className="text-[10px] font-black uppercase">{vid.playlistCount ?? "?"} Videos</span>
-                                </div>
+                            {/* Watch Later Progress Bar */}
+                            {vid.lastPosition !== undefined && vid.lastPosition > 0 && vid.duration && (
+                              <div className="absolute bottom-0 left-0 right-0 h-1 sm:h-1.5 bg-black/40 z-10">
+                                <div 
+                                  className="h-full bg-devo-500 rounded-r-full" 
+                                  style={{ width: `${Math.min(100, (vid.lastPosition / vid.duration) * 100)}%` }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Badges / Indicators */}
+                            <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
+                              {vid.type === "live" && (
+                                <span className="bg-red-600 text-white px-2 py-0.5 rounded-md text-[8px] font-black tracking-widest flex items-center gap-1 shadow-sm">
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+                                  LIVE
+                                </span>
                               )}
-                              {activeVideoId === vid.id && (
-                                <div className="absolute inset-0 bg-devo-600/30 backdrop-blur-[2px] flex items-center justify-center">
-                                  <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
-                                    <Radio className="w-4 h-4 text-devo-600 animate-pulse" />
+                              {vid.type === "playlist" && (
+                                <span className="bg-devo-950 text-white px-2 py-0.5 rounded-md text-[8px] font-black tracking-widest flex items-center gap-1 shadow-sm">
+                                  <Layers className="w-2.5 h-2.5" />
+                                  PLAYLIST
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Watch Later Quick Bookmark Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(e, vid.id);
+                              }}
+                              className={`absolute top-3 right-3 z-20 p-2 rounded-xl border backdrop-blur-md transition-all shadow-sm active:scale-95 ${
+                                isFav 
+                                  ? "bg-orange-500 border-orange-400 text-white hover:bg-orange-600" 
+                                  : "bg-white/80 border-slate-200 text-slate-400 hover:text-orange-500 hover:bg-white"
+                              }`}
+                              title={isFav ? "Remove from Watch Later" : "Add to Watch Later"}
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Card Text Content Area */}
+                          <div className="p-5 flex-grow flex flex-col justify-between">
+                            <div className="space-y-2">
+                              <h3 className="font-outfit font-black text-[13px] sm:text-[14px] leading-tight text-slate-800 line-clamp-2 group-hover:text-devo-700 transition-colors">
+                                {vid.title}
+                              </h3>
+                              {vid.playlistCount !== undefined && vid.playlistCount > 0 && (
+                                <p className="text-[10px] font-bold text-devo-600 uppercase tracking-widest">
+                                  {vid.playlistCount} lectures included
+                                </p>
+                              )}
+                            </div>
+                            
+                            <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                              <span className="truncate max-w-[120px]">{vid.channelTitle || activeChannel?.name}</span>
+                              <span className="shrink-0">{vid.date}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Empty State */
+                  <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
+                    <Video className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                    <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
+                      {activeTab === "favorites" ? "Your watch later library is currently empty" : "No uploads discovered in this category"}
+                    </p>
+                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider mt-2 max-w-xs mx-auto leading-normal">
+                      {activeTab === "favorites" ? "Save videos using the watch later button on thumbnails or inside the player." : "Check back later or explore another tab!"}
+                    </p>
+                  </div>
+                )}
+
+                {/* Global Results Section */}
+                {searchQuery && (
+                  <div className="space-y-4 pt-6 border-t border-slate-100">
+                    {(globalResults.videos.length > 0 || globalResults.playlists.length > 0 || isSearchingGlobal) && (
+                      <>
+                        <div className="flex items-center justify-between px-2">
+                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600">
+                            {activeChannel ? "Also Discovered in Other Channels" : "Wider Devotional Library Matches"}
+                          </p>
+                          {isSearchingGlobal && <Loader2 className="w-3.5 h-3.5 animate-spin text-devo-400" />}
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                          {[...globalResults.videos, ...globalResults.playlists]
+                            .filter(gr => gr.channelId !== activeChannel?.channel_id && gr.channel_id !== activeChannel?.channel_id)
+                            .slice(0, 8)
+                            .map((item: any, i) => (
+                              <div
+                                key={item.id + i}
+                                onClick={() => {
+                                  const query = new URLSearchParams();
+                                  query.set("channel", item.channelId || item.channel_id);
+                                  if (item.type === "playlist") query.set("playlist", item.id);
+                                  else query.set("v", item.id);
+                                  setSearchQuery("");
+                                  router.push(`${pathname}?${query.toString()}`);
+                                }}
+                                className="group flex flex-col bg-white rounded-[2rem] overflow-hidden border border-slate-100 hover:border-slate-300 transition-all duration-300 cursor-pointer shadow-sm text-left hover:-translate-y-1 hover:shadow-xl"
+                              >
+                                <div className="relative aspect-video w-full overflow-hidden bg-slate-50">
+                                  {typeof item.thumbnail === 'string' && item.thumbnail ? (
+                                    <Image src={item.thumbnail} alt={item.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized />
+                                  ) : (
+                                    <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
+                                      <Video className="w-8 h-8 text-slate-300" />
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-black/15 group-hover:bg-black/25 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center z-10">
+                                    <div className="bg-devo-500/90 text-white rounded-full p-3 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                                    </div>
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                            <div className="space-y-1.5 py-1 flex-1 min-w-0">
-                              <p className={`font-outfit font-black text-[13px] sm:text-sm leading-snug line-clamp-3 ${activeVideoId === vid.id ? "text-devo-700" : "text-slate-700"}`}>
-                                {vid.title}
-                              </p>
-                              {vid.type !== "playlist" && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{vid.date}</p>}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                                <div className="p-5 flex-grow flex flex-col justify-between">
+                                  <h3 className="font-outfit font-black text-[13px] sm:text-[14px] leading-tight text-slate-800 line-clamp-2 group-hover:text-devo-700 transition-colors">
+                                    {item.title}
+                                  </h3>
+                                  <p className="mt-4 pt-3 border-t border-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                                    {item.channelTitle}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </>
+                    )}
+                    
+                    {!isSearchingGlobal && (globalResults.videos.length === 0 && globalResults.playlists.length === 0) && searchQuery.length >= 2 && filteredVideos.length === 0 && !activeChannel && (
+                      <div className="text-center py-16 bg-white/30 rounded-3xl border-2 border-dashed border-slate-100">
+                        <Search className="w-10 h-10 text-slate-200 mx-auto mb-2 opacity-50" />
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
+                          No matches discovered in the wider library
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                  {/* Separator between channel results and global results */}
-                  {searchQuery && (
-                    <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent my-6 mx-4" />
-                  )}
-
-                  {/* Global Results Section */}
-                  {searchQuery && (
-                    <div className="space-y-4 pt-2">
-                       {(globalResults.videos.length > 0 || globalResults.playlists.length > 0 || isSearchingGlobal) && (
-                         <>
-                           <div className="flex items-center justify-between px-2">
-                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-devo-600">
-                               {activeChannel ? "Also Found In Other Channels" : "Global Spiritual Search"}
-                             </p>
-                             {isSearchingGlobal && <Loader2 className="w-3 h-3 animate-spin text-devo-400" />}
-                           </div>
-                           
-                           <div className="space-y-3">
-                             {[...globalResults.videos, ...globalResults.playlists]
-                               .filter(gr => gr.channelId !== activeChannel?.channel_id && gr.channel_id !== activeChannel?.channel_id)
-                               .slice(0, 10)
-                               .map((item: any, i) => (
-                               <button
-                                 key={item.id + i}
-                                 onClick={() => {
-                                   const query = new URLSearchParams();
-                                   query.set("channel", item.channelId || item.channel_id);
-                                   if (item.type === "playlist") query.set("playlist", item.id);
-                                   else query.set("v", item.id);
-                                   setSearchQuery("");
-                                   router.push(`${pathname}?${query.toString()}`);
-                                 }}
-                                 className="w-full group flex items-start gap-3 p-3 rounded-2xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 text-left"
-                               >
-                                  <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 shadow-sm">
-                                    {typeof item.thumbnail === 'string' && item.thumbnail ? (
-                                      <Image src={item.thumbnail} alt={item.title} fill className="object-cover" unoptimized />
-                                    ) : (
-                                      <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
-                                        <Video className="w-6 h-6 text-slate-300" />
-                                      </div>
-                                    )}
-                                   
-                                   {/* Shared Attributes */}
-                                 </div>
-                                 <div className="flex-1 min-w-0 space-y-1">
-                                   <p className="font-outfit font-black text-[13px] leading-tight text-slate-700 line-clamp-2 group-hover:text-devo-600 transition-colors">
-                                     {item.title}
-                                   </p>
-                                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                                     {item.channelTitle}
-                                   </p>
-                                 </div>
-                               </button>
-                             ))}
-                           </div>
-                         </>
-                        )}
-                        
-                        {!isSearchingGlobal && (globalResults.videos.length === 0 && globalResults.playlists.length === 0) && searchQuery.length >= 2 && filteredVideos.length === 0 && !activeChannel && (
-                          <div className="text-center py-10 bg-white/30 rounded-3xl border-2 border-dashed border-slate-100">
-                            <Search className="w-8 h-8 text-slate-200 mx-auto mb-2 opacity-50" />
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
-                              No matches discovered in the wider library
-                            </p>
-                          </div>
-                        )}
-                    </div>
-                  )}
-
-                  {nextPageToken && activeChannel && (
+                {/* Load More Button */}
+                {nextPageToken && activeChannel && (
+                  <div className="flex justify-center pt-4">
                     <button
                       onClick={() => fetchContent(activeChannel, activeTab, true)}
                       disabled={loadMoreLoading}
-                      className="w-full py-4 bg-white/50 hover:bg-white text-devo-600 rounded-[2rem] border-2 border-dashed border-devo-100 font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+                      className="px-8 py-4 bg-white/70 hover:bg-white text-devo-600 rounded-[2rem] border-2 border-dashed border-devo-200 hover:border-devo-400 font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 shadow-sm hover:shadow-md min-w-[200px]"
                     >
                       {loadMoreLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Load More Archives"}
                     </button>
-                  )}
-                </>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </main>
