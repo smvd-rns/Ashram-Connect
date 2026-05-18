@@ -1434,9 +1434,10 @@ export default function YouTubeChannelHub() {
                   </div>
                 ))
               ) : error ? (
-                <div className="text-center py-16 bg-white rounded-[2rem] border-2 border-dashed border-red-100">
+                <div className="text-center py-16 bg-white rounded-[2rem] border-2 border-dashed border-red-100 px-4">
                   <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
                   <p className="text-red-400 font-bold text-xs uppercase tracking-widest">Failed to load</p>
+                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider mt-2 max-w-xs mx-auto leading-normal">{error}</p>
                 </div>
               ) : (
                 <>
