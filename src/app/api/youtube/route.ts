@@ -6,7 +6,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const CACHE_SECONDS = 1800; // 30 minutes
 
 interface VideoItem {
@@ -34,6 +33,54 @@ function formatRelativeDate(dateStr: string): string {
   if (diffWeeks < 4) return `${diffWeeks} week${diffWeeks !== 1 ? "s" : ""} ago`;
   if (diffMonths < 12) return `${diffMonths} month${diffMonths !== 1 ? "s" : ""} ago`;
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+// Production-grade YouTube API Fetcher with Multi-API-Key Failover Rotation
+async function fetchFromYouTubeWithFallback(apiUrl: URL): Promise<{ response: Response; data: any }> {
+  const keys = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEY_FALLBACK
+  ].filter(Boolean) as string[];
+
+  if (keys.length === 0) {
+    throw new Error("YouTube API Keys are missing in configuration");
+  }
+
+  let lastError = null;
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const maskedKey = `${key.substring(0, 5)}...${key.substring(key.length - 4)}`;
+    apiUrl.searchParams.set("key", key);
+
+    try {
+      const response = await fetch(apiUrl.toString(), { cache: "no-store" });
+      const data = await response.json();
+
+      if (response.ok) {
+        if (i > 0) {
+          console.log(`[YouTube API Key Rotation] Successfully fetched using fallback key: ${maskedKey}`);
+        }
+        return { response, data };
+      }
+
+      const isQuotaError = data.error?.errors?.some((e: any) => e.reason === "quotaExceeded") || 
+                           data.error?.message?.includes("quota") || 
+                           response.status === 403;
+
+      if (isQuotaError) {
+        console.warn(`[YouTube API Key Rotation] Quota exceeded for key: ${maskedKey}. Trying next key.`);
+      } else {
+        console.warn(`[YouTube API Key Rotation] API call failed for key: ${maskedKey} with status ${response.status}: ${data.error?.message}. Trying next key.`);
+      }
+      lastError = data;
+    } catch (err: any) {
+      console.error(`[YouTube API Key Rotation] Fetch exception for key: ${maskedKey}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw new Error(lastError?.error?.message || lastError?.message || "All configured YouTube API keys are exhausted or failed");
 }
 
 export async function GET(request: NextRequest) {
@@ -66,18 +113,12 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // 2. Try YouTube API
-      if (!YOUTUBE_API_KEY) {
-        return NextResponse.json({ error: "API Key missing and video not cached" }, { status: 503 });
-      }
-
+      // 2. Try YouTube API with Fallback rotation
       const apiUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
       apiUrl.searchParams.set("id", videoId);
       apiUrl.searchParams.set("part", "snippet,contentDetails");
-      apiUrl.searchParams.set("key", YOUTUBE_API_KEY);
 
-      const res = await fetch(apiUrl.toString(), { cache: "no-store" });
-      const data = await res.json();
+      const { data } = await fetchFromYouTubeWithFallback(apiUrl);
       const item = data.items?.[0];
 
       if (!item) {
@@ -156,70 +197,79 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Step 2: Try serving from YouTube Dedicated Database (Supabase) FIRST
+    // Step 2: Determine if we should query the database directly
     let useDatabase = false;
     let dbItems: any[] = [];
     let nextOffsetToken = "";
 
+    const isPage1 = pageToken === "";
+
     if (!playlistId && channelId) {
       const offset = pageToken ? parseInt(pageToken) || 0 : 0;
-      if (type === "playlists") {
-        const { data: playlists } = await supabaseYt
-          .from("yt_playlists")
-          .select("*")
-          .eq("channel_id", channelId)
-          .order("created_at", { ascending: false })
-          .range(offset, offset + maxResults - 1);
-        
-        if (playlists && playlists.length > 0) {
-          useDatabase = true;
-          dbItems = playlists.map(pl => ({
-            id: pl.playlist_id,
-            title: pl.title || "Untitled",
-            thumbnail: pl.thumbnail_url || "",
-            date: pl.created_at ? formatRelativeDate(pl.created_at) : "",
-            published: pl.created_at || "",
-            type: "playlist",
-            playlistCount: pl.video_count || 0
-          }));
-          if (playlists.length === maxResults) {
-            nextOffsetToken = String(offset + maxResults);
+      
+      // HYBRID ARCHITECTURE:
+      // - Playlists are always loaded from database first (saving quota).
+      // - Load more (page 2, 3, etc.) are always loaded from database first (saving quota).
+      // - Page 1 of Videos/Live will bypass this block, hitting Google directly (1 token) for live real-time videos, but automatically falls back here if Google fails!
+      if (type === "playlists" || !isPage1) {
+        if (type === "playlists") {
+          const { data: playlists } = await supabaseYt
+            .from("yt_playlists")
+            .select("*")
+            .eq("channel_id", channelId)
+            .order("created_at", { ascending: false })
+            .range(offset, offset + maxResults - 1);
+          
+          if (playlists && playlists.length > 0) {
+            useDatabase = true;
+            dbItems = playlists.map(pl => ({
+              id: pl.playlist_id,
+              title: pl.title || "Untitled",
+              thumbnail: pl.thumbnail_url || "",
+              date: pl.created_at ? formatRelativeDate(pl.created_at) : "",
+              published: pl.created_at || "",
+              type: "playlist",
+              playlistCount: pl.video_count || 0
+            }));
+            if (playlists.length === maxResults) {
+              nextOffsetToken = String(offset + maxResults);
+            }
           }
-        }
-      } else {
-        // Videos / Live
-        let dbQuery = supabaseYt
-          .from("yt_videos")
-          .select("*")
-          .eq("channel_id", channelId)
-          .order("published_at", { ascending: false });
+        } else {
+          // Videos / Live - subsequent pages
+          let dbQuery = supabaseYt
+            .from("yt_videos")
+            .select("*")
+            .eq("channel_id", channelId)
+            .order("published_at", { ascending: false });
 
-        if (type === "live") {
-          dbQuery = dbQuery.eq("kind", "live");
-        }
+          if (type === "live") {
+            dbQuery = dbQuery.eq("kind", "live");
+          }
 
-        const { data: dbVideos } = await dbQuery.range(offset, offset + maxResults - 1);
-        
-        if (dbVideos && dbVideos.length > 0) {
-          useDatabase = true;
-          dbItems = dbVideos.map(vid => ({
-            id: vid.video_id,
-            title: vid.title || "Untitled",
-            thumbnail: vid.thumbnail_url || `https://i.ytimg.com/vi/${vid.video_id}/mqdefault.jpg`,
-            date: vid.published_at ? formatRelativeDate(vid.published_at) : "",
-            published: vid.published_at || "",
-            type: vid.kind || "video",
-            playlistCount: undefined
-          }));
-          if (dbVideos.length === maxResults) {
-            nextOffsetToken = String(offset + maxResults);
+          const { data: dbVideos } = await dbQuery.range(offset, offset + maxResults - 1);
+          
+          if (dbVideos && dbVideos.length > 0) {
+            useDatabase = true;
+            dbItems = dbVideos.map(vid => ({
+              id: vid.video_id,
+              title: vid.title || "Untitled",
+              thumbnail: vid.thumbnail_url || `https://i.ytimg.com/vi/${vid.video_id}/mqdefault.jpg`,
+              date: vid.published_at ? formatRelativeDate(vid.published_at) : "",
+              published: vid.published_at || "",
+              type: vid.kind || "video",
+              playlistCount: undefined
+            }));
+            if (dbVideos.length === maxResults) {
+              nextOffsetToken = String(offset + maxResults);
+            }
           }
         }
       }
     }
 
     if (useDatabase) {
-      console.log(`[YouTube API Route] Serving ${type} from database cache for channel ${channelId}`);
+      console.log(`[YouTube API Route] Serving cached ${type} from database (offset: ${pageToken || '0'})`);
       return NextResponse.json(
         {
           items: dbItems,
@@ -231,11 +281,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 3: Google YouTube API Fallback (for unsynced channels or specific playlists)
-    if (!YOUTUBE_API_KEY) {
-      return NextResponse.json({ error: "API Key missing and content not cached" }, { status: 503 });
-    }
-
+    // Step 3: Google YouTube API Fetch with key rotation (used for Page 1 of Videos/Live, or specific playlists)
     let apiUrl: URL;
 
     if (playlistId) {
@@ -250,14 +296,9 @@ export async function GET(request: NextRequest) {
       // DEFAULT: Use the uploads playlist for Videos/Live
       const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
       channelUrl.searchParams.set("id", channelId!);
-      channelUrl.searchParams.set("key", YOUTUBE_API_KEY!);
       channelUrl.searchParams.set("part", "contentDetails");
-      const cRes = await fetch(channelUrl.toString());
-      const cData = await cRes.json();
       
-      if (!cRes.ok) {
-        throw new Error(cData.error?.message || "Failed to fetch uploads playlist ID from YouTube");
-      }
+      const { data: cData } = await fetchFromYouTubeWithFallback(channelUrl);
       
       const uploadsId = cData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
       if (!uploadsId) {
@@ -269,50 +310,11 @@ export async function GET(request: NextRequest) {
       apiUrl.searchParams.set("part", "snippet");
     }
 
-    apiUrl.searchParams.set("key", YOUTUBE_API_KEY);
     apiUrl.searchParams.set("maxResults", String(maxResults));
     if (pageToken) apiUrl.searchParams.set("pageToken", pageToken);
 
-    const response = await fetch(apiUrl.toString(), { cache: "no-store" });
-    const data = await response.json();
-
-    if (!response.ok) {
-      // If YouTube API fails for a playlist, fall back to channel's videos in database
-      console.warn(`[YouTube API Route] YouTube API failed with status ${response.status}. Falling back to database.`);
-      
-      if (channelId) {
-        const offset = pageToken ? parseInt(pageToken) || 0 : 0;
-        const { data: dbVideos } = await supabaseYt
-          .from("yt_videos")
-          .select("*")
-          .eq("channel_id", channelId)
-          .order("published_at", { ascending: false })
-          .range(offset, offset + maxResults - 1);
-        
-        if (dbVideos && dbVideos.length > 0) {
-          const fallbackItems = dbVideos.map(vid => ({
-            id: vid.video_id,
-            title: vid.title || "Untitled",
-            thumbnail: vid.thumbnail_url || `https://i.ytimg.com/vi/${vid.video_id}/mqdefault.jpg`,
-            date: vid.published_at ? formatRelativeDate(vid.published_at) : "",
-            published: vid.published_at || "",
-            type: vid.kind || "video",
-            playlistCount: undefined
-          }));
-          let nextOffsetToken = "";
-          if (dbVideos.length === maxResults) nextOffsetToken = String(offset + maxResults);
-          
-          return NextResponse.json({
-            items: fallbackItems,
-            nextPageToken: nextOffsetToken,
-            channelTitle,
-            channelLogo
-          });
-        }
-      }
-      
-      return NextResponse.json({ error: "Fetch Error", details: data }, { status: 502 });
-    }
+    // Fetch using rotation
+    const { data } = await fetchFromYouTubeWithFallback(apiUrl);
 
     const mappedItems = (data.items ?? [])
       .map((item: any) => {
@@ -353,6 +355,34 @@ export async function GET(request: NextRequest) {
         };
       })
       .filter(Boolean);
+
+    // REAL-TIME AUTO-CACHE:
+    // In the background, upsert these page 1 videos into the database to keep it fresh
+    if (mappedItems.length > 0 && channelId && !playlistId) {
+      const dbRecords = mappedItems.map((item: any) => ({
+        video_id: item.id,
+        channel_id: channelId,
+        title: item.title,
+        description: "",
+        thumbnail_url: item.thumbnail,
+        published_at: item.published,
+        kind: type === "live" ? "live" : "video",
+        updated_at: new Date().toISOString()
+      }));
+
+      // REAL-TIME AUTO-CACHE:
+      // In the background, upsert these page 1 videos into the database to keep it fresh
+      (async () => {
+        try {
+          const { error } = await supabaseYt.from("yt_videos")
+            .upsert(dbRecords, { onConflict: "video_id", ignoreDuplicates: true });
+          if (error) console.error("[Real-Time Sync] Background auto-cache failed:", error.message);
+          else console.log("[Real-Time Sync] Background auto-cache succeeded for channel", channelId);
+        } catch (err: any) {
+          console.error("[Real-Time Sync] Background auto-cache uncaught error:", err?.message || err);
+        }
+      })();
+    }
 
     return NextResponse.json(
       {

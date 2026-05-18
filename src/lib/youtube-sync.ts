@@ -1,20 +1,66 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseYtAdmin as supabaseYt } from "./supabase-yt";
-
 import { safeQuery } from "./resilient-db";
 
-
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 const UPSERT_CHUNK_SIZE = 50;
-const DEFAULT_FULL_SYNC_PAGES_PER_RUN = 3;
 
 type SyncOptions = {
   startPageToken?: string;
   maxPages?: number;
 };
+
+// Generic fetcher with YouTube API Key Fallback Rotation
+async function fetchFromYouTubeWithFallback(urlInput: URL | string): Promise<{ response: Response; data: any }> {
+  const keys = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEY_FALLBACK
+  ].filter(Boolean) as string[];
+
+  if (keys.length === 0) {
+    throw new Error("YouTube API Keys are missing in configuration");
+  }
+
+  let lastError = null;
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const maskedKey = `${key.substring(0, 5)}...${key.substring(key.length - 4)}`;
+    
+    const apiUrl = typeof urlInput === "string" ? new URL(urlInput) : new URL(urlInput.toString());
+    apiUrl.searchParams.set("key", key);
+
+    try {
+      const response = await fetch(apiUrl.toString(), { cache: "no-store" });
+      const data = await response.json();
+
+      if (response.ok) {
+        if (i > 0) {
+          console.log(`[YouTube Sync Key Rotation] Successfully fetched using fallback key: ${maskedKey}`);
+        }
+        return { response, data };
+      }
+
+      const isQuotaError = data.error?.errors?.some((e: any) => e.reason === "quotaExceeded") || 
+                           data.error?.message?.includes("quota") || 
+                           response.status === 403;
+
+      if (isQuotaError) {
+        console.warn(`[YouTube Sync Key Rotation] Quota exceeded for key: ${maskedKey}. Trying next key.`);
+      } else {
+        console.warn(`[YouTube Sync Key Rotation] API call failed for key: ${maskedKey} with status ${response.status}: ${data.error?.message}. Trying next key.`);
+      }
+      lastError = data;
+    } catch (err: any) {
+      console.error(`[YouTube Sync Key Rotation] Fetch exception for key: ${maskedKey}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw new Error(lastError?.error?.message || lastError?.message || "All configured YouTube API keys are exhausted or failed");
+}
 
 async function readSavedCursor(channelId: string) {
   const { data, error } = await supabase
@@ -63,7 +109,12 @@ async function upsertVideosInChunks(videos: any[]) {
 
 export async function syncYouTubeChannel(channelId: string, isIncremental = false, options: SyncOptions = {}) {
   if (!channelId) throw new Error("Missing channelId");
-  if (!YOUTUBE_API_KEY) throw new Error("YouTube API Key missing");
+
+  const keys = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEY_FALLBACK
+  ].filter(Boolean) as string[];
+  if (keys.length === 0) throw new Error("YouTube API Keys missing");
 
   // 1. Get current sync state from DB
   const { data: channelData, error: fetchErr } = await supabase
@@ -91,13 +142,12 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
   }
 
   try {
-    // 2. Get "Uploads" playlist ID
+    // 2. Get "Uploads" playlist ID & Total reported videos
     const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
     channelUrl.searchParams.set("id", channelId);
-    channelUrl.searchParams.set("key", YOUTUBE_API_KEY);
     channelUrl.searchParams.set("part", "contentDetails,statistics");
-    const cRes = await fetch(channelUrl.toString());
-    const cData = await cRes.json();
+    
+    const { data: cData } = await fetchFromYouTubeWithFallback(channelUrl);
     const uploadsId = cData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
     const totalReported = parseInt(cData.items?.[0]?.statistics?.videoCount || "0");
 
@@ -107,14 +157,18 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     let pagesProcessed = 0;
     const maxPages = isIncremental ? 1 : (options.maxPages || 5);
     let hasMore = true;
-    let nextCursor = options.startPageToken || channelData?.sync_cursor || "";
+    let nextCursor = options.startPageToken || (!isIncremental ? channelData?.sync_cursor : "") || "";
 
     // --- STAGE: UPLOADS ---
     if (currentStage === 'uploads') {
       do {
-        const res = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?playlistId=${uploadsId}&part=snippet,contentDetails&maxResults=50&key=${YOUTUBE_API_KEY}&pageToken=${nextCursor}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error?.message || "YT API Error");
+        const playlistUrl = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+        playlistUrl.searchParams.set("playlistId", uploadsId);
+        playlistUrl.searchParams.set("part", "snippet,contentDetails");
+        playlistUrl.searchParams.set("maxResults", "50");
+        if (nextCursor) playlistUrl.searchParams.set("pageToken", nextCursor);
+
+        const { data } = await fetchFromYouTubeWithFallback(playlistUrl);
 
         const videos = (data.items || []).map((v: any) => ({
           video_id: v.contentDetails.videoId,
@@ -144,8 +198,12 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     } 
     // --- STAGE: PLAYLISTS ---
     else if (currentStage === 'playlists') {
-      const pRes = await fetch(`https://www.googleapis.com/youtube/v3/playlists?channelId=${channelId}&part=id,snippet&maxResults=50&key=${YOUTUBE_API_KEY}`);
-      const pData = await pRes.json();
+      const playlistsUrl = new URL("https://www.googleapis.com/youtube/v3/playlists");
+      playlistsUrl.searchParams.set("channelId", channelId);
+      playlistsUrl.searchParams.set("part", "id,snippet");
+      playlistsUrl.searchParams.set("maxResults", "50");
+      
+      const { data: pData } = await fetchFromYouTubeWithFallback(playlistsUrl);
       const playlists = pData.items || [];
       const idx = metadata.playlistIndex || 0;
 
@@ -154,16 +212,21 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
         console.log(`[Deep Sync] Scanning playlist ${idx + 1}/${playlists.length}: ${pl.snippet.title}`);
         
         do {
-          const res = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?playlistId=${pl.id}&part=snippet,contentDetails&maxResults=50&key=${YOUTUBE_API_KEY}&pageToken=${nextCursor}`);
-          const data = await res.json();
-          if (!res.ok) break;
+          const itemsUrl = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+          itemsUrl.searchParams.set("playlistId", pl.id);
+          itemsUrl.searchParams.set("part", "snippet,contentDetails");
+          itemsUrl.searchParams.set("maxResults", "50");
+          if (nextCursor) itemsUrl.searchParams.set("pageToken", nextCursor);
+
+          const { data } = await fetchFromYouTubeWithFallback(itemsUrl);
 
           const videos = (data.items || []).map((v: any) => ({
             video_id: v.contentDetails.videoId,
             channel_id: channelId,
             title: v.snippet.title,
             published_at: v.contentDetails.videoPublishedAt || v.snippet.publishedAt,
-            kind: 'video', updated_at: new Date().toISOString()
+            kind: 'video', 
+            updated_at: new Date().toISOString()
           })).filter((v: any) => v.video_id);
 
           if (videos.length > 0) totalSynced += await upsertVideosInChunks(videos);
@@ -185,7 +248,7 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     // 4. Update State
     const isActuallyDone = !hasMore || isIncremental;
     const updatePayload: any = {
-      sync_cursor: hasMore ? nextCursor : null,
+      sync_cursor: isIncremental ? (channelData?.sync_cursor || null) : (hasMore ? nextCursor : null),
       metadata: metadata,
       sync_error: null
     };
@@ -207,4 +270,3 @@ export async function syncYouTubeChannel(channelId: string, isIncremental = fals
     throw error;
   }
 }
-
