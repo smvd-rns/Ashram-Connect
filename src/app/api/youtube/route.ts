@@ -89,7 +89,12 @@ export async function GET(request: NextRequest) {
   const channelId = searchParams.get("channelId");
   const playlistId = searchParams.get("playlistId"); // For entering a playlist
   const type = searchParams.get("type") ?? "videos";
-  const pageToken = searchParams.get("pageToken") ?? "";
+  let pageToken = searchParams.get("pageToken") ?? "";
+  if (pageToken === "undefined" || pageToken === "null") {
+    pageToken = "";
+  }
+  let offset = 0;
+  let googlePageToken = "";
   const maxResults = Math.min(parseInt(searchParams.get("maxResults") ?? "50"), 50);
 
   // Handle single video fetch if videoId is provided
@@ -197,16 +202,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Parse combined pageToken (format: "offset:googleToken" or just "offset" or just "googleToken")
+
+    if (pageToken) {
+      if (pageToken.includes(":")) {
+        const parts = pageToken.split(":");
+        offset = parseInt(parts[0]) || 0;
+        googlePageToken = parts[1] || "";
+      } else if (/^\d+$/.test(pageToken)) {
+        offset = parseInt(pageToken) || 0;
+      } else {
+        googlePageToken = pageToken;
+      }
+    }
+
+    const isPage1 = !pageToken || pageToken === "" || pageToken === "undefined" || pageToken === "null";
+
     // Step 2: Determine if we should query the database directly
     let useDatabase = false;
     let dbItems: any[] = [];
     let nextOffsetToken = "";
 
-    const isPage1 = pageToken === "";
-
     if (!playlistId && channelId) {
-      const offset = pageToken ? parseInt(pageToken) || 0 : 0;
-      
       // HYBRID ARCHITECTURE:
       // - Playlists are always loaded from database first (saving quota).
       // - Load more (page 2, 3, etc.) are always loaded from database first (saving quota).
@@ -261,7 +278,7 @@ export async function GET(request: NextRequest) {
               playlistCount: undefined
             }));
             if (dbVideos.length === maxResults) {
-              nextOffsetToken = String(offset + maxResults);
+              nextOffsetToken = String(offset + maxResults) + (googlePageToken ? ":" + googlePageToken : "");
             }
           }
         }
@@ -269,7 +286,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (useDatabase) {
-      console.log(`[YouTube API Route] Serving cached ${type} from database (offset: ${pageToken || '0'})`);
+      console.log(`[YouTube API Route] Serving cached ${type} from database (offset: ${offset}, googleToken: ${googlePageToken})`);
       return NextResponse.json(
         {
           items: dbItems,
@@ -311,7 +328,7 @@ export async function GET(request: NextRequest) {
     }
 
     apiUrl.searchParams.set("maxResults", String(maxResults));
-    if (pageToken) apiUrl.searchParams.set("pageToken", pageToken);
+    if (googlePageToken) apiUrl.searchParams.set("pageToken", googlePageToken);
 
     // Fetch using rotation
     const { data } = await fetchFromYouTubeWithFallback(apiUrl);
@@ -384,12 +401,20 @@ export async function GET(request: NextRequest) {
       })();
     }
 
+    let responseNextToken = "";
+    if (!playlistId) {
+      if (mappedItems.length === maxResults) {
+        const nextOffset = offset + maxResults;
+        responseNextToken = String(nextOffset) + (data.nextPageToken ? ":" + data.nextPageToken : "");
+      }
+    } else {
+      responseNextToken = data.nextPageToken ?? "";
+    }
+
     return NextResponse.json(
       {
         items: mappedItems,
-        nextPageToken: (!playlistId && isPage1)
-          ? (mappedItems.length === maxResults ? String(maxResults) : "")
-          : (data.nextPageToken ?? ""),
+        nextPageToken: responseNextToken,
         channelTitle,
         channelLogo,
       },
@@ -400,7 +425,6 @@ export async function GET(request: NextRequest) {
     // Ultimate fallback: Try to serve whatever we can from database
     try {
       if (channelId) {
-        const offset = pageToken ? parseInt(pageToken) || 0 : 0;
         let fallbackItems: any[] = [];
         let nextOffsetToken = "";
 
@@ -421,7 +445,9 @@ export async function GET(request: NextRequest) {
               type: "playlist",
               playlistCount: pl.video_count || 0
             }));
-            if (playlists.length === maxResults) nextOffsetToken = String(offset + maxResults);
+            if (playlists.length === maxResults) {
+              nextOffsetToken = String(offset + maxResults);
+            }
           }
         } else {
           const { data: dbVideos } = await supabaseYt
@@ -440,7 +466,9 @@ export async function GET(request: NextRequest) {
               type: vid.kind || "video",
               playlistCount: undefined
             }));
-            if (dbVideos.length === maxResults) nextOffsetToken = String(offset + maxResults);
+            if (dbVideos.length === maxResults) {
+              nextOffsetToken = String(offset + maxResults) + (googlePageToken ? ":" + googlePageToken : "");
+            }
           }
         }
 
