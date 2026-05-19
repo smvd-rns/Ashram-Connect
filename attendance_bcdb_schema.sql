@@ -51,6 +51,11 @@ END $$;
 -- Enable RLS
 ALTER TABLE bcdb ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.bcdb TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.bcdb TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.bcdb TO service_role;
+
 -- Policy: Admins can do everything
 DROP POLICY IF EXISTS admin_all_bcdb ON bcdb;
 CREATE POLICY admin_all_bcdb ON bcdb

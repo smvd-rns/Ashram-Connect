@@ -48,6 +48,15 @@ CREATE INDEX IF NOT EXISTS idx_yt_playlists_channel_id ON yt_playlists(channel_i
 ALTER TABLE yt_videos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE yt_playlists ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON yt_videos TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_videos TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_videos TO service_role;
+
+GRANT SELECT ON yt_playlists TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_playlists TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_playlists TO service_role;
+
 DROP POLICY IF EXISTS "Public Read Access for yt_videos" ON yt_videos;
 CREATE POLICY "Public Read Access for yt_videos" ON yt_videos
     FOR SELECT USING (true);

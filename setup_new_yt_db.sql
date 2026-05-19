@@ -44,6 +44,19 @@ ALTER TABLE yt_videos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE yt_playlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE youtube_channels ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON yt_videos TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_videos TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_videos TO service_role;
+
+GRANT SELECT ON yt_playlists TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_playlists TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON yt_playlists TO service_role;
+
+GRANT SELECT ON youtube_channels TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON youtube_channels TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON youtube_channels TO service_role;
+
 CREATE POLICY "Public Read Access for yt_videos" ON yt_videos FOR SELECT USING (true);
 CREATE POLICY "Public Read Access for yt_playlists" ON yt_playlists FOR SELECT USING (true);
 CREATE POLICY "Public Read Access for youtube_channels" ON youtube_channels FOR SELECT USING (true);

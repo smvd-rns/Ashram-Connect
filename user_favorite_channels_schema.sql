@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS public.user_favorite_channels (
 -- 2. Enable Row Level Security (RLS)
 ALTER TABLE public.user_favorite_channels ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.user_favorite_channels TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_favorite_channels TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_favorite_channels TO service_role;
+
 -- 3. Create Policy: Users can only manage their own favorite channels
 DROP POLICY IF EXISTS "Users can manage their own favorite channels" ON public.user_favorite_channels;
 CREATE POLICY "Users can manage their own favorite channels" ON public.user_favorite_channels

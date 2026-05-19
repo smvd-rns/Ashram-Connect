@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS public.bcdb_submissions (
 -- ---------------------------------------------------------
 ALTER TABLE public.bcdb_submissions ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT, INSERT ON public.bcdb_submissions TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.bcdb_submissions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.bcdb_submissions TO service_role;
+
 -- Allow ANYONE (public) to insert a new submission
 DROP POLICY IF EXISTS "Anyone can submit registration" ON public.bcdb_submissions;
 CREATE POLICY "Anyone can submit registration" ON public.bcdb_submissions

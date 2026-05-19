@@ -57,6 +57,11 @@ END $$;
 -- 5. Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.profiles TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO service_role;
+
 -- 6. Helper Functions for RLS (Avoid Recursion)
 CREATE OR REPLACE FUNCTION public.is_admin() 
 RETURNS boolean AS $$

@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS public.user_audio_favorites (
 -- Enable RLS
 ALTER TABLE public.user_audio_favorites ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.user_audio_favorites TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_audio_favorites TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_audio_favorites TO service_role;
+
 -- Policy: Users can only manage their own audio favorites
 DROP POLICY IF EXISTS "Users can manage their own audio favorites" ON public.user_audio_favorites;
 CREATE POLICY "Users can manage their own audio favorites" ON public.user_audio_favorites

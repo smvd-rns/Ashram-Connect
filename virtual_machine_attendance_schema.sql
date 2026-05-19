@@ -40,3 +40,55 @@ alter table public.profiles
 
 alter table public.profiles
   add constraint profiles_role_check check (role between 1 and 7);
+
+-- ---------------------------------------------------------
+-- Enable RLS (Row Level Security)
+-- ---------------------------------------------------------
+alter table public.virtual_machine_incharge_mapping enable row level security;
+alter table public.virtual_machine_attendance enable row level security;
+
+-- ---------------------------------------------------------
+-- Grant access per role
+-- ---------------------------------------------------------
+grant select on public.virtual_machine_incharge_mapping to anon;
+grant select, insert, update, delete on public.virtual_machine_incharge_mapping to authenticated;
+grant select, insert, update, delete on public.virtual_machine_incharge_mapping to service_role;
+
+grant select on public.virtual_machine_attendance to anon;
+grant select, insert, update, delete on public.virtual_machine_attendance to authenticated;
+grant select, insert, update, delete on public.virtual_machine_attendance to service_role;
+
+-- ---------------------------------------------------------
+-- Security Policies
+-- ---------------------------------------------------------
+
+-- policies for virtual_machine_incharge_mapping
+drop policy if exists "Admins can manage incharge mappings" on public.virtual_machine_incharge_mapping;
+create policy "Admins can manage incharge mappings"
+  on public.virtual_machine_incharge_mapping for all
+  to authenticated
+  using (exists (select 1 from public.profiles where id = auth.uid() and role = 1));
+
+drop policy if exists "Incharges can view their own mappings" on public.virtual_machine_incharge_mapping;
+create policy "Incharges can view their own mappings"
+  on public.virtual_machine_incharge_mapping for select
+  to authenticated
+  using (incharge_user_id = auth.uid());
+
+-- policies for virtual_machine_attendance
+drop policy if exists "Admins can manage VM attendance" on public.virtual_machine_attendance;
+create policy "Admins can manage VM attendance"
+  on public.virtual_machine_attendance for all
+  to authenticated
+  using (exists (select 1 from public.profiles where id = auth.uid() and role = 1));
+
+drop policy if exists "Incharges can manage attendance for assigned machines" on public.virtual_machine_attendance;
+create policy "Incharges can manage attendance for assigned machines"
+  on public.virtual_machine_attendance for all
+  to authenticated
+  using (
+    exists (
+      select 1 from public.virtual_machine_incharge_mapping
+      where incharge_user_id = auth.uid() and machine_id = virtual_machine_attendance.machine_id
+    )
+  );

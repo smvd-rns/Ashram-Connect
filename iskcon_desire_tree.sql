@@ -21,6 +21,11 @@ CREATE INDEX IF NOT EXISTS idx_idkt_is_hidden ON public.idkt_items(is_hidden);
 -- RLS Policies
 ALTER TABLE public.idkt_items ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.idkt_items TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.idkt_items TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.idkt_items TO service_role;
+
 -- Allow public read access to non-hidden items
 CREATE POLICY "Allow public read access to visible items" ON public.idkt_items
     FOR SELECT USING (

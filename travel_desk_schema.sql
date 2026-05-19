@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS travel_submissions (
 -- Enable RLS
 ALTER TABLE travel_submissions ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON travel_submissions TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON travel_submissions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON travel_submissions TO service_role;
+
 -- POLICY: MANAGER & ADMIN ACCESS (Role 1 & 5)
 -- Full visibility for the Travel Desk manager and Super Admins
 DROP POLICY IF EXISTS manager_all_travel ON travel_submissions;

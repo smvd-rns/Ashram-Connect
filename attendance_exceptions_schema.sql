@@ -17,6 +17,11 @@ CREATE INDEX IF NOT EXISTS attendance_exceptions_user_date_idx ON public.attenda
 -- Enable RLS
 ALTER TABLE public.attendance_exceptions ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.attendance_exceptions TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_exceptions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_exceptions TO service_role;
+
 -- Policies: 
 -- 1. Users can view their own exceptions
 -- 2. Users can create/update their own exceptions

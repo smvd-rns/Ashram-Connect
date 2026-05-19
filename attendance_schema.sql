@@ -19,6 +19,11 @@ CREATE INDEX IF NOT EXISTS attendance_time_idx ON public.physical_attendance (ch
 -- Enable RLS
 ALTER TABLE public.physical_attendance ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.physical_attendance TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.physical_attendance TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.physical_attendance TO service_role;
+
 -- Policies: Only Admins can view
 DROP POLICY IF EXISTS "Admins can view attendance" ON public.physical_attendance;
 CREATE POLICY "Admins can view attendance" 

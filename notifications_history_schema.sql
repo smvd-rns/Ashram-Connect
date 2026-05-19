@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS public.notifications_history (
 -- Enable RLS
 ALTER TABLE public.notifications_history ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.notifications_history TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications_history TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications_history TO service_role;
+
 -- Policy: All authenticated users can view history
 DROP POLICY IF EXISTS "Public view notifications" ON public.notifications_history;
 CREATE POLICY "Public view notifications"

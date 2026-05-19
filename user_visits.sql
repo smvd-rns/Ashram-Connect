@@ -11,6 +11,11 @@ CREATE INDEX IF NOT EXISTS user_visits_visited_at_idx ON public.user_visits (vis
 -- Enable RLS
 ALTER TABLE public.user_visits ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.user_visits TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_visits TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_visits TO service_role;
+
 -- Policies
 DROP POLICY IF EXISTS "Users can insert their own visits" ON public.user_visits;
 CREATE POLICY "Users can insert their own visits" 

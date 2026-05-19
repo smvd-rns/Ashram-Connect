@@ -17,5 +17,10 @@ CREATE INDEX IF NOT EXISTS idx_mapping_machine_id ON public.attendance_user_mapp
 -- 3. Enable RLS (Row Level Security) if needed - usually handled by Service Role for admin
 ALTER TABLE public.attendance_user_mapping ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.attendance_user_mapping TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_user_mapping TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_user_mapping TO service_role;
+
 -- 4. Simple Policy: Allow all for now (Admin access via Service Role)
 CREATE POLICY "Allow all access to attendance_user_mapping" ON public.attendance_user_mapping FOR ALL USING (true);

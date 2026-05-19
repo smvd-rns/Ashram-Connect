@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 -- Enable RLS
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.push_subscriptions TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO service_role;
+
 -- Clean up existing policies to avoid "already exists" errors
 DROP POLICY IF EXISTS "Users can view their own subscriptions" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Users can insert their own subscriptions" ON public.push_subscriptions;

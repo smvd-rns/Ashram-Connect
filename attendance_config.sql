@@ -64,6 +64,19 @@ ALTER TABLE public.attendance_machines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prasadam_daily_counts ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.attendance_machines TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_machines TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_machines TO service_role;
+
+GRANT SELECT ON public.attendance_settings TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_settings TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_settings TO service_role;
+
+GRANT SELECT ON public.prasadam_daily_counts TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.prasadam_daily_counts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.prasadam_daily_counts TO service_role;
+
 -- 7. Security Policies
 DROP POLICY IF EXISTS "Admins can manage machines" ON public.attendance_machines;
 CREATE POLICY "Admins can manage machines" ON public.attendance_machines FOR ALL USING (

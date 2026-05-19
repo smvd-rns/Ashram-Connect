@@ -26,6 +26,11 @@ CREATE INDEX IF NOT EXISTS idx_harinam_email_date ON public.harinam_attendance(u
 -- Enable RLS
 ALTER TABLE public.harinam_attendance ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.harinam_attendance TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.harinam_attendance TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.harinam_attendance TO service_role;
+
 -- Policies: Only Admins can modify, all authenticated can view? 
 -- Let's make it Admins-only for now consistent with other attendance tables.
 

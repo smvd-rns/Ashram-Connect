@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS public.user_favorites (
 -- 2. Enable Row Level Security (RLS)
 ALTER TABLE public.user_favorites ENABLE ROW LEVEL SECURITY;
 
+-- Grant access per role
+GRANT SELECT ON public.user_favorites TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_favorites TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_favorites TO service_role;
+
 -- 3. Create Policy: Users can only manage their own favorites
 DROP POLICY IF EXISTS "Users can manage their own favorites" ON public.user_favorites;
 CREATE POLICY "Users can manage their own favorites" ON public.user_favorites
