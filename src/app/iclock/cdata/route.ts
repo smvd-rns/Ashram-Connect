@@ -10,11 +10,61 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Whitelist of machine serial numbers allowed to push data
-const AUTHORIZED_SNS = [
-  "TFEE255000216", 
-  "NCD8253500015"
-];
+// Simple in-memory cache with TTL
+type CacheEntry<T> = {
+  data: T;
+  expiry: number;
+};
+
+const machineCache = new Map<string, CacheEntry<any>>();
+const settingsCache: { entry: CacheEntry<any> | null } = { entry: null };
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedMachine(sn: string) {
+  const now = Date.now();
+  const cached = machineCache.get(sn);
+  
+  if (cached && cached.expiry > now) {
+    return cached.data;
+  }
+  
+  const { data: machine } = await supabase
+    .from("attendance_machines")
+    .select("is_active, ingestion_start, ingestion_end")
+    .eq("serial_number", sn)
+    .eq("is_active", true)
+    .single();
+    
+  // Cache negative hits for 30s to prevent spam, active machines for 5 minutes
+  const ttl = machine ? CACHE_TTL_MS : 30 * 1000;
+  machineCache.set(sn, {
+    data: machine || null,
+    expiry: now + ttl
+  });
+  
+  return machine || null;
+}
+
+async function getCachedSettings() {
+  const now = Date.now();
+  if (settingsCache.entry && settingsCache.entry.expiry > now) {
+    return settingsCache.entry.data;
+  }
+  
+  const { data: settings } = await supabase
+    .from("attendance_settings")
+    .select("*")
+    .eq("id", "global")
+    .single();
+    
+  settingsCache.entry = {
+    data: settings || null,
+    expiry: now + CACHE_TTL_MS
+  };
+  
+  return settings || null;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -22,12 +72,7 @@ export async function GET(req: NextRequest) {
 
   if (!sn) return new Response("SN_REQUIRED", { status: 400 });
 
-  const { data: machine } = await supabase
-    .from("attendance_machines")
-    .select("is_active, ingestion_start, ingestion_end")
-    .eq("serial_number", sn)
-    .eq("is_active", true)
-    .single();
+  const machine = await getCachedMachine(sn);
 
   if (!machine) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
@@ -48,22 +93,13 @@ export async function POST(req: NextRequest) {
 
   if (!sn) return new Response("SN_REQUIRED", { status: 400 });
 
-  const { data: machine } = await supabase
-    .from("attendance_machines")
-    .select("is_active, ingestion_start, ingestion_end")
-    .eq("serial_number", sn)
-    .eq("is_active", true)
-    .single();
+  const machine = await getCachedMachine(sn);
 
   if (!machine) {
     return new Response("UNAUTHORIZED_DEVICE", { status: 401 });
   }
 
-  const { data: settings } = await supabase
-    .from("attendance_settings")
-    .select("*")
-    .eq("id", "global")
-    .single();
+  const settings = await getCachedSettings();
 
   const startTime = machine.ingestion_start || "02:00:00";
   const endTime = machine.ingestion_end || "11:00:00";

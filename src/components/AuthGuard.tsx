@@ -38,7 +38,17 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [pathname]); // Re-check on path change
 
   async function recordUserVisit(userId: string) {
+    if (typeof window === "undefined") return;
+    
     try {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+      const storageKey = `recorded_visit_${userId}_${today}`;
+      
+      // Prevent redundant database writes on every page navigation
+      if (sessionStorage.getItem(storageKey)) {
+        return;
+      }
+
       // 1. Update Profile (Last Seen status)
       await supabase
         .from("profiles")
@@ -52,10 +62,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         .upsert(
           { 
             user_id: userId, 
-            visit_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()) 
+            visit_date: today 
           }, 
           { onConflict: 'user_id,visit_date' }
         );
+
+      // Save to sessionStorage to skip on future page changes during this tab session
+      sessionStorage.setItem(storageKey, "true");
     } catch (err) {
       console.error("Visit log failed:", err);
     }
