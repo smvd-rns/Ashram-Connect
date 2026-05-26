@@ -167,7 +167,7 @@ export default function Navbar() {
                         className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/raise-prasadam' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'} group`}
                       >
                         <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-orange-600 transition-colors" />
-                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Raise Prasadam Count</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">ICS - Raise Prasadam Count</span>
                         <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/raise-prasadam' ? 'opacity-100' : 'opacity-0'}`} />
                       </NextLink>
                     )}
@@ -217,6 +217,18 @@ export default function Navbar() {
                         <Settings className="w-4 h-4" />
                         <span className="text-[10px] font-black uppercase tracking-widest flex-1">Admin Panel</span>
                         <div className={`w-1 h-1 rounded-full bg-devo-500 ${pathname.startsWith('/admin') ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
+
+                    {isSuperAdmin && (
+                      <NextLink 
+                        href="/sms-sender" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/sms-sender' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-600'} group hidden lg:flex`}
+                      >
+                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">SMS Sender</span>
+                        <div className={`w-1 h-1 rounded-full bg-indigo-500 ${pathname === '/sms-sender' ? 'opacity-100' : 'opacity-0'}`} />
                       </NextLink>
                     )}
 
@@ -359,7 +371,7 @@ export default function Navbar() {
                   className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/raise-prasadam' ? 'bg-orange-50/50' : 'hover:bg-slate-50'} group`}
                 >
                   <ExternalLink className={`w-4 h-4 ${pathname === '/raise-prasadam' ? 'text-orange-600' : 'text-slate-400 group-hover:text-orange-600'} transition-colors`} />
-                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/raise-prasadam' ? 'text-orange-900' : 'text-slate-600 group-hover:text-orange-900'} transition-colors`}>Raise Prasadam Count</span>
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/raise-prasadam' ? 'text-orange-900' : 'text-slate-600 group-hover:text-orange-900'} transition-colors`}>ICS - Raise Prasadam Count</span>
                   <div className={`w-1.5 h-1.5 rounded-full bg-orange-600 ${pathname === '/raise-prasadam' ? 'opacity-100' : 'opacity-0'}`} />
                 </NextLink>
               )}
