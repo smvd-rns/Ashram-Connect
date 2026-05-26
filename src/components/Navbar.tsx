@@ -220,17 +220,7 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
-                    {isSuperAdmin && (
-                      <NextLink 
-                        href="/sms-sender" 
-                        onClick={() => setShowDesktopMore(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/sms-sender' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-600'} group hidden lg:flex`}
-                      >
-                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">SMS Sender</span>
-                        <div className={`w-1 h-1 rounded-full bg-indigo-500 ${pathname === '/sms-sender' ? 'opacity-100' : 'opacity-0'}`} />
-                      </NextLink>
-                    )}
+
 
                     <a 
                       href="https://drive.google.com/file/d/14zhPYRBLjcnSBgT7GHmAKpWDKvZ48L9k/view?usp=drive_link" 
