@@ -71,7 +71,7 @@ export default function RaisePrasadamPage() {
             </div>
 
             {/* Iframe container */}
-            <div className="w-full relative bg-slate-50 overflow-hidden h-[70vh] md:h-[76vh]">
+            <div className="w-full relative bg-slate-50 overflow-x-auto lg:overflow-hidden h-[70vh] md:h-[76vh]">
               {iframeLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white z-10 animate-fade-in">
                   <div className="flex flex-col items-center gap-3 text-slate-400 text-xs font-bold uppercase tracking-wider">
@@ -83,7 +83,7 @@ export default function RaisePrasadamPage() {
               <iframe
                 id="ics-iframe"
                 src="/ics"
-                className="w-full h-full border-none"
+                className="w-[1024px] lg:w-full max-w-none h-full border-none"
                 onLoad={() => setIframeLoading(false)}
                 allow="geolocation; microphone; camera"
               />

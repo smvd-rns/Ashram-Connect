@@ -14,8 +14,12 @@ export async function icsProxyHandler(req: NextRequest, pathSegments: string[]) 
 
   const headers = new Headers();
   req.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "host") {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey === "host") {
       headers.set("host", "server.konsoftech.in");
+    } else if (lowerKey === "user-agent") {
+      // Force desktop user-agent to ensure backend doesn't serve mobile templates
+      headers.set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
     } else {
       headers.set(key, value);
     }
@@ -25,7 +29,13 @@ export async function icsProxyHandler(req: NextRequest, pathSegments: string[]) 
     headers.set("origin", "https://server.konsoftech.in");
   }
   if (headers.has("referer")) {
-    headers.set("referer", `https://server.konsoftech.in/ics/${path}`);
+    const originalReferer = headers.get("referer") || "";
+    try {
+      const refUrl = new URL(originalReferer);
+      headers.set("referer", `https://server.konsoftech.in${refUrl.pathname}${refUrl.search}`);
+    } catch {
+      headers.set("referer", `https://server.konsoftech.in/ics/${path}`);
+    }
   }
 
   const method = req.method;
@@ -110,6 +120,43 @@ export async function icsProxyHandler(req: NextRequest, pathSegments: string[]) 
         responseHeaders.set(key, value);
       }
     });
+
+    // Delete content-encoding and content-length for ALL responses.
+    // Node.js fetch automatically decompresses gzip/br bodies, but doesn't always remove the header.
+    // If we forward 'content-encoding: gzip' but the body is decompressed, the browser will fail to load CSS/JS.
+    responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+
+    const contentType = responseHeaders.get("content-type") || "";
+    if (contentType.toLowerCase().includes("text/html")) {
+      let html = await response.text();
+      
+      const dirPath = path ? path.split('/').slice(0, -1).join('/') : "";
+      const baseHref = dirPath ? `/ics/${dirPath}/` : `/ics/`;
+
+      if (html.toLowerCase().includes("<head>")) {
+        html = html.replace(/<head>/i, `<head><base href="${baseHref}">`);
+      } else if (html.toLowerCase().includes("<html")) {
+        html = html.replace(/<html[^>]*>/i, `$&<head><base href="${baseHref}"></head>`);
+      } else {
+        html = `<head><base href="${baseHref}"></head>` + html;
+      }
+
+      // Rewrite absolute backend URLs to relative /ics/ paths in the HTML
+      html = html.replace(/(href|src|action)=["']https?:\/\/server\.konsoftech\.in\/ics\//gi, '$1="/ics/');
+      
+      // Rewrite root-relative paths to be /ics/ relative
+      // e.g., href="/css/style.css" -> href="/ics/css/style.css"
+      // Negative lookahead ensures we don't rewrite href="//" or href="/ics/"
+      html = html.replace(/(href|src|action)=["']\/(?!\/|ics\/)/gi, '$1="/ics/');
+      html = html.replace(/url\(["']?\/(?!\/|ics\/)/gi, 'url("/ics/');
+
+      return new Response(html, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    }
 
     return new Response(response.body ?? null, {
       status: response.status,
