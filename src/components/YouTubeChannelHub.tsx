@@ -116,7 +116,7 @@ export default function YouTubeChannelHub() {
     try {
       const performSync = async (retryCount = 0) => {
         try {
-          const res = await fetch("/api/user/favorite-channels", {
+          const res = await fetch("/api/user/favorite-channels?v=1", {
             method: "POST",
             headers: { 
               "Content-Type": "application/json",
@@ -185,7 +185,8 @@ export default function YouTubeChannelHub() {
           headers["Authorization"] = `Bearer ${session.access_token}`;
         }
 
-        const res = await fetch("/api/youtube/channels", { headers });
+        // Bypass 308 redirect cache
+        const res = await fetch("/api/youtube/channels?v=1", { headers });
         const data = await res.json();
         if (data.channels?.length > 0) {
           setChannels(data.channels);
@@ -287,7 +288,7 @@ export default function YouTubeChannelHub() {
       const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
       if (!session) return;
 
-      const res = await fetch("/api/user/favorites", {
+      const res = await fetch("/api/user/favorites?v=1", {
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
       const data = await res.json();
@@ -308,7 +309,7 @@ export default function YouTubeChannelHub() {
       const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
       if (!session) return;
 
-      const res = await fetch("/api/user/favorite-channels", {
+      const res = await fetch("/api/user/favorite-channels?v=1", {
         headers: { "Authorization": `Bearer ${session.access_token}` }
       });
       const data = await res.json();
@@ -374,7 +375,7 @@ export default function YouTubeChannelHub() {
 
       const performSync = async (retryCount = 0) => {
         try {
-          const res = await fetch("/api/user/favorites", {
+          const res = await fetch("/api/user/favorites?v=1", {
             method: "POST",
             headers: { 
               "Content-Type": "application/json",
@@ -744,7 +745,7 @@ export default function YouTubeChannelHub() {
       const { data: { session } } = await (await import("@/lib/supabase")).supabase.auth.getSession();
       if (!session) return;
 
-      await fetch("/api/user/favorites", {
+      await fetch("/api/user/favorites?v=1", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",

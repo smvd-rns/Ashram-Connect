@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
           .eq("id", userId)
           .single();
         
-        const roles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role].filter(r => r !== null && r !== undefined);
+        const roles = (Array.isArray(profile?.roles) ? profile.roles : [profile?.role])
+          .filter(r => r !== null && r !== undefined)
+          .map(Number);
         isSuperAdmin = roles.includes(1);
       }
     }

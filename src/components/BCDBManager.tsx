@@ -18,9 +18,69 @@ import {
   ArrowRightLeft,
   Inbox,
   Check, Link,
-  UserX
+  UserX,
+  ArrowRight,
+  Heart,
+  Camera,
+  FileText,
+  CreditCard,
+  Info
 } from "lucide-react";
 import * as XLSX from "xlsx";
+
+const compressImage = (file: File, maxWidth: number = 1200, quality: number = 0.75): Promise<File | Blob> => {
+  return new Promise((resolve) => {
+    // Bypass compression for non-images (e.g., PDFs) or GIFs
+    if (!file.type.startsWith("image/") || file.type === "image/gif") {
+      resolve(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Constrain dimensions to reasonable max
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Convert to optimized compressed JPEG
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const cleanName = file.name.replace(/\.[^/.]+$/, ".jpg");
+              resolve(new File([blob], cleanName, { type: "image/jpeg" }));
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
 
 interface BCDBManagerProps {
   session: any;
@@ -39,6 +99,19 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
   const [confirmConfig, setConfirmConfig] = useState<{ title: string, message: string, onConfirm: () => void } | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [showDeleted, setShowDeleted] = useState(false);
+  
+  // -- EDITING MULTI-STEP STATES --
+  const [editStep, setEditStep] = useState(1);
+  const [editRelatives, setEditRelatives] = useState([
+    { relation: "Father", name: "", number: "" },
+    { relation: "Mother", name: "", number: "" },
+    { relation: "Brother", name: "", number: "" }
+  ]);
+  const [uploadingMap, setUploadingMap] = useState<Record<string, boolean>>({
+    photo: false,
+    pan: false,
+    adhar: false
+  });
   
   // -- SUBMISSIONS SYSTEM STATES --
   const [viewSubmissions, setViewSubmissions] = useState(false);
@@ -145,6 +218,128 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
       }).catch(console.error);
     }
   }, [session, data]);
+
+  // Synchronize edit details & relatives when selectedRecord changes
+  useEffect(() => {
+    if (isEditing && selectedRecord) {
+      setEditStep(1);
+      
+      const parseRelative = (contactStr: string, defaultRelation: string) => {
+        if (!contactStr) return { relation: defaultRelation, name: "", number: "" };
+        const parts = contactStr.split("-");
+        if (parts.length >= 3) {
+          const relation = parts[0];
+          const number = parts[parts.length - 1];
+          const name = parts.slice(1, parts.length - 1).join("-");
+          return { relation, name, number };
+        } else if (parts.length === 2) {
+          return { relation: defaultRelation, name: parts[0], number: parts[1] };
+        }
+        return { relation: defaultRelation, name: contactStr, number: "" };
+      };
+
+      setEditRelatives([
+        parseRelative(selectedRecord.relative_contact_1 || "", "Father"),
+        parseRelative(selectedRecord.relative_contact_2 || "", "Mother"),
+        parseRelative(selectedRecord.relative_contact_3 || "", "Brother")
+      ]);
+    }
+  }, [selectedRecord, isEditing]);
+
+  const handleEditFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "photo" | "pan" | "adhar") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingMap(prev => ({ ...prev, [type]: true }));
+    setStatusMsg(null);
+
+    try {
+      const processedFile = await compressImage(file);
+
+      const payload = new FormData();
+      payload.append("file", processedFile);
+      payload.append("type", type);
+
+      const res = await fetch("/api/register/bcdb/upload", {
+        method: "POST",
+        body: payload
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to upload document.");
+      }
+
+      setSelectedRecord((prev: any) => {
+        const updates = { ...prev };
+        if (type === "photo") updates.photo_url = result.publicUrl;
+        if (type === "adhar") updates.adhar_card_copy_url = result.publicUrl;
+        if (type === "pan") updates.pan_card_copy_url = result.publicUrl;
+        return updates;
+      });
+      setStatusMsg({ type: 'success', text: `${type.toUpperCase()} copy uploaded successfully.` });
+    } catch (error: any) {
+      console.error(error);
+      setStatusMsg({ type: 'error', text: `Upload Error: ${error.message}` });
+    } finally {
+      setUploadingMap(prev => ({ ...prev, [type]: false }));
+      e.target.value = "";
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Complete Compulsory Fields Validation
+    const missing = [];
+    if (!selectedRecord?.legal_name?.trim()) missing.push("Legal Name");
+    if (selectedRecord?.initiation !== "Not Initiated" && !selectedRecord?.initiated_name?.trim()) missing.push("Initiated Name");
+    if (!selectedRecord?.dob_adhar) missing.push("DOB (as per Aadhar)");
+    if (!selectedRecord?.dob_actual) missing.push("DOB (Birthday)");
+    if (!selectedRecord?.blood_group?.trim()) missing.push("Blood Group");
+    
+    if (!selectedRecord?.email_id?.trim()) missing.push("Email Address");
+    if (!selectedRecord?.contact_no?.trim()) missing.push("Phone Contact");
+    if (!selectedRecord?.center?.trim()) missing.push("Base Center");
+    if (!selectedRecord?.spiritual_master?.trim()) missing.push("Spiritual Master");
+    if (!selectedRecord?.counsellor?.trim()) missing.push("Counsellor");
+    if (!selectedRecord?.year_joining) missing.push("Year of Joining");
+    
+    if (!selectedRecord?.primary_services?.trim()) missing.push("Primary Services");
+    if (!selectedRecord?.secondary_services?.trim()) missing.push("Secondary Services");
+    if (!selectedRecord?.address_adhar?.trim()) missing.push("Aadhar Address");
+    if (!selectedRecord?.parents_address?.trim()) missing.push("Home/Parents Address");
+
+    // Relatives emergency contacts
+    if (!editRelatives[0].name.trim() || !editRelatives[0].number.trim()) missing.push("Relative 1 Details");
+    if (!editRelatives[1].name.trim() || !editRelatives[1].number.trim()) missing.push("Relative 2 Details");
+    if (!editRelatives[2].name.trim() || !editRelatives[2].number.trim()) missing.push("Relative 3 Details");
+
+    if (!selectedRecord?.aadhar_number?.trim()) missing.push("Aadhar Number");
+    if (!selectedRecord?.pan_card?.trim()) missing.push("PAN Card Number");
+
+    // Media Files Validation
+    if (!selectedRecord?.photo_url) missing.push("Profile Photo Upload");
+    if (!selectedRecord?.adhar_card_copy_url) missing.push("Aadhar Card Copy Upload");
+    if (!selectedRecord?.pan_card_copy_url) missing.push("PAN Card Copy Upload");
+
+    if (missing.length > 0) {
+      setStatusMsg({ type: 'error', text: `Required fields missing: ${missing.join(", ")}` });
+      return;
+    }
+
+    const updatedRecord = {
+      ...selectedRecord,
+      relative_contact_1: editRelatives[0].name ? `${editRelatives[0].relation}-${editRelatives[0].name.trim()}-${editRelatives[0].number.trim()}` : "",
+      relative_contact_2: editRelatives[1].name ? `${editRelatives[1].relation}-${editRelatives[1].name.trim()}-${editRelatives[1].number.trim()}` : "",
+      relative_contact_3: editRelatives[2].name ? `${editRelatives[2].relation}-${editRelatives[2].name.trim()}-${editRelatives[2].number.trim()}` : ""
+    };
+
+    handleUpsert(updatedRecord);
+  };
+
+
 
   useEffect(() => {
     if (viewSubmissions) {
@@ -961,193 +1156,449 @@ export default function BCDBManager({ session, isAdmin }: BCDBManagerProps) {
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
            <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-t-[2rem] sm:rounded-[4rem] shadow-2xl border-t sm:border border-white/20 p-8 sm:p-16 space-y-12 animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 relative">
               
-              <button onClick={() => setIsEditing(false)} className="absolute top-8 right-8 w-12 h-12 bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-sm">
+              <button type="button" onClick={() => setIsEditing(false)} className="absolute top-8 right-8 w-12 h-12 bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-sm">
                 <X className="w-6 h-6" />
               </button>
 
               <div>
                  <h3 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tighter font-outfit uppercase">{selectedRecord?.id ? "Edit Record" : "New Devotee"}</h3>
-                 <p className="text-slate-400 font-bold mt-2">Adjust personnel data for the master Ashram directory.</p>
+                 <p className="text-slate-400 font-bold mt-2">Adjust devotee details inside the master database directory.</p>
               </div>
 
-              <form onSubmit={(e) => { e.preventDefault(); handleUpsert(selectedRecord); }} className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12">
-                 
-                 {/* Block 1: Identity */}
-                 <div className="space-y-6">
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Initiated Name</span>
-                       <input type="text" value={selectedRecord?.initiated_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiated_name: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. Rama Das" />
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Legal Name (Adhar)</span>
-                       <input type="text" value={selectedRecord?.legal_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, legal_name: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. Rajesh Kumar" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Initiation Status</span>
-                          <select value={selectedRecord?.initiation || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiation: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none">
-                             <option value="">Select...</option>
-                             <option value="1st">1st</option>
-                             <option value="2nd">2nd</option>
-                             <option value="Not Initiated">Not Initiated</option>
-                          </select>
-                       </div>
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Colour Code</span>
-                           <select value={selectedRecord?.colour || ""} onChange={(e) => setSelectedRecord({...selectedRecord, colour: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none">
-                              <option value="">Select...</option>
-                              <option value="Yellow">Yellow</option>
-                              <option value="White">White</option>
-                              <option value="Saffron">Saffron</option>
-                           </select>
-                       </div>
-                    </div>
-                 </div>
+              {/* Progress Indicator Strip */}
+              <div className="flex items-center justify-center gap-2 sm:gap-3 mb-6 sm:mb-8">
+                {[1, 2, 3].map(idx => (
+                  <React.Fragment key={idx}>
+                    <button 
+                      type="button"
+                      onClick={() => setEditStep(idx)} 
+                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-black text-[11px] sm:text-xs tracking-tight border-2 transition-all ${
+                        editStep === idx ? "bg-indigo-600 text-white border-indigo-600 shadow-xl shadow-indigo-100 scale-110" :
+                        editStep > idx ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                        "bg-white text-slate-300 border-slate-100 hover:border-indigo-200 hover:text-indigo-500"
+                      }`}
+                    >
+                      {editStep > idx ? <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : idx}
+                    </button>
+                    {idx < 3 && <div className={`w-6 sm:w-10 h-0.5 rounded-full ${editStep > idx ? "bg-emerald-200" : "bg-slate-200"}`}></div>}
+                  </React.Fragment>
+                ))}
+              </div>
 
-                 {/* Block 2: Contacts */}
-                 <div className="space-y-6">
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">WhatsApp Number</span>
-                       <input type="text" value={selectedRecord?.whatsapp_no || ""} onChange={(e) => setSelectedRecord({...selectedRecord, whatsapp_no: e.target.value})} className="w-full px-8 py-5 bg-emerald-50/30 border border-emerald-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. 9876543210" />
+              <form onSubmit={handleEditSubmit}>
+                {/* ====================================
+                    STEP 1: PRIMARY PROFILE IDENTITY
+                   ==================================== */}
+                {editStep === 1 && (
+                  <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+                    <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
+                      <div>
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-tight">Identity Details</h2>
+                        <p className="text-slate-400 text-[10px] sm:text-xs font-bold mt-0.5">Provide names exactly as recorded in official documents.</p>
+                      </div>
+                      <span className="bg-orange-50 text-orange-600 px-2.5 py-1 rounded-lg text-[9px] sm:text-[10px] font-black tracking-widest uppercase shrink-0">Step 1 of 3</span>
                     </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Contact Number</span>
-                       <input type="text" value={selectedRecord?.contact_no || ""} onChange={(e) => setSelectedRecord({...selectedRecord, contact_no: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" placeholder="e.g. +91..." />
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Email Address</span>
-                       <input type="email" value={selectedRecord?.email_id || ""} onChange={(e) => setSelectedRecord({...selectedRecord, email_id: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 underline decoration-indigo-200" placeholder="devotee@iskcon" />
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Center / Base</span>
-                       <input type="text" value={selectedRecord?.center || ""} onChange={(e) => setSelectedRecord({...selectedRecord, center: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
-                    </div>
-                 </div>
 
-                 {/* Block 3: Spiritual & Service */}
-                 <div className="space-y-6">
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Spiritual Master</span>
-                       <input type="text" value={selectedRecord?.spiritual_master || ""} onChange={(e) => setSelectedRecord({...selectedRecord, spiritual_master: e.target.value})} className="w-full px-8 py-5 bg-indigo-50/30 border border-indigo-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-indigo-700" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Counsellor</span>
-                          <input type="text" value={selectedRecord?.counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, counsellor: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
-                       </div>
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Year Joining</span>
-                          <input type="number" value={selectedRecord?.year_joining || ""} onChange={(e) => setSelectedRecord({...selectedRecord, year_joining: parseInt(e.target.value)})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none tabular-nums" />
-                       </div>
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Custom Counsellor/Notes</span>
-                       <input type="text" value={selectedRecord?.custom_counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, custom_counsellor: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Primary Services</span>
-                       <textarea value={selectedRecord?.primary_services || ""} onChange={(e) => setSelectedRecord({...selectedRecord, primary_services: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-600 min-h-[100px]" />
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Secondary Services</span>
-                       <textarea value={selectedRecord?.secondary_services || ""} onChange={(e) => setSelectedRecord({...selectedRecord, secondary_services: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-500 min-h-[80px]" />
-                    </div>
-                 </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-orange-600/80 uppercase tracking-wider pl-1">Legal Name (as on Aadhar)*</label>
+                        <div className="relative">
+                          <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input type="text" required value={selectedRecord?.legal_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, legal_name: e.target.value})} placeholder="Enter government name" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all" />
+                        </div>
+                      </div>
 
-                 {/* Block 4: Medical & Personal */}
-                 <div className="space-y-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">DOB (Adhar)</span>
-                          <input type="text" value={selectedRecord?.dob_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_adhar: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
-                       </div>
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">DOB (Actual)</span>
-                          <input type="text" value={selectedRecord?.dob_actual || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_actual: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
-                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Blood Group</span>
-                          <input type="text" value={selectedRecord?.blood_group || ""} onChange={(e) => setSelectedRecord({...selectedRecord, blood_group: e.target.value})} className="w-full px-4 py-4 bg-rose-50 border border-rose-100 rounded-2xl font-bold outline-none text-rose-600" />
-                       </div>
-                       <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Prasadam</span>
-                          <input type="text" value={selectedRecord?.prasadam || ""} onChange={(e) => setSelectedRecord({...selectedRecord, prasadam: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" />
-                       </div>
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Aadhar Number</span>
-                       <input type="text" value={selectedRecord?.aadhar_number || ""} onChange={(e) => setSelectedRecord({...selectedRecord, aadhar_number: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
-                    </div>
-                    <div className="relative group">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Pan Card No</span>
-                       <input type="text" value={selectedRecord?.pan_card || ""} onChange={(e) => setSelectedRecord({...selectedRecord, pan_card: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" />
-                    </div>
-                 </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-amber-600 uppercase tracking-wider pl-1">Initiated Name (Mandatory if Initiated)*</label>
+                        <div className="relative">
+                          <Heart className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-300" />
+                          <input type="text" value={selectedRecord?.initiated_name || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiated_name: e.target.value})} placeholder="e.g., Rama Das (or N/A)" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-amber-50/30 border border-amber-100 rounded-2xl font-bold text-amber-800 text-sm placeholder:text-amber-300 focus:bg-white focus:ring-8 focus:ring-amber-100/50 focus:border-amber-500 outline-none transition-all" />
+                        </div>
+                      </div>
 
-                 {/* Block 5: Logistics & Family */}
-                 <div className="md:col-span-2 space-y-8 mt-10">
-                   <div className="h-px bg-slate-100 w-full"></div>
-                   <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-slate-400">Logistics & Support Networks</h4>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Relative 1 Contact</span>
-                          <textarea value={selectedRecord?.relative_contact_1 || ""} onChange={(e) => setSelectedRecord({...selectedRecord, relative_contact_1: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 min-h-[80px]" placeholder="Relation - Name - Contact" />
-                       </div>
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Relative 2 Contact</span>
-                          <textarea value={selectedRecord?.relative_contact_2 || ""} onChange={(e) => setSelectedRecord({...selectedRecord, relative_contact_2: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 min-h-[80px]" />
-                       </div>
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Relative 3 Contact</span>
-                          <textarea value={selectedRecord?.relative_contact_3 || ""} onChange={(e) => setSelectedRecord({...selectedRecord, relative_contact_3: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 min-h-[80px]" />
-                       </div>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Permanent Address (Adhar)</span>
-                          <textarea value={selectedRecord?.address_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, address_adhar: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-600" />
-                       </div>
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Home Town Address</span>
-                          <textarea value={selectedRecord?.parents_address || ""} onChange={(e) => setSelectedRecord({...selectedRecord, parents_address: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-slate-600" />
-                       </div>
-                   </div>
-                 </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Initiation Status*</label>
+                        <select value={selectedRecord?.initiation || ""} onChange={(e) => setSelectedRecord({...selectedRecord, initiation: e.target.value})} className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-orange-500">
+                          <option value="Not Initiated">Not Initiated</option>
+                          <option value="1st">1st Initiation</option>
+                          <option value="2nd">2nd Initiation</option>
+                        </select>
+                      </div>
 
-                 {/* Block 6: Media & Attachments */}
-                 <div className="md:col-span-2 space-y-6 mt-10">
-                   <div className="h-px bg-slate-100 w-full"></div>
-                   <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-indigo-400">Digital Assets & Metadata URLS</h4>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Photo URL (Drive/Web)</span>
-                          <input type="text" value={selectedRecord?.photo_url || ""} onChange={(e) => setSelectedRecord({...selectedRecord, photo_url: e.target.value})} className="w-full px-6 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-bold text-indigo-600 truncate" />
-                       </div>
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Adhar Copy URL</span>
-                          <input type="text" value={selectedRecord?.adhar_card_copy_url || ""} onChange={(e) => setSelectedRecord({...selectedRecord, adhar_card_copy_url: e.target.value})} className="w-full px-6 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-bold text-indigo-600 truncate" />
-                       </div>
-                       <div className="relative group">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Pan Card Copy URL</span>
-                          <input type="text" value={selectedRecord?.pan_card_copy_url || ""} onChange={(e) => setSelectedRecord({...selectedRecord, pan_card_copy_url: e.target.value})} className="w-full px-6 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-bold text-indigo-600 truncate" />
-                       </div>
-                   </div>
-                 </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Colour Category*</label>
+                        <select value={selectedRecord?.colour || ""} onChange={(e) => setSelectedRecord({...selectedRecord, colour: e.target.value})} className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-orange-500">
+                          <option value="White">White</option>
+                          <option value="Yellow">Yellow</option>
+                          <option value="Saffron">Saffron</option>
+                        </select>
+                      </div>
 
-                 <div className="md:col-span-2 pt-8 flex gap-4">
-                     <button type="submit" className="flex-1 py-5 bg-indigo-600 hover:bg-slate-900 text-white font-black rounded-3xl text-[12px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3 active:scale-95">
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> Commit Changes</>}
-                     </button>
-                     <button type="button" onClick={() => setIsEditing(false)} className="px-12 py-5 bg-slate-100 hover:bg-slate-200 text-slate-500 font-black rounded-3xl text-[12px] uppercase tracking-widest transition-all">
-                        Cancel
-                     </button>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">DOB (As per Aadhar)*</label>
+                        <div className="relative">
+                          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 pointer-events-none" />
+                          <input type="date" required value={selectedRecord?.dob_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_adhar: e.target.value})} className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-orange-500" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">DOB (Actual/Birthday)*</label>
+                        <div className="relative">
+                          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 pointer-events-none" />
+                          <input type="date" required value={selectedRecord?.dob_actual || ""} onChange={(e) => setSelectedRecord({...selectedRecord, dob_actual: e.target.value})} className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-orange-500" />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Blood Group*</label>
+                        <input type="text" required value={selectedRecord?.blood_group || ""} onChange={(e) => setSelectedRecord({...selectedRecord, blood_group: e.target.value})} placeholder="e.g. B+ , O-" className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-orange-500" />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                      <button type="button" onClick={() => setEditStep(2)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 text-white font-black text-xs uppercase tracking-[0.15em] px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl hover:scale-105 hover:shadow-orange-500/25 active:scale-95 transition-all shadow-lg shadow-orange-500/10">
+                        Continue to Contact
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-               </form>
-            </div>
-         </div>
-       )}
+                )}
+
+                {/* ====================================
+                    STEP 2: CONTACT, SERVICES & RELATIVES
+                   ==================================== */}
+                {editStep === 2 && (
+                  <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+                    <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
+                      <div>
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-tight">Communication & Spiritual</h2>
+                        <p className="text-slate-400 text-[10px] sm:text-xs font-bold mt-0.5">Provide contact, service, and background details.</p>
+                      </div>
+                      <span className="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg text-[9px] sm:text-[10px] font-black tracking-widest uppercase shrink-0">Step 2 of 3</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Email Address*</label>
+                        <div className="relative">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input type="email" required value={selectedRecord?.email_id || ""} onChange={(e) => setSelectedRecord({...selectedRecord, email_id: e.target.value})} placeholder="name@email.com" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm lowercase focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Phone Contact*</label>
+                        <div className="relative">
+                          <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input type="tel" required value={selectedRecord?.contact_no || ""} onChange={(e) => setSelectedRecord({...selectedRecord, contact_no: e.target.value})} placeholder="Mobile phone number" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-emerald-600 uppercase tracking-wider pl-1">WhatsApp Number</label>
+                        <div className="relative">
+                          <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-300" />
+                          <input type="tel" value={selectedRecord?.whatsapp_no || ""} onChange={(e) => setSelectedRecord({...selectedRecord, whatsapp_no: e.target.value})} placeholder="WhatsApp contact (Optional)" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-emerald-50/30 border border-emerald-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-indigo-600 uppercase tracking-wider pl-1">Base Center*</label>
+                        <div className="relative">
+                          <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input type="text" required value={selectedRecord?.center || ""} onChange={(e) => setSelectedRecord({...selectedRecord, center: e.target.value})} placeholder="e.g., RAJGAD" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:ring-8 focus:ring-indigo-50 focus:border-indigo-500 transition-all" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Spiritual Master*</label>
+                        <input type="text" required value={selectedRecord?.spiritual_master || ""} onChange={(e) => setSelectedRecord({...selectedRecord, spiritual_master: e.target.value})} placeholder="Aspiring or Initiated master" className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-indigo-500" />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Counsellor*</label>
+                        <input type="text" required value={selectedRecord?.counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, counsellor: e.target.value})} placeholder="Temple Counsellor" className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-indigo-500" />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Custom Counsellor / Notes</label>
+                        <input type="text" value={selectedRecord?.custom_counsellor || ""} onChange={(e) => setSelectedRecord({...selectedRecord, custom_counsellor: e.target.value})} placeholder="Custom counsellor name or notes" className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-indigo-500" />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Year of Joining*</label>
+                        <input type="number" required value={selectedRecord?.year_joining || ""} onChange={(e) => setSelectedRecord({...selectedRecord, year_joining: e.target.value ? parseInt(e.target.value) : ""})} placeholder="YYYY" className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-indigo-500" />
+                      </div>
+
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Prasadam Preference*</label>
+                        <select value={selectedRecord?.prasadam || ""} onChange={(e) => setSelectedRecord({...selectedRecord, prasadam: e.target.value})} className="w-full px-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:bg-white focus:border-indigo-50">
+                          <option value="2T">2T</option>
+                          <option value="3T">3T</option>
+                          <option value="Tatastha">Tatastha</option>
+                        </select>
+                      </div>
+
+                      {/* Devotional Services Section */}
+                      <div className="md:col-span-2 bg-violet-50/30 border-2 border-violet-100/60 p-5 sm:p-6 rounded-[2rem] grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-violet-200/20 rounded-full -mr-16 -mt-16 blur-2xl pointer-events-none"></div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-black text-violet-600 uppercase tracking-wider pl-1">Primary Devotional Services*</label>
+                          <textarea required rows={3} value={selectedRecord?.primary_services || ""} onChange={(e) => setSelectedRecord({...selectedRecord, primary_services: e.target.value})} placeholder="Regular services performed..." className="w-full px-4 py-3.5 sm:py-4 bg-white border border-violet-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:ring-8 focus:ring-violet-100 focus:border-violet-400 transition-all resize-none shadow-sm" />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-black text-violet-600 uppercase tracking-wider pl-1">Secondary Devotional Services*</label>
+                          <textarea required rows={3} value={selectedRecord?.secondary_services || ""} onChange={(e) => setSelectedRecord({...selectedRecord, secondary_services: e.target.value})} placeholder="Secondary or alternate services..." className="w-full px-4 py-3.5 sm:py-4 bg-white border border-violet-100 rounded-2xl font-bold text-slate-700 text-sm outline-none focus:ring-8 focus:ring-violet-100 focus:border-violet-400 transition-all resize-none shadow-sm" />
+                        </div>
+                      </div>
+
+                      {/* Address block */}
+                      <div className="space-y-1 md:col-span-2 bg-cyan-50/30 border-2 border-cyan-100/60 p-5 sm:p-6 rounded-[2rem] grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-200/20 rounded-full -mr-16 -mt-16 blur-2xl pointer-events-none"></div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-black text-cyan-700 uppercase tracking-wider pl-1">Aadhar Card Address*</label>
+                          <textarea required rows={3} value={selectedRecord?.address_adhar || ""} onChange={(e) => setSelectedRecord({...selectedRecord, address_adhar: e.target.value})} placeholder="Enter permanent address as on Aadhar Card" className="w-full px-4 py-3.5 sm:py-4 bg-white border border-cyan-100 rounded-2xl font-bold text-slate-700 text-sm outline-none resize-none shadow-sm focus:ring-8 focus:ring-cyan-100 focus:border-cyan-400" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-black text-cyan-700 uppercase tracking-wider pl-1">Home / Parents Town Address*</label>
+                          <textarea required rows={3} value={selectedRecord?.parents_address || ""} onChange={(e) => setSelectedRecord({...selectedRecord, parents_address: e.target.value})} placeholder="Enter alternate home or parents' address" className="w-full px-4 py-3.5 sm:py-4 bg-white border border-cyan-100 rounded-2xl font-bold text-slate-700 text-sm outline-none resize-none shadow-sm focus:ring-8 focus:ring-cyan-100 focus:border-cyan-400" />
+                        </div>
+                      </div>
+
+                      {/* Relative Contacts Section */}
+                      <div className="md:col-span-2 bg-indigo-50/30 p-4 sm:p-8 rounded-[2rem] border-2 border-indigo-100/70 space-y-6 shadow-inner relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-200/20 rounded-full -mr-16 -mt-16 blur-2xl pointer-events-none"></div>
+                        <div>
+                           <span className="text-[11px] font-black text-indigo-700 uppercase tracking-[0.18em] block mb-1 pl-1">Relative / Family Contacts*</span>
+                           <span className="text-[10px] font-bold text-indigo-400/80 block pl-1">Provide emergency contact information for all 3 relatives.</span>
+                        </div>
+                        <div className="space-y-6 divide-y divide-indigo-100/50">
+                          {editRelatives.map((rel, idx) => (
+                            <div key={idx} className={`grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 ${idx > 0 ? "pt-6" : ""}`}>
+                              
+                              {/* Relation Dropdown */}
+                              <div className="sm:col-span-3 space-y-1">
+                                <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider pl-1">Relation {idx + 1}*</label>
+                                <select 
+                                  value={rel.relation} 
+                                  onChange={(e) => {
+                                    const updated = [...editRelatives];
+                                    updated[idx].relation = e.target.value;
+                                    setEditRelatives(updated);
+                                  }}
+                                  className="w-full px-4 py-3.5 bg-white border border-indigo-100 rounded-xl text-xs font-bold text-slate-700 outline-none shadow-sm focus:ring-8 focus:ring-indigo-50 focus:border-indigo-400"
+                                >
+                                  <option value="Father">Father</option>
+                                  <option value="Mother">Mother</option>
+                                  <option value="Brother">Brother</option>
+                                  <option value="Sister">Sister</option>
+                                  <option value="Spouse">Spouse</option>
+                                  <option value="Son">Son</option>
+                                  <option value="Daughter">Daughter</option>
+                                  <option value="Guardian">Guardian</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                              </div>
+
+                              {/* Full Name Input */}
+                              <div className="sm:col-span-5 space-y-1">
+                                <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider pl-1">Full Name*</label>
+                                <input 
+                                  type="text" 
+                                  required
+                                  value={rel.name} 
+                                  onChange={(e) => {
+                                    const updated = [...editRelatives];
+                                    updated[idx].name = e.target.value;
+                                    setEditRelatives(updated);
+                                  }}
+                                  placeholder="Name" 
+                                  className="w-full px-4 py-3.5 bg-white border border-indigo-100 rounded-xl text-xs font-bold text-slate-700 outline-none shadow-sm focus:ring-8 focus:ring-indigo-50 focus:border-indigo-400" 
+                                />
+                              </div>
+
+                              {/* Phone / Number Input */}
+                              <div className="sm:col-span-4 space-y-1">
+                                <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider pl-1">Contact Number*</label>
+                                <input 
+                                  type="tel" 
+                                  required
+                                  value={rel.number} 
+                                  onChange={(e) => {
+                                    const updated = [...editRelatives];
+                                    updated[idx].number = e.target.value;
+                                    setEditRelatives(updated);
+                                  }}
+                                  placeholder="Phone number" 
+                                  className="w-full px-4 py-3.5 bg-white border border-indigo-100 rounded-xl text-xs font-bold text-slate-700 outline-none shadow-sm focus:ring-8 focus:ring-indigo-50 focus:border-indigo-400" 
+                                />
+                              </div>
+
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col-reverse sm:flex-row justify-between pt-4 gap-3">
+                      <button type="button" onClick={() => setEditStep(1)} className="w-full sm:w-auto font-black text-xs uppercase tracking-widest text-slate-400 px-6 py-3.5 sm:py-4 rounded-2xl hover:bg-slate-50 transition-all">
+                        Back
+                      </button>
+                      <button type="button" onClick={() => setEditStep(3)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white font-black text-xs uppercase tracking-[0.15em] px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl hover:scale-105 hover:shadow-indigo-500/25 active:scale-95 transition-all shadow-lg shadow-indigo-500/10">
+                        Continue to Proofs
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ====================================
+                    STEP 3: VERIFICATION DOCUMENTS
+                   ==================================== */}
+                {editStep === 3 && (
+                  <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+                    <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
+                      <div>
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-tight">ID Proof & Documents</h2>
+                        <p className="text-slate-400 text-[10px] sm:text-xs font-bold mt-0.5">Verify identity by uploading copies. Max 5MB per file.</p>
+                      </div>
+                      <span className="bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg text-[9px] sm:text-[10px] font-black tracking-widest uppercase shrink-0">Step 3 of 3</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">Aadhar Number*</label>
+                        <div className="relative">
+                          <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input type="text" required value={selectedRecord?.aadhar_number || ""} onChange={(e) => setSelectedRecord({...selectedRecord, aadhar_number: e.target.value})} placeholder="12 Digit Aadhar No." className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider pl-1">PAN Card Number*</label>
+                        <div className="relative">
+                          <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input type="text" required value={selectedRecord?.pan_card || ""} onChange={(e) => setSelectedRecord({...selectedRecord, pan_card: e.target.value})} placeholder="Alpha-numeric PAN" className="w-full pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 text-sm focus:bg-white focus:ring-8 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Upload Widgets Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 pt-2 sm:pt-4">
+                      
+                      {/* File 1: Profile Photo */}
+                      <div className="flex flex-col items-center justify-center p-5 sm:p-6 bg-pink-50/20 border-2 border-dashed border-pink-200 rounded-[1.5rem] sm:rounded-[2rem] text-center relative group hover:border-pink-400 transition-all shadow-sm">
+                        <Camera className="w-7 h-7 sm:w-8 sm:h-8 text-pink-400 mb-3 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-pink-700">Personal Photo*</span>
+                        <p className="text-[9px] text-pink-500/70 font-bold mt-1 leading-tight mb-4">Front portrait image.</p>
+                        
+                        {selectedRecord?.photo_url ? (
+                          <div className="w-full flex flex-col gap-2">
+                            <div className="bg-emerald-50 text-emerald-600 border border-emerald-200 py-2 rounded-xl flex items-center justify-center gap-1 font-black text-[10px] uppercase">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Uploaded
+                            </div>
+                            <label className="cursor-pointer w-full bg-white border border-pink-200 hover:border-pink-500 py-1.5 rounded-xl flex items-center justify-center font-black text-[9px] uppercase tracking-wider text-pink-600 hover:bg-pink-50">
+                              {uploadingMap.photo ? <Loader2 className="w-3 h-3 animate-spin" /> : "Change File"}
+                              <input type="file" accept="image/*" onChange={(e) => handleEditFileUpload(e, "photo")} className="hidden" disabled={uploadingMap.photo} />
+                            </label>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer w-full bg-white border border-pink-200 hover:border-pink-500 py-2.5 rounded-xl flex items-center justify-center font-black text-[10px] uppercase tracking-widest text-pink-600 hover:bg-pink-50 hover:text-pink-700 shadow-sm active:scale-95 transition-all">
+                            {uploadingMap.photo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Choose File"}
+                            <input type="file" accept="image/*" onChange={(e) => handleEditFileUpload(e, "photo")} className="hidden" disabled={uploadingMap.photo} />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* File 2: Aadhar Card Copy */}
+                      <div className="flex flex-col items-center justify-center p-5 sm:p-6 bg-sky-50/20 border-2 border-dashed border-sky-200 rounded-[1.5rem] sm:rounded-[2rem] text-center relative group hover:border-sky-400 transition-all shadow-sm">
+                        <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-sky-400 mb-3 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-sky-700">Aadhar Copy*</span>
+                        <p className="text-[9px] text-sky-500/70 font-bold mt-1 leading-tight mb-4">PDF or Image format.</p>
+                        
+                        {selectedRecord?.adhar_card_copy_url ? (
+                          <div className="w-full flex flex-col gap-2">
+                            <div className="bg-emerald-50 text-emerald-600 border border-emerald-200 py-2 rounded-xl flex items-center justify-center gap-1 font-black text-[10px] uppercase">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Uploaded
+                            </div>
+                            <label className="cursor-pointer w-full bg-white border border-sky-200 hover:border-sky-500 py-1.5 rounded-xl flex items-center justify-center font-black text-[9px] uppercase tracking-wider text-sky-600 hover:bg-sky-50">
+                              {uploadingMap.adhar ? <Loader2 className="w-3 h-3 animate-spin" /> : "Change File"}
+                              <input type="file" accept="image/*,application/pdf" onChange={(e) => handleEditFileUpload(e, "adhar")} className="hidden" disabled={uploadingMap.adhar} />
+                            </label>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer w-full bg-white border border-sky-200 hover:border-sky-500 py-2.5 rounded-xl flex items-center justify-center font-black text-[10px] uppercase tracking-widest text-pink-600 hover:bg-pink-50 hover:text-pink-700 shadow-sm active:scale-95 transition-all">
+                            {uploadingMap.adhar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Choose File"}
+                            <input type="file" accept="image/*,application/pdf" onChange={(e) => handleEditFileUpload(e, "adhar")} className="hidden" disabled={uploadingMap.adhar} />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* File 3: PAN Card Copy */}
+                      <div className="flex flex-col items-center justify-center p-5 sm:p-6 bg-amber-50/20 border-2 border-dashed border-amber-200 rounded-[1.5rem] sm:rounded-[2rem] text-center relative group hover:border-amber-400 transition-all shadow-sm">
+                        <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400 mb-3 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-amber-700">PAN Card Copy*</span>
+                        <p className="text-[9px] text-amber-500/70 font-bold mt-1 leading-tight mb-4">Front side scan copy.</p>
+                        
+                        {selectedRecord?.pan_card_copy_url ? (
+                          <div className="w-full flex flex-col gap-2">
+                            <div className="bg-emerald-50 text-emerald-600 border border-emerald-200 py-2 rounded-xl flex items-center justify-center gap-1 font-black text-[10px] uppercase">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Uploaded
+                            </div>
+                            <label className="cursor-pointer w-full bg-white border border-amber-200 hover:border-amber-500 py-1.5 rounded-xl flex items-center justify-center font-black text-[9px] uppercase tracking-wider text-amber-600 hover:bg-amber-50">
+                              {uploadingMap.pan ? <Loader2 className="w-3 h-3 animate-spin" /> : "Change File"}
+                              <input type="file" accept="image/*,application/pdf" onChange={(e) => handleEditFileUpload(e, "pan")} className="hidden" disabled={uploadingMap.pan} />
+                            </label>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer w-full bg-white border border-amber-200 hover:border-amber-500 py-2.5 rounded-xl flex items-center justify-center font-black text-[10px] uppercase tracking-widest text-pink-600 hover:bg-pink-50 hover:text-pink-700 shadow-sm active:scale-95 transition-all">
+                            {uploadingMap.pan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Choose File"}
+                            <input type="file" accept="image/*,application/pdf" onChange={(e) => handleEditFileUpload(e, "pan")} className="hidden" disabled={uploadingMap.pan} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50/50 rounded-2xl p-4 sm:p-5 border border-emerald-100 text-[10px] sm:text-[11px] text-emerald-700 leading-relaxed font-bold flex items-start gap-3">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+                      <span>By committing these updates, you authorize securing these devotee files in the Master Database ledger.</span>
+                    </div>
+
+                    <div className="flex flex-col-reverse sm:flex-row justify-between pt-4 items-center gap-3">
+                      <button type="button" onClick={() => setEditStep(2)} className="w-full sm:w-auto font-black text-xs uppercase tracking-widest text-slate-400 px-6 py-3.5 sm:py-4 rounded-2xl hover:bg-slate-50 transition-all">
+                        Back
+                      </button>
+                      <div className="flex gap-3 w-full sm:w-auto">
+                        <button type="button" onClick={() => setIsEditing(false)} className="flex-1 sm:flex-none font-black text-xs uppercase tracking-widest text-slate-400 px-6 py-3.5 sm:py-4 rounded-2xl hover:bg-slate-50 transition-all">
+                          Cancel
+                        </button>
+                        <button 
+                          type="submit" 
+                          disabled={loading || Object.values(uploadingMap).includes(true)}
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-3 bg-indigo-600 hover:bg-slate-900 text-white font-black text-xs uppercase tracking-[0.18em] px-8 sm:px-10 py-4 sm:py-5 rounded-2xl sm:rounded-[1.8rem] shadow-xl shadow-indigo-500/20 hover:scale-[1.02] sm:hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none transition-all duration-300"
+                        >
+                          {loading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Recording...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              {selectedRecord?.id ? "Commit Changes" : "Submit Registration"}
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </form>
+           </div>
+        </div>
+      )}
       </div>
 
       {/* Registration Review Modal */}

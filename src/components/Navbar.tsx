@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell, Music, Download } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell, Music, Download, ExternalLink } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -157,6 +157,18 @@ export default function Navbar() {
                         <UserCheck className="w-4 h-4" />
                         <span className="text-[10px] font-black uppercase tracking-widest flex-1">Prasadam Count</span>
                         <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/prasadam-count' ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
+
+                    {isBcdb && (
+                      <NextLink 
+                        href="/raise-prasadam" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/raise-prasadam' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'} group`}
+                      >
+                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-orange-600 transition-colors" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Raise Prasadam Count</span>
+                        <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/raise-prasadam' ? 'opacity-100' : 'opacity-0'}`} />
                       </NextLink>
                     )}
 
@@ -342,6 +354,18 @@ export default function Navbar() {
 
               {isBcdb && (
                 <NextLink 
+                  href="/raise-prasadam" 
+                  onClick={() => setShowMoreMenu(false)}
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/raise-prasadam' ? 'bg-orange-50/50' : 'hover:bg-slate-50'} group`}
+                >
+                  <ExternalLink className={`w-4 h-4 ${pathname === '/raise-prasadam' ? 'text-orange-600' : 'text-slate-400 group-hover:text-orange-600'} transition-colors`} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/raise-prasadam' ? 'text-orange-900' : 'text-slate-600 group-hover:text-orange-900'} transition-colors`}>Raise Prasadam Count</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-orange-600 ${pathname === '/raise-prasadam' ? 'opacity-100' : 'opacity-0'}`} />
+                </NextLink>
+              )}
+
+              {isBcdb && (
+                <NextLink 
                   href="/policy-manual" 
                   onClick={() => setShowMoreMenu(false)}
                   className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/policy-manual' ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}
@@ -437,6 +461,7 @@ export default function Navbar() {
         <ProfileEdit 
           session={session} 
           profile={profile} 
+          isBcdb={isBcdb}
           onUpdate={refreshProfile} 
           onClose={() => setShowProfileModal(false)} 
         />
