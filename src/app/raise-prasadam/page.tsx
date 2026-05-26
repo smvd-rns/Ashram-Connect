@@ -8,23 +8,26 @@ import { Loader2, ShieldAlert, ExternalLink, RefreshCw } from "lucide-react";
 
 export default function RaisePrasadamPage() {
   const [session, setSession] = useState<any>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const { profile, loading: profileLoading, isBcdb } = useProfile(session);
   const [iframeLoading, setIframeLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setSessionLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setSessionLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Wait until profile has loaded
-  if (profileLoading) {
+  // Wait until both session AND profile have loaded before rendering access gate
+  if (sessionLoading || profileLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-12 h-12 animate-spin text-devo-600" />
