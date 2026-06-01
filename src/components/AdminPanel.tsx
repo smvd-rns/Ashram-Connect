@@ -546,6 +546,20 @@ export default function AdminPanel() {
     }
   }, [activeView, session, profile?.roles, profile?.role, isSuperAdmin, isManager]);
 
+  // Poll for syncing channels progress in background (silent refresh)
+  useEffect(() => {
+    if (activeView !== "youtube-channels") return;
+
+    const hasSyncingChannel = ytChannels.some(c => c.sync_status === "syncing");
+    if (!hasSyncingChannel) return;
+
+    const interval = setInterval(() => {
+      fetchYtChannels(true);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [ytChannels, activeView]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const roleNames: Record<number, string> = {
     1: "Super Admin",
@@ -1803,7 +1817,7 @@ export default function AdminPanel() {
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
-                  onClick={fetchYtChannels}
+                  onClick={() => fetchYtChannels()}
                   className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
                   title="Refresh Channels"
                 >
@@ -3359,8 +3373,8 @@ export default function AdminPanel() {
   );
 
   // --- Helper Methods for YT Mgmt ---
-    async function fetchYtChannels() {
-    setLoadingYt(true);
+  async function fetchYtChannels(silent = false) {
+    if (!silent) setLoadingYt(true);
     try {
       const res = await fetch("/api/admin/youtube-channels");
       const data = await res.json();
@@ -3368,7 +3382,7 @@ export default function AdminPanel() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoadingYt(false);
+      if (!silent) setLoadingYt(false);
     }
   }
 
@@ -3443,32 +3457,8 @@ export default function AdminPanel() {
         return next;
       });
 
-      // Poll for completion every 10 seconds to refresh the list
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusRes = await fetch(`/api/admin/youtube/background-sync?channelId=${channelId}`);
-          const status = await statusRes.json();
-          
-          // Refresh channel list to get updated status and metadata progress
-          fetchYtChannels();
-          
-          if (!status.running) {
-            clearInterval(pollInterval);
-          }
-        } catch {
-          // Network error during poll — keep polling
-        }
-      }, 10000);
-
-      // Stop polling after 2 hours max
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setSyncingChannels(prev => {
-          const next = new Set(prev);
-          next.delete(channelId);
-          return next;
-        });
-      }, 7200000);
+      // Immediately fetch channel list silently to update status to "syncing"
+      fetchYtChannels(true);
 
     } catch (err: any) {
       alert("Failed to start background sync: " + err.message);

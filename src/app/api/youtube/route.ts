@@ -313,11 +313,24 @@ export async function GET(request: NextRequest) {
       // DEFAULT: Use the uploads playlist for Videos/Live
       const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
       channelUrl.searchParams.set("id", channelId!);
-      channelUrl.searchParams.set("part", "contentDetails");
+      // Fetch snippet to get channel title and channel logo (profile photo)
+      channelUrl.searchParams.set("part", "snippet,contentDetails");
       
       const { data: cData } = await fetchFromYouTubeWithFallback(channelUrl);
+      const channelItem = cData.items?.[0];
       
-      const uploadsId = cData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+      if (channelItem) {
+        if (!channelTitle && channelItem.snippet?.title) {
+          channelTitle = channelItem.snippet.title;
+        }
+        if (!channelLogo && channelItem.snippet?.thumbnails) {
+          channelLogo = channelItem.snippet.thumbnails.high?.url ||
+                        channelItem.snippet.thumbnails.medium?.url ||
+                        channelItem.snippet.thumbnails.default?.url || "";
+        }
+      }
+      
+      const uploadsId = channelItem?.contentDetails?.relatedPlaylists?.uploads;
       if (!uploadsId) {
         return NextResponse.json({ error: "Uploads playlist not found for channel" }, { status: 404 });
       }
