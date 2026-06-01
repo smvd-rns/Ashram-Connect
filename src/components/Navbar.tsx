@@ -276,7 +276,7 @@ export default function Navbar() {
       </nav>
 
       {/* ─── MOBILE TAB BAR (Bottom) ─────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[1000] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 py-3 flex items-center justify-between gap-1 safe-area-bottom">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[1000] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 pt-3 flex items-center justify-between gap-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}>
         <NextLink href="/" className="flex flex-col items-center gap-1 group flex-1">
           <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isHome ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
             <HomeIcon active={isHome} /> 
@@ -308,6 +308,11 @@ export default function Navbar() {
           </div>
           <span className={`text-[9px] font-black uppercase tracking-widest ${showMoreMenu ? 'text-indigo-600' : 'text-slate-400'}`}>{showMoreMenu ? 'Close' : 'More'}</span>
         </button>
+        {/* Bottom blue strip to style space over system hardware/software navigation keys */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 bg-indigo-600" 
+          style={{ height: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+        />
       </nav>
 
       {/* ─── MOBILE MORE MENU OVERLAY ──────────────────────── */}
@@ -317,7 +322,7 @@ export default function Navbar() {
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
             onClick={() => setShowMoreMenu(false)}
           />
-          <div className="absolute bottom-[84px] left-4 right-4 bg-white/95 backdrop-blur-3xl rounded-[2rem] border border-slate-200/50 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-500">
+          <div className="absolute left-4 right-4 bg-white/95 backdrop-blur-3xl rounded-[2rem] border border-slate-200/50 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-500" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)" }}>
             <div className="flex flex-col py-2">
               {canOpenAttendance && (
                 <NextLink 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import VideoCard, { Lecture } from "./VideoCard";
-import { Search, X, Loader2, Heart } from "lucide-react";
+import { Search, X, Loader2, Heart, Link2, Check } from "lucide-react";
 import OptimizedVideoPlayer from "./OptimizedVideoPlayer";
 import { openExternal } from "@/lib/device";
 import { useEffect, useCallback } from "react";
@@ -29,6 +29,18 @@ export default function LectureGrid({
   const [search, setSearch] = useState("");
   const [activeLecture, setActiveLecture] = useState<Lecture | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = async (youtubeId: string) => {
+    const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+    try {
+      await navigator.clipboard.writeText(videoUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+  };
 
   const fetchFavorites = useCallback(async () => {
     if (!accessToken) return;
@@ -193,7 +205,22 @@ export default function LectureGrid({
                 <p className="text-indigo-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest">{activeLecture.speaker_name}</p>
               </div>
               <div className="flex items-center gap-3 w-full sm:w-auto">
-                {/* YouTube button removed as per request to restrict full access */}
+                <button
+                  onClick={() => handleCopyLink(activeLecture.youtube_id)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white text-xs font-black uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-orange-950/20 active:scale-95"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="w-4 h-4" />
+                      <span>Copy Link</span>
+                    </>
+                  )}
+                </button>
                 <button
                   onClick={() => setActiveLecture(null)}
                   className="sm:hidden flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all border border-white/10"
