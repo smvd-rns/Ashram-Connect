@@ -21,9 +21,37 @@ async function syncToYtDb(channelId: string, name: string, visibility: string, i
   }
 }
 
+async function verifyAdminOrManager(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, roles")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) return null;
+
+  const roles = Array.isArray(profile.roles) ? profile.roles : [profile.role].filter(r => r != null);
+  // Allow Super Admin (1) or Manager (5)
+  const isAuthorized = roles.includes(1) || roles.includes(5);
+  
+  return isAuthorized ? user.id : null;
+}
+
 // GET: Fetch all channels for management
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { data, error } = await supabase
       .from("youtube_channels")
       .select("*")
@@ -39,6 +67,11 @@ export async function GET() {
 // POST: Add new channel
 export async function POST(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await request.json();
     const payload = { ...body, visibility: body.visibility || 'public' };
     
@@ -65,6 +98,11 @@ export async function POST(request: NextRequest) {
 // PUT: Update channel
 export async function PUT(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await request.json();
     const { id, ...updates } = body;
 
@@ -92,6 +130,11 @@ export async function PUT(request: NextRequest) {
 // DELETE: Remove channel
 export async function DELETE(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

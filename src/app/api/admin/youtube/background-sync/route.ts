@@ -1,11 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { syncYouTubeChannelFull } from "@/lib/youtube-sync-full";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+async function verifyAdminOrManager(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, roles")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) return null;
+
+  const roles = Array.isArray(profile.roles) ? profile.roles : [profile.role].filter(r => r != null);
+  // Allow Super Admin (1) or Manager (5)
+  const isAuthorized = roles.includes(1) || roles.includes(5);
+  
+  return isAuthorized ? user.id : null;
+}
 
 const RENDER_SYNC_URL = process.env.RENDER_SYNC_URL;
 const runningJobs = new Set<string>();
 
 export async function POST(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { channelId } = await request.json();
     if (!channelId) return NextResponse.json({ error: "Missing channelId" }, { status: 400 });
 
@@ -63,20 +97,32 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const channelId = request.nextUrl.searchParams.get("channelId");
-
-  if (RENDER_SYNC_URL) {
-    try {
-      const renderRes = await fetch(`${RENDER_SYNC_URL}/api/admin/youtube/background-sync${channelId ? `?channelId=${channelId}` : ""}`);
-      const data = await renderRes.json();
-      return NextResponse.json(data);
-    } catch (err) {
-      return NextResponse.json({ running: false, error: "Could not reach Render server" });
+  try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-  }
 
-  return NextResponse.json({ 
-    running: channelId ? runningJobs.has(channelId) : false,
-    allRunning: Array.from(runningJobs)
-  });
+    const channelId = request.nextUrl.searchParams.get("channelId");
+
+    if (RENDER_SYNC_URL) {
+      const authHeader = request.headers.get("Authorization");
+      try {
+        const renderRes = await fetch(`${RENDER_SYNC_URL}/api/admin/youtube/background-sync${channelId ? `?channelId=${channelId}` : ""}`, {
+          headers: { "Authorization": authHeader || "" }
+        });
+        const data = await renderRes.json();
+        return NextResponse.json(data);
+      } catch (err) {
+        return NextResponse.json({ running: false, error: "Could not reach Render server" });
+      }
+    }
+
+    return NextResponse.json({ 
+      running: channelId ? runningJobs.has(channelId) : false,
+      allRunning: Array.from(runningJobs)
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }

@@ -5,9 +5,37 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+async function verifyAdminOrManager(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, roles")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) return null;
+
+  const roles = Array.isArray(profile.roles) ? profile.roles : [profile.role].filter(r => r != null);
+  // Allow Super Admin (1) or Manager (5)
+  const isAuthorized = roles.includes(1) || roles.includes(5);
+  
+  return isAuthorized ? user.id : null;
+}
+
 // GET: Fetch assignments for a specific channel
 export async function GET(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const channelId = searchParams.get("channelId");
 
@@ -30,6 +58,11 @@ export async function GET(request: NextRequest) {
 // POST: Add an assignment (supports single or bulk)
 export async function POST(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await request.json();
     const { channel_id, user_id, user_ids } = body;
 
@@ -57,6 +90,11 @@ export async function POST(request: NextRequest) {
 // DELETE: Remove an assignment
 export async function DELETE(request: NextRequest) {
   try {
+    const isAuthorized = await verifyAdminOrManager(request);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

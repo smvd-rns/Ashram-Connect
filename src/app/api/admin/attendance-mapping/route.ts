@@ -7,6 +7,28 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function verifySuperAdmin(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, roles")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) return null;
+
+  const roles = Array.isArray(profile.roles) ? profile.roles : [profile.role].filter(r => r != null);
+  const isAuthorized = roles.includes(1);
+  
+  return isAuthorized ? user.id : null;
+}
+
 /**
  * ATTENDANCE USER MAPPING API
  * Manages the link between Biometric Machine ID and System User Email.
@@ -14,6 +36,11 @@ const supabase = createClient(
 
 export async function GET(req: NextRequest) {
   try {
+    const isAuthorized = await verifySuperAdmin(req);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const machineId = searchParams.get("machine_id");
 
@@ -35,6 +62,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const isAuthorized = await verifySuperAdmin(req);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await req.json();
     const { action, data } = body;
 
@@ -94,6 +126,11 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const isAuthorized = await verifySuperAdmin(req);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
