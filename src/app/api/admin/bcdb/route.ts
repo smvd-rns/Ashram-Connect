@@ -6,8 +6,36 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function verifyAdminOrManager(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, roles")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) return null;
+
+  const roles = Array.isArray(profile.roles) ? profile.roles : [profile.role].filter(r => r != null);
+  // Allow Super Admin (1) or Manager (5)
+  const isAuthorized = roles.includes(1) || roles.includes(5);
+  
+  return isAuthorized ? user.id : null;
+}
+
 export async function GET(req: NextRequest) {
   try {
+    const reviewerId = await verifyAdminOrManager(req);
+    if (!reviewerId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("query") || "";
     const showDeleted = searchParams.get("showDeleted") === "true";
@@ -43,6 +71,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const reviewerId = await verifyAdminOrManager(req);
+    if (!reviewerId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await req.json();
     const { action, data } = body;
 
@@ -74,6 +107,11 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const reviewerId = await verifyAdminOrManager(req);
+    if (!reviewerId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
