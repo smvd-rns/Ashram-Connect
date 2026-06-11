@@ -6,10 +6,11 @@ import { AlertCircle, Loader2, Trash2, Check, ShieldAlert, X } from "lucide-reac
 
 interface AttendanceExceptionFormProps {
   userEmail: string;
+  session: any;
   onSuccess?: () => void;
 }
 
-export default function AttendanceExceptionForm({ userEmail, onSuccess }: AttendanceExceptionFormProps) {
+export default function AttendanceExceptionForm({ userEmail, session, onSuccess }: AttendanceExceptionFormProps) {
   const [reportingReason, setReportingReason] = useState('Sick');
   const todayStr = new Date().toISOString().split('T')[0];
   const [reportingStart, setReportingStart] = useState(todayStr);
@@ -51,7 +52,11 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
     if (!userEmail) return;
     setIsLoadingExceptions(true);
     try {
-      const res = await fetch(`/api/attendance/exception?email=${encodeURIComponent(userEmail)}`);
+      const headers: Record<string, string> = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`/api/attendance/exception?email=${encodeURIComponent(userEmail)}`, { headers });
       if (res.ok) {
         const json = await res.json();
         setRecentExceptions(json.data || []);
@@ -87,12 +92,18 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
     const { type, targetId } = confirmModal;
     setConfirmModal({ isOpen: false, type: 'single' });
 
+    const headers: Record<string, string> = {};
+    if (session) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    }
+
     if (type === 'single') {
       if (!targetId) return;
       setIsDeletingId(targetId);
       try {
         const res = await fetch(`/api/attendance/exception?id=${targetId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers
         });
         if (!res.ok) throw new Error('Failed to delete exception');
         setSelectedIds(prev => prev.filter(x => x !== targetId));
@@ -110,7 +121,8 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
       try {
         const idsString = selectedIds.join(",");
         const res = await fetch(`/api/attendance/exception?id=${idsString}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers
         });
         if (!res.ok) throw new Error('Failed to delete exceptions');
         setSelectedIds([]);
@@ -130,9 +142,13 @@ export default function AttendanceExceptionForm({ userEmail, onSuccess }: Attend
     setIsSubmittingException(true);
     try {
       const effectiveEndDate = useDateRange ? reportingEnd : reportingStart;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
       const res = await fetch('/api/attendance/exception', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           user_email: userEmail,
           startDate: reportingStart,

@@ -127,6 +127,7 @@ export default function PersonalAttendancePage() {
               {canViewFullAttendance && (
                 <AttendanceExceptionForm
                   userEmail={profile?.email || ""}
+                  session={session}
                   onSuccess={() => setRefreshKey(prev => prev + 1)}
                 />
               )}

@@ -6,6 +6,35 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function verifySession(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+  
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, roles")
+    .eq("id", user.id)
+    .single();
+    
+  if (!profile) return null;
+  
+  const roles = (Array.isArray(profile.roles) ? profile.roles : [profile.role])
+    .filter(r => r !== null && r !== undefined)
+    .map(Number);
+    
+  const isPrivileged = roles.includes(1) || roles.includes(3) || roles.includes(5);
+  
+  return {
+    userId: user.id,
+    email: user.email?.toLowerCase().trim() || "",
+    isPrivileged
+  };
+}
+
 /**
  * ATTENDANCE EXCEPTION API
  * Handles reporting reasons for absence (Sick, Seva, etc.)
@@ -13,11 +42,21 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await verifySession(req);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { user_email, startDate, endDate, reason_type, comment, applied_sessions } = body;
 
     if (!user_email || !startDate || !endDate || !reason_type) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const targetEmail = user_email.toLowerCase().trim();
+    if (targetEmail !== session.email && !session.isPrivileged) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Generate dates between startDate and endDate
@@ -62,14 +101,14 @@ export async function POST(req: NextRequest) {
     const { data: existingRows, error: existingError } = await supabase
       .from("attendance_exceptions")
       .select("*")
-      .eq("user_email", user_email)
+      .eq("user_email", targetEmail)
       .in("date", dates);
     if (existingError) throw existingError;
 
     const { error: deleteError } = await supabase
       .from("attendance_exceptions")
       .delete()
-      .eq("user_email", user_email)
+      .eq("user_email", targetEmail)
       .in("date", dates);
     if (deleteError) throw deleteError;
 
@@ -83,7 +122,7 @@ export async function POST(req: NextRequest) {
         for (const session of oldApplied) {
           if (targetSessions.includes(session)) continue; // will be replaced
           newRows.push({
-            user_email,
+            user_email: targetEmail,
             date,
             reason_type: old.reason_type,
             comment: old.comment,
@@ -95,7 +134,7 @@ export async function POST(req: NextRequest) {
       // Insert target sessions with the newly provided reason/comment
       for (const session of targetSessions) {
         newRows.push({
-          user_email,
+          user_email: targetEmail,
           date,
           reason_type,
           comment,
@@ -121,6 +160,11 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await verifySession(req);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const email = searchParams.get("email");
     const startDate = searchParams.get("startDate");
@@ -128,7 +172,18 @@ export async function GET(req: NextRequest) {
 
     let query = supabase.from("attendance_exceptions").select("*");
 
-    if (email) query = query.eq("user_email", email);
+    const targetEmail = email ? email.toLowerCase().trim() : "";
+    if (targetEmail) {
+      if (targetEmail !== session.email && !session.isPrivileged) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      query = query.eq("user_email", targetEmail);
+    } else {
+      if (!session.isPrivileged) {
+        query = query.eq("user_email", session.email);
+      }
+    }
+
     if (startDate) query = query.gte("date", startDate);
     if (endDate) query = query.lte("date", endDate);
 
@@ -146,6 +201,11 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const session = await verifySession(req);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
@@ -154,6 +214,24 @@ export async function DELETE(req: NextRequest) {
     }
 
     const ids = id.split(",");
+
+    // Verify ownership of the exceptions being deleted
+    const { data: existing, error: fetchError } = await supabase
+      .from("attendance_exceptions")
+      .select("user_email")
+      .in("id", ids);
+
+    if (fetchError) throw fetchError;
+
+    if (existing && existing.length > 0) {
+      const containsOthers = existing.some(
+        (ex: any) => ex.user_email?.toLowerCase().trim() !== session.email
+      );
+      if (containsOthers && !session.isPrivileged) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
     const { error } = await supabase
       .from("attendance_exceptions")
       .delete()

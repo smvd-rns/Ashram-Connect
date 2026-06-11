@@ -54,8 +54,12 @@ export function useProfile(session: any) {
 
         try {
           setIsTimeout(false);
-          const userId = session?.user?.id || "";
-          const res = await fetch(`/api/auth/bcdb-check?email=${encodeURIComponent(normalizedEmail)}&userId=${userId}`, {
+          const headers: Record<string, string> = {};
+          if (session) {
+            headers["Authorization"] = `Bearer ${session.access_token}`;
+          }
+          const res = await fetch(`/api/auth/bcdb-check`, {
+             headers,
              signal: AbortSignal.timeout(10000) // Hard browser timeout
           });
           

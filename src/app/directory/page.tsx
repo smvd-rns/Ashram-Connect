@@ -48,7 +48,7 @@ export default function DirectoryPage() {
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <main className="pb-20">
-        <DirectoryView />
+        <DirectoryView session={session} />
       </main>
     </div>
   );

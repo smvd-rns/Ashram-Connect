@@ -14,7 +14,7 @@ interface Policy {
   created_at: string;
 }
 
-export default function AdminPolicyManager() {
+export default function AdminPolicyManager({ session }: { session: any }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,9 +48,13 @@ export default function AdminPolicyManager() {
     setMsg(null);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
       const res = await fetch("/api/admin/policies", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ title: newTitle, drive_url: newUrl })
       });
       const result = await res.json();
@@ -75,7 +79,14 @@ export default function AdminPolicyManager() {
     if (!confirm("Are you sure you want to delete this policy?")) return;
     
     try {
-      const res = await fetch(`/api/admin/policies?id=${id}`, { method: "DELETE" });
+      const headers: Record<string, string> = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`/api/admin/policies?id=${id}`, { 
+        method: "DELETE",
+        headers
+      });
       if (res.ok) {
         setMsg({ type: 'success', text: "Policy removed." });
         fetchPolicies();

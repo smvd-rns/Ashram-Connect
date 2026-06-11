@@ -208,7 +208,9 @@ export default function TravelForm({ session, profile }: TravelFormProps) {
       if (!session?.user?.email) return;
       
       try {
-        const res = await fetch(`/api/auth/bcdb-details?email=${encodeURIComponent(session.user.email)}`);
+        const res = await fetch(`/api/auth/bcdb-details?email=${encodeURIComponent(session.user.email)}`, {
+          headers: { "Authorization": `Bearer ${session.access_token}` }
+        });
         const result = await res.json();
         
         if (result.data) {

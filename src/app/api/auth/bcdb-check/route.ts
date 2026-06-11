@@ -7,12 +7,21 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const email = searchParams.get("email");
-    const userId = searchParams.get("userId");
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
+    const token = authHeader.split(" ")[1];
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const email = user.email;
     const normalizedEmail = email?.toLowerCase().trim() || "";
     if (!normalizedEmail) return NextResponse.json({ isBcdb: false });
 
@@ -36,13 +45,13 @@ export async function GET(req: NextRequest) {
 
     const isVerified = !!count;
 
-    // If verified and a userId is provided, persist this to the profile so we don't have to check again
-    if (isVerified && userId) {
+    // If verified, persist this to the profile so we don't have to check again
+    if (isVerified) {
       try {
         await supabase
           .from("profiles")
           .update({ is_bcdb_verified: true })
-          .eq("id", userId);
+          .eq("id", user.id);
       } catch (updateErr) {
         console.warn("Failed to update profile verification status:", updateErr);
       }

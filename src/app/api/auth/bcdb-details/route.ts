@@ -8,12 +8,42 @@ const supabase = createClient(
 
 export async function GET(req: NextRequest) {
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const email = searchParams.get("email");
 
     if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
 
     const normalizedEmail = email.toLowerCase().trim();
+    const tokenEmail = user.email?.toLowerCase().trim() || "";
+
+    // If requesting someone else's details, verify that requester is Admin/Manager
+    if (normalizedEmail !== tokenEmail) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, roles")
+        .eq("id", user.id)
+        .single();
+      
+      const roles = (Array.isArray(profile?.roles) ? profile.roles : [profile?.role])
+        .filter(r => r !== null && r !== undefined)
+        .map(Number);
+      
+      const isAuthorized = roles.includes(1) || roles.includes(5);
+      if (!isAuthorized) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     const { data, error } = await supabase
       .from("bcdb")

@@ -16,7 +16,7 @@ interface Devotee {
   photo_url: string;
 }
 
-export default function DirectoryView() {
+export default function DirectoryView({ session }: { session: any }) {
   const [devotees, setDevotees] = useState<Devotee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -76,7 +76,11 @@ export default function DirectoryView() {
   const fetchDevotees = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/directory");
+      const headers: Record<string, string> = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch("/api/directory", { headers });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setDevotees(data.data || []);

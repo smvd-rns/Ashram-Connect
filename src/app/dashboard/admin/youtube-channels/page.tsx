@@ -27,15 +27,39 @@ export default function YouTubeAdmin() {
   const [activeItem, setActiveItem] = useState<Partial<Channel> | null>(null);
   const [fetching, setFetching] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [session, setSession] = useState<any>(null);
 
   useEffect(() => {
-    fetchChannels();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        fetchChannels(session);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        fetchChannels(session);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const fetchChannels = async () => {
+  const fetchChannels = async (currentSession = session) => {
+    if (!currentSession) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/youtube-channels");
+      const res = await fetch("/api/admin/youtube-channels", {
+        headers: {
+          "Authorization": `Bearer ${currentSession.access_token}`
+        }
+      });
       const data = await res.json();
       setChannels(data.channels || []);
     } catch (err) {
@@ -49,7 +73,11 @@ export default function YouTubeAdmin() {
     if (!activeItem?.channel_id) return;
     setFetching(true);
     try {
-      const res = await fetch(`/api/youtube?channelId=${activeItem.channel_id}`);
+      const headers: Record<string, string> = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`/api/youtube?channelId=${activeItem.channel_id}`, { headers });
       const data = await res.json();
       if (data.channelTitle) {
         setActiveItem(prev => ({
@@ -95,16 +123,26 @@ export default function YouTubeAdmin() {
   };
 
   const handleSave = async () => {
+    if (!session) {
+      alert("You must be logged in to save channels");
+      return;
+    }
     try {
       const method = activeItem?.id ? "PUT" : "POST";
       const res = await fetch("/api/admin/youtube-channels", {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
         body: JSON.stringify(activeItem)
       });
       if (res.ok) {
         setModalOpen(false);
-        fetchChannels();
+        fetchChannels(session);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Save failed");
       }
     } catch (err) {
       alert("Save failed");
@@ -112,10 +150,24 @@ export default function YouTubeAdmin() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!session) {
+      alert("You must be logged in to delete channels");
+      return;
+    }
     if (!confirm("Delete this channel?")) return;
     try {
-      const res = await fetch(`/api/admin/youtube-channels?id=${id}`, { method: "DELETE" });
-      if (res.ok) fetchChannels();
+      const res = await fetch(`/api/admin/youtube-channels?id=${id}`, { 
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`
+        }
+      });
+      if (res.ok) {
+        fetchChannels(session);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Delete failed");
+      }
     } catch (err) {
       alert("Delete failed");
     }

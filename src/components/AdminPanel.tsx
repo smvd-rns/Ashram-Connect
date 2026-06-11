@@ -3365,7 +3365,7 @@ export default function AdminPanel() {
                 <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 rotate-180" /> Back to Dashboard
               </button>
             </div>
-            <AdminPolicyManager />
+            <AdminPolicyManager session={session} />
           </div>
         )}
       </div>
@@ -3376,7 +3376,9 @@ export default function AdminPanel() {
   async function fetchYtChannels(silent = false) {
     if (!silent) setLoadingYt(true);
     try {
-      const res = await fetch("/api/admin/youtube-channels");
+      const res = await fetch("/api/admin/youtube-channels", {
+        headers: { "Authorization": `Bearer ${session?.access_token}` }
+      });
       const data = await res.json();
       if (data.channels) setYtChannels(data.channels);
     } catch (err) {
@@ -3498,7 +3500,10 @@ export default function AdminPanel() {
             });
             const ytSyncResponse: Response = await fetch("/api/admin/youtube/sync", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { 
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${session?.access_token}`
+              },
               body: syncPayload
             });
             
@@ -3602,7 +3607,10 @@ export default function AdminPanel() {
       const method = activeYtChannel?.id ? "PUT" : "POST";
       const res = await fetch("/api/admin/youtube-channels", {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify(activeYtChannel)
       });
       if (res.ok) {
@@ -3617,7 +3625,10 @@ export default function AdminPanel() {
   async function deleteYtChannel(id: string) {
     if (!confirm("Are you sure? This removes the channel from the portal.")) return;
     try {
-      const res = await fetch(`/api/admin/youtube-channels?id=${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/youtube-channels?id=${id}`, { 
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session?.access_token}` }
+      });
       if (res.ok) fetchYtChannels();
     } catch (err) {
       console.error(err);
@@ -3647,12 +3658,18 @@ export default function AdminPanel() {
       await Promise.all([
         fetch("/api/admin/youtube-channels", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`
+          },
           body: JSON.stringify({ id: ch1.id, order_index: idx2 })
         }),
         fetch("/api/admin/youtube-channels", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`
+          },
           body: JSON.stringify({ id: ch2.id, order_index: idx1 })
         })
       ]);
@@ -3666,7 +3683,9 @@ export default function AdminPanel() {
   // YT Assignments logic
   async function fetchYtAssignments(channelId: string) {
     try {
-      const res = await fetch(`/api/admin/youtube-channels/assignments?channelId=${channelId}`);
+      const res = await fetch(`/api/admin/youtube-channels/assignments?channelId=${channelId}`, {
+        headers: { "Authorization": `Bearer ${session?.access_token}` }
+      });
       const data = await res.json();
       if (data.assignments) setYtAssignments(data.assignments);
     } catch (err) {
@@ -3682,7 +3701,10 @@ export default function AdminPanel() {
     try {
       const response = await fetch("/api/admin/youtube-channels/assignments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify({ channel_id: activeYtChannel.id, user_id: userId })
       });
       if (response.ok) fetchYtAssignments(activeYtChannel.id);
@@ -3695,7 +3717,8 @@ export default function AdminPanel() {
   async function handleRemoveYtAssignment(id: string) {
     try {
       const response = await fetch(`/api/admin/youtube-channels/assignments?id=${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session?.access_token}` }
       });
       if (response.ok && activeYtChannel?.id) fetchYtAssignments(activeYtChannel.id);
 
@@ -3709,7 +3732,10 @@ export default function AdminPanel() {
     try {
       const response = await fetch("/api/admin/youtube-channels/assignments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify({ 
           channel_id: activeYtChannel.id, 
           user_ids: Array.from(ytSelectedUserIds) 
