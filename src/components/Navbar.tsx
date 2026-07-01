@@ -100,6 +100,18 @@ export default function Navbar() {
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-inherit">BC Class</span>
           </NextLink>
+
+          {isBcdb && (
+            <NextLink 
+              href="/shorts" 
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${isShorts ? 'bg-orange-600 text-white border-orange-600 shadow-orange-200' : 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-600 hover:text-white'}`}
+            >
+              <div className="flex items-center justify-center relative">
+                 <Film className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-inherit">Shorts</span>
+            </NextLink>
+          )}
           
           {canOpenAttendance && (
             <NextLink 
@@ -173,17 +185,7 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
-                    {isBcdb && (
-                      <NextLink 
-                        href="/shorts" 
-                        onClick={() => setShowDesktopMore(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/shorts' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'} group`}
-                      >
-                        <Film className="w-4 h-4 text-slate-400 group-hover:text-orange-600 transition-colors" />
-                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Short Videos</span>
-                        <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/shorts' ? 'opacity-100' : 'opacity-0'}`} />
-                      </NextLink>
-                    )}
+
                     {isBcdb && (
                       <NextLink 
                         href="/policy-manual" 
