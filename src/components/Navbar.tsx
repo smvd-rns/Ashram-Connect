@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell, Music, Download, ExternalLink } from "lucide-react";
+import { LogOut, Settings, Monitor, UserCheck, CalendarDays, BookOpen, MoreHorizontal, X, User, Shield, Users, Plane, Bell, Music, Download, ExternalLink, Film } from "lucide-react";
 import ProfileEdit from "./ProfileEdit";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/hooks/useProfile";
@@ -64,6 +64,7 @@ export default function Navbar() {
   const isClass = pathname === "/class";
   const isAttendance = pathname === "/attendance";
   const isIdkt = pathname === "/iskcon-desire-tree";
+  const isShorts = pathname === "/shorts";
 
   return (
     <>
@@ -172,8 +173,17 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
-
-
+                    {isBcdb && (
+                      <NextLink 
+                        href="/shorts" 
+                        onClick={() => setShowDesktopMore(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/shorts' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'} group`}
+                      >
+                        <Film className="w-4 h-4 text-slate-400 group-hover:text-orange-600 transition-colors" />
+                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Short Videos</span>
+                        <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/shorts' ? 'opacity-100' : 'opacity-0'}`} />
+                      </NextLink>
+                    )}
                     {isBcdb && (
                       <NextLink 
                         href="/policy-manual" 
@@ -278,7 +288,7 @@ export default function Navbar() {
       </nav>
 
       {/* ─── MOBILE TAB BAR (Bottom) ─────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[1000] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 pt-3 flex items-center justify-between gap-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}>
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[1000] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] px-4 pt-3 pb-3 flex items-center justify-between gap-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}>
         <NextLink href="/" className="flex flex-col items-center gap-1 group flex-1">
           <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isHome ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
             <HomeIcon active={isHome} /> 
@@ -292,6 +302,12 @@ export default function Navbar() {
           <span className={`text-[9px] font-black uppercase tracking-widest ${isClass ? 'text-devo-600' : 'text-slate-400'}`}>BC Class</span>
         </NextLink>
 
+        <NextLink href="/shorts" className="flex flex-col items-center gap-1 group flex-1">
+          <div className={`p-2 rounded-xl group-active:scale-95 transition-all ${isShorts ? 'bg-devo-50 text-devo-600 shadow-inner' : 'text-slate-400'}`}>
+             <Film className="w-6 h-6" />
+          </div>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${isShorts ? 'text-devo-600' : 'text-slate-400'}`}>Shorts</span>
+        </NextLink>
 
 
         <NextLink href="/iskcon-desire-tree" className="flex flex-col items-center gap-1 group flex-1">
@@ -310,11 +326,6 @@ export default function Navbar() {
           </div>
           <span className={`text-[9px] font-black uppercase tracking-widest ${showMoreMenu ? 'text-indigo-600' : 'text-slate-400'}`}>{showMoreMenu ? 'Close' : 'More'}</span>
         </button>
-        {/* Bottom blue strip to style space over system hardware/software navigation keys */}
-        <div 
-          className="absolute bottom-0 left-0 right-0 bg-indigo-600" 
-          style={{ height: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
-        />
       </nav>
 
       {/* ─── MOBILE MORE MENU OVERLAY ──────────────────────── */}
@@ -372,7 +383,6 @@ export default function Navbar() {
                   <div className={`w-1.5 h-1.5 rounded-full bg-orange-600 ${pathname === '/raise-prasadam' ? 'opacity-100' : 'opacity-0'}`} />
                 </NextLink>
               )}
-
 
 
               {isBcdb && (

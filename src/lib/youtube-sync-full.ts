@@ -10,14 +10,78 @@ const supabase = createClient(
 
 const CHUNK_SIZE = 100;
 
+function isShortVideo(title?: string, description?: string): boolean {
+  const t = (title || "").toLowerCase();
+  const d = (description || "").toLowerCase();
+  return t.includes("#shorts") || d.includes("#shorts") || t.includes("#short") || d.includes("#short") || t.includes("#reels") || d.includes("#reels");
+}
+
+function parseISO8601Duration(durationStr: string): number {
+  const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
+  const matches = (durationStr || "").match(regex);
+  if (!matches) return 0;
+  const hours = parseInt(matches[1] || "0", 10);
+  const minutes = parseInt(matches[2] || "0", 10);
+  const seconds = parseInt(matches[3] || "0", 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+async function fetchVideoDurations(videoIds: string[]): Promise<Record<string, number>> {
+  const durations: Record<string, number> = {};
+  if (videoIds.length === 0) return durations;
+  
+  for (let j = 0; j < videoIds.length; j += 50) {
+    const batch = videoIds.slice(j, j + 50);
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch.join(",")}&key=${YOUTUBE_API_KEY}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (res.ok && data.items) {
+        for (const item of data.items) {
+          if (item.contentDetails?.duration) {
+            durations[item.id] = parseISO8601Duration(item.contentDetails.duration);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[BgSync] Failed to fetch video durations:", err);
+    }
+  }
+  return durations;
+}
+
 async function upsertChunked(videos: any[]) {
   let count = 0;
   for (let i = 0; i < videos.length; i += CHUNK_SIZE) {
+    const chunk = videos.slice(i, i + CHUNK_SIZE);
+    
+    // Fetch durations
+    const videoIds = chunk.map(v => v.video_id);
+    const durations = await fetchVideoDurations(videoIds);
+    
+    // Enrich videos
+    const enrichedChunk = chunk.map(v => {
+      const duration = durations[v.video_id] !== undefined ? durations[v.video_id] : null;
+      
+      // Exclude UCZ8S3qwowiFztAQBRTawWfA (Hare Krishna TV)
+      const isHkTV = v.channel_id === 'UCZ8S3qwowiFztAQBRTawWfA';
+      
+      const isShort = !isHkTV && (duration !== null 
+        ? duration <= 180 
+        : v.is_short);
+
+      return {
+        ...v,
+        duration_seconds: duration,
+        is_short: isShort
+      };
+    });
+
     const { error } = await supabaseYt!
       .from("yt_videos")
-      .upsert(videos.slice(i, i + CHUNK_SIZE), { onConflict: "video_id", ignoreDuplicates: true });
+      .upsert(enrichedChunk, { onConflict: "video_id", ignoreDuplicates: true });
     if (error) console.error("[BgSync] Upsert error:", error.message);
-    else count += videos.slice(i, i + CHUNK_SIZE).length;
+    else count += enrichedChunk.length;
   }
   return count;
 }
@@ -41,6 +105,7 @@ async function fetchAllPlaylistVideos(playlistId: string, channelId: string): Pr
       thumbnail_url: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url || null,
       published_at: v.contentDetails?.videoPublishedAt || v.snippet?.publishedAt || null,
       kind: "video",
+      is_short: isShortVideo(v.snippet?.title, v.snippet?.description),
       updated_at: new Date().toISOString(),
     })).filter((v: any) => !!v.video_id);
 
