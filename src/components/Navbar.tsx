@@ -172,29 +172,7 @@ export default function Navbar() {
                       </NextLink>
                     )}
 
-                    {isBcdb && (
-                      <NextLink 
-                        href="/kms-portal" 
-                        onClick={() => setShowDesktopMore(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/kms-portal' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'} group`}
-                      >
-                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-orange-600 transition-colors" />
-                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">KMS - Raise Prasadam Count</span>
-                        <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/kms-portal' ? 'opacity-100' : 'opacity-0'}`} />
-                      </NextLink>
-                    )}
 
-                    {isBcdb && (
-                      <NextLink 
-                        href="/radheshyam-das" 
-                        onClick={() => setShowDesktopMore(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${pathname === '/radheshyam-das' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-600'} group`}
-                      >
-                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-orange-600 transition-colors" />
-                        <span className="text-[10px] font-black uppercase tracking-widest flex-1">Radheshyam Das</span>
-                        <div className={`w-1 h-1 rounded-full bg-orange-500 ${pathname === '/radheshyam-das' ? 'opacity-100' : 'opacity-0'}`} />
-                      </NextLink>
-                    )}
 
                     {isBcdb && (
                       <NextLink 
@@ -395,29 +373,7 @@ export default function Navbar() {
                 </NextLink>
               )}
 
-              {isBcdb && (
-                <NextLink 
-                  href="/kms-portal" 
-                  onClick={() => setShowMoreMenu(false)}
-                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/kms-portal' ? 'bg-orange-50/50' : 'hover:bg-slate-50'} group`}
-                >
-                  <ExternalLink className={`w-4 h-4 ${pathname === '/kms-portal' ? 'text-orange-600' : 'text-slate-400 group-hover:text-orange-600'} transition-colors`} />
-                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/kms-portal' ? 'text-orange-900' : 'text-slate-600 group-hover:text-orange-900'} transition-colors`}>KMS - Raise Prasadam Count</span>
-                  <div className={`w-1.5 h-1.5 rounded-full bg-orange-600 ${pathname === '/kms-portal' ? 'opacity-100' : 'opacity-0'}`} />
-                </NextLink>
-              )}
 
-              {isBcdb && (
-                <NextLink 
-                  href="/radheshyam-das" 
-                  onClick={() => setShowMoreMenu(false)}
-                  className={`flex items-center gap-4 px-6 py-3.5 transition-all ${pathname === '/radheshyam-das' ? 'bg-orange-50/50' : 'hover:bg-slate-50'} group`}
-                >
-                  <ExternalLink className={`w-4 h-4 ${pathname === '/radheshyam-das' ? 'text-orange-600' : 'text-slate-400 group-hover:text-orange-600'} transition-colors`} />
-                  <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${pathname === '/radheshyam-das' ? 'text-orange-900' : 'text-slate-600 group-hover:text-orange-900'} transition-colors`}>Radheshyam Das</span>
-                  <div className={`w-1.5 h-1.5 rounded-full bg-orange-600 ${pathname === '/radheshyam-das' ? 'opacity-100' : 'opacity-0'}`} />
-                </NextLink>
-              )}
 
               {isBcdb && (
                 <NextLink 
