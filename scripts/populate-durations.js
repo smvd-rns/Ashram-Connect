@@ -100,11 +100,11 @@ async function main() {
 
       // 3. Prepare updates for database
       const updates = chunk.map(v => {
-        const duration = durations[v.video_id] !== undefined ? durations[v.video_id] : null;
+        const duration = durations[v.video_id] !== undefined ? durations[v.video_id] : -1;
         
         // Exclude Hare Krishna TV UCZ8S3qwowiFztAQBRTawWfA
         const isHkTV = v.channel_id === 'UCZ8S3qwowiFztAQBRTawWfA';
-        const isShort = !isHkTV && duration !== null && duration <= 180;
+        const isShort = !isHkTV && duration !== -1 && duration !== null && duration <= 180;
 
         return {
           video_id: v.video_id,
