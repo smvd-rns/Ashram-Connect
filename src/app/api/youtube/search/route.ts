@@ -40,7 +40,9 @@ export async function GET(request: NextRequest) {
         }
       }
     }
-
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     // 2. Determine allowed channel IDs
     // If channelId param was explicitly provided (e.g., user is inside a channel or has filters active),
     // trust it directly — it means the frontend already verified those channels are visible to the user.

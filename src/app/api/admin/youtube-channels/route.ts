@@ -7,7 +7,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Helper to sync to the YouTube DB
-async function syncToYtDb(channelId: string, name: string, visibility: string, isDelete = false) {
+async function syncToYtDb(channelId: string, name: string, visibility: string, hideShorts = false, isDelete = false) {
   if (!supabaseYtAdmin) return;
   
   if (isDelete) {
@@ -16,7 +16,8 @@ async function syncToYtDb(channelId: string, name: string, visibility: string, i
     await supabaseYtAdmin.from("youtube_channels").upsert({
       channel_id: channelId,
       name,
-      visibility
+      visibility,
+      hide_shorts: hideShorts
     }, { onConflict: 'channel_id' });
   }
 }
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     // 2. Sync to YouTube DB
     if (data?.[0]) {
-      await syncToYtDb(data[0].channel_id, data[0].name, data[0].visibility);
+      await syncToYtDb(data[0].channel_id, data[0].name, data[0].visibility, data[0].hide_shorts);
     }
 
     return NextResponse.json({ data });
@@ -117,7 +118,7 @@ export async function PUT(request: NextRequest) {
 
     // 2. Sync to YouTube DB if critical fields changed
     if (data?.[0]) {
-      await syncToYtDb(data[0].channel_id, data[0].name, data[0].visibility);
+      await syncToYtDb(data[0].channel_id, data[0].name, data[0].visibility, data[0].hide_shorts);
     }
 
     return NextResponse.json({ data });
@@ -151,7 +152,7 @@ export async function DELETE(request: NextRequest) {
 
     // 2. Delete from YouTube DB
     if (channel?.channel_id) {
-      await syncToYtDb(channel.channel_id, "", "", true);
+      await syncToYtDb(channel.channel_id, "", "", false, true);
     }
 
     return NextResponse.json({ message: "Deleted" });

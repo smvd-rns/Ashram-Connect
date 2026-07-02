@@ -84,6 +84,21 @@ async function fetchFromYouTubeWithFallback(apiUrl: URL): Promise<{ response: Re
 }
 
 export async function GET(request: NextRequest) {
+  // --- Enforce Authentication ---
+  const authHeader = request.headers.get("Authorization");
+  let userId = null;
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (user && !authError) {
+      userId = user.id;
+    }
+  }
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const videoId = searchParams.get("videoId");
   const channelId = searchParams.get("channelId");

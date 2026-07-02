@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let query = supabase
       .from("youtube_channels")
       .select("*")

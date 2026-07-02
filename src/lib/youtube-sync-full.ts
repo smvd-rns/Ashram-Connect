@@ -122,12 +122,13 @@ export async function syncYouTubeChannelFull(channelId: string) {
   console.log(`[BgSync] ===== Starting Full Background Sync for ${channelId} =====`);
 
   // --- SAFETY STEP: Ensure channel exists in the YouTube DB helper table ---
-  const { data: mainChannel } = await supabase.from("youtube_channels").select("name, visibility").eq("channel_id", channelId).single();
+  const { data: mainChannel } = await supabase.from("youtube_channels").select("name, visibility, hide_shorts").eq("channel_id", channelId).single();
   if (mainChannel && supabaseYt) {
     await supabaseYt.from("youtube_channels").upsert({
       channel_id: channelId,
       name: mainChannel.name,
-      visibility: mainChannel.visibility
+      visibility: mainChannel.visibility,
+      hide_shorts: mainChannel.hide_shorts || false
     });
   }
 

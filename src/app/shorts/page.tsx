@@ -21,6 +21,9 @@ function ShortsContent() {
   const searchParams = useSearchParams();
   const channelFilter = searchParams.get("channel") || "";
 
+  const [session, setSession] = useState<any>(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
   const [shorts, setShorts] = useState<ShortVideo[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -34,6 +37,25 @@ function ShortsContent() {
   activeIndexRef.current = activeIndex;
   const shortsLengthRef = useRef(0);
   shortsLengthRef.current = shorts.length;
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthInitialized(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAuthInitialized(true);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, []);
 
   // scrollToIndex defined early and stored in ref so listeners can call it safely
   const scrollToIndex = useCallback((index: number) => {
@@ -56,13 +78,18 @@ function ShortsContent() {
   }, []);
 
   const fetchShorts = useCallback(async (append = false) => {
+    if (!authInitialized || !session) {
+      if (authInitialized && !session) setLoading(false);
+      return;
+    }
+
     if (append) setLoadingMore(true);
     else setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {};
-      if (session) headers["Authorization"] = `Bearer ${session.access_token}`;
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${session.access_token}`
+      };
 
       const url = channelFilter
         ? `/api/youtube/shorts?limit=12&channelId=${channelFilter}`
@@ -84,16 +111,21 @@ function ShortsContent() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [channelFilter]);
+  }, [authInitialized, session, channelFilter]);
 
-  useEffect(() => { fetchShorts(); }, [fetchShorts]);
+  useEffect(() => { 
+    if (authInitialized && session) {
+      fetchShorts(); 
+    }
+  }, [authInitialized, session, fetchShorts]);
 
   useEffect(() => {
+    if (!authInitialized || !session) return;
     const fetchChannels = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = {};
-        if (session) headers["Authorization"] = `Bearer ${session.access_token}`;
+        const headers: Record<string, string> = {
+          "Authorization": `Bearer ${session.access_token}`
+        };
         const res = await fetch("/api/youtube/channels?v=1", { headers });
         if (res.ok) {
           const data = await res.json();
@@ -105,7 +137,7 @@ function ShortsContent() {
       }
     };
     fetchChannels();
-  }, []);
+  }, [authInitialized, session]);
 
   // When activeIndex changes: setup active video
   useEffect(() => {
@@ -114,17 +146,15 @@ function ShortsContent() {
 
     const activeVideo = shorts[activeIndex];
     
-    // Enable events for the active iframe and ensure it plays
+    // Send the listening event to the new iframe once it's likely mounted
     const timer = setTimeout(() => {
       if (activeVideo) {
         const iframe = document.getElementById(`yt-player-${activeVideo.id}`) as HTMLIFrameElement;
         if (iframe?.contentWindow) {
-          // Tell the youtube iframe to start sending postMessage events (needed for onStateChange)
           iframe.contentWindow.postMessage(JSON.stringify({ event: "listening" }), "*");
-          sendCommand(activeVideo.id, "playVideo");
         }
       }
-    }, 800);
+    }, 1000);
 
     // Fetch more when near end
     if (activeIndex >= shorts.length - 3 && !loadingMore) {
@@ -132,36 +162,40 @@ function ShortsContent() {
     }
 
     return () => clearTimeout(timer);
-  }, [activeIndex, shorts, sendCommand, loadingMore, fetchShorts]);
+  }, [activeIndex, shorts, loadingMore, fetchShorts]);
 
-  // IntersectionObserver to detect which slide is visible
-  useEffect(() => {
-    if (shorts.length === 0) return;
+  // Scroll listener to detect active slide (Bulletproof on mobile unlike IntersectionObserver)
+  const handleScroll = useCallback(() => {
+    setIsScrolling(true);
+    
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 150);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const index = parseInt(entry.target.getAttribute("data-index") || "0");
-            setActiveIndex(index);
-          }
-        });
-      },
-      { root: containerRef.current, threshold: 0.7 }
-    );
+    if (!containerRef.current) return;
+    const { scrollTop, clientHeight } = containerRef.current;
+    if (clientHeight === 0) return;
+    
+    // Calculate which slide is most visible
+    const newIndex = Math.round(scrollTop / clientHeight);
+    
+    if (newIndex !== activeIndexRef.current && newIndex >= 0 && newIndex < shortsLengthRef.current) {
+      setActiveIndex(newIndex);
+    }
+  }, []);
 
-    const slides = containerRef.current?.querySelectorAll("[data-slide]");
-    slides?.forEach((slide) => observer.observe(slide));
-    return () => observer.disconnect();
-  }, [shorts.length]);
-
-  // Auto-advance on video end
+  // Handle YouTube iframe messages
   useEffect(() => {
     const handleMsg = (event: MessageEvent) => {
       if (!event.origin.includes("youtube")) return;
       try {
         const data = JSON.parse(event.data);
-        // State 0 = ended
+
+        // Auto-advance on video end
         if ((data.event === "onStateChange" && data.info === 0) || (data.event === "infoDelivery" && data.info?.playerState === 0)) {
           const cur = activeIndexRef.current;
           const total = shortsLengthRef.current;
@@ -173,11 +207,12 @@ function ShortsContent() {
     };
     window.addEventListener("message", handleMsg);
     return () => window.removeEventListener("message", handleMsg);
-  }, []); // empty deps — uses refs, never goes stale
+  }, [shorts]);
 
   const togglePlay = () => {
     const video = shorts[activeIndex];
     if (!video) return;
+
     if (isPlaying) {
       sendCommand(video.id, "pauseVideo");
       setIsPlaying(false);
@@ -196,6 +231,19 @@ function ShortsContent() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeIndex, shorts.length, scrollToIndex]);
+
+  if (authInitialized && !session) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white">
+        <div className="flex flex-col items-center gap-4 text-center px-4">
+          <p className="font-outfit text-sm font-medium tracking-wide text-slate-400">Please log in to view shorts.</p>
+          <button onClick={() => router.push("/login")} className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && shorts.length === 0) {
     return (
@@ -235,14 +283,20 @@ function ShortsContent() {
       </div>
 
       {/* ─── VERTICAL SLIDER ────────────────── */}
-      <div ref={containerRef} className="h-full w-full overflow-y-scroll snap-y snap-mandatory" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+      <div 
+        ref={containerRef} 
+        onScroll={handleScroll}
+        className="h-full w-full overflow-y-scroll snap-y snap-mandatory" 
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {shorts.map((video, idx) => {
           const isActive = idx === activeIndex;
-          // Only render iframe for active slide and its immediate neighbors
-          const shouldRenderIframe = Math.abs(idx - activeIndex) <= 1;
-          // Active: autoplay=1 mute=0
-          // Neighbors: autoplay=0 mute=1 (preloaded ready to go)
-          const embedUrl = `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=${isActive ? 1 : 0}&mute=${isActive ? 0 : 1}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&cc_load_policy=0&origin=${encodeURIComponent(origin)}`;
+          // Only render iframe for the ACTIVE slide. 
+          // Destroying inactive iframes guarantees they stop playing and saves massive amounts of RAM/CPU.
+          const shouldRenderIframe = isActive;
+          
+          // Use autoplay=1 AND mute=0 so that the video starts with audio enabled by default.
+          const embedUrl = `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&mute=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&cc_load_policy=0&origin=${encodeURIComponent(origin)}`;
 
           return (
             <div
@@ -255,11 +309,11 @@ function ShortsContent() {
                 
                 {shouldRenderIframe ? (
                   <iframe
-                    key={`${video.id}-${isActive ? "active" : "pre"}`}
+                    key={video.id} 
                     id={`yt-player-${video.id}`}
                     src={embedUrl}
                     title={video.title}
-                    className="w-full h-full border-none object-cover scale-[1.01]"
+                    className={`w-full h-full border-none object-cover scale-[1.01] ${isScrolling ? "pointer-events-none" : ""}`}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
@@ -269,8 +323,9 @@ function ShortsContent() {
                 )}
 
                 {/* Tap to play/pause — only on active */}
+                {/* Covers only the middle zone (top-16 to bottom-28) to leave top (CC/settings) and bottom (timeline/actions) clickable */}
                 {isActive && (
-                  <div onClick={togglePlay} className="absolute top-0 left-0 right-0 bottom-12 cursor-pointer z-10 flex items-center justify-center bg-transparent">
+                  <div onClick={togglePlay} className="absolute top-16 left-0 right-0 bottom-28 cursor-pointer z-10 flex items-center justify-center bg-transparent">
                     {!isPlaying && (
                       <div className="p-5 rounded-full bg-black/60 text-white border border-white/10 animate-pulse shadow-xl">
                         <Play className="w-8 h-8 fill-white" />
@@ -283,9 +338,9 @@ function ShortsContent() {
                 <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/90 via-transparent to-black/40" />
 
                 {/* Title + channel */}
-                <div className="absolute bottom-6 left-6 right-16 z-20 pointer-events-none">
+                <div className="absolute bottom-16 left-6 right-16 z-20 pointer-events-none">
                   <span className="inline-block px-3 py-1 mb-3 text-[10px] font-black uppercase tracking-wider rounded-full bg-orange-600/90 text-white backdrop-blur-sm">
-                    {video.channel_title}
+                    {channels.find(c => c.channel_id === video.channel_id)?.name || video.channel_title || "Short"}
                   </span>
                   <h3 className="font-outfit text-sm font-bold leading-snug text-white line-clamp-2 pr-4 drop-shadow-md">
                     {video.title}

@@ -1917,6 +1917,11 @@ export default function AdminPanel() {
                             "Never Synced"
                           )}
                         </div>
+                        {channel.hide_shorts && (
+                          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border bg-slate-100 border-slate-200 text-slate-500">
+                            Shorts Hidden
+                          </div>
+                        )}
                         {channel.last_sync_at && (
                           <div className="flex items-center gap-1 text-[8px] font-bold text-slate-400 whitespace-nowrap">
                             <Clock className="w-2 h-2" /> {new Date(channel.last_sync_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -2047,6 +2052,18 @@ export default function AdminPanel() {
                       >
                         <option value="public">Public (Everyone)</option>
                         <option value="private">Private (Restricted)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Hide Shorts in Portal</label>
+                      <select 
+                        value={activeYtChannel?.hide_shorts ? 'true' : 'false'} 
+                        onChange={(e) => setActiveYtChannel((prev: any) => ({ ...prev, hide_shorts: e.target.value === 'true' }))}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 font-black outline-none transition-all text-sm"
+                      >
+                        <option value="false">Show Shorts (Default)</option>
+                        <option value="true">Hide Shorts (Do Not Show)</option>
                       </select>
                     </div>
 
