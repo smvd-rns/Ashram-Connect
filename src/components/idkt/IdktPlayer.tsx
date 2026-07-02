@@ -67,7 +67,7 @@ export default function IdktPlayer() {
   };
 
   return (
-    <div className="fixed bottom-[88px] sm:bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-[100] animate-in slide-in-from-bottom-10 duration-500">
+    <div className="fixed [bottom:calc(env(safe-area-inset-bottom,0px)+88px)] sm:bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-[100] animate-in slide-in-from-bottom-10 duration-500">
       <div className="bg-white/95 backdrop-blur-2xl border border-white shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] rounded-[2rem] sm:rounded-[2.5rem] p-3 sm:p-6 flex flex-col gap-2 sm:gap-3 relative">
         
         {/* Close Button */}
