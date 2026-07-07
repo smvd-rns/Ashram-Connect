@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { redis } from "@/lib/redis";
 
 // Note: Use Service Role Key for Admin operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     // 3. MAIN SUMMARY MODE
     const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
-    // A. Fetch TODAY'S Visitors directly
+    // A. Fetch TODAY'S Visitors directly (Always Live)
     const { data: todayVisits, error: todayError } = await supabase
       .from("user_visits")
       .select("visited_at, user_id")
@@ -84,70 +85,110 @@ export async function GET(request: NextRequest) {
       throw todayError;
     }
 
-    // B. Fetch TOTAL unique daily visits across history (Extremely fast Indexed Only Scan)
-    const { count: totalUniqueDailyVisitsAcrossHistory, error: countErr } = await supabase
-      .from("user_visits")
-      .select("*", { count: "exact", head: true });
-    
-    if (countErr) {
-      console.error("Global Count Error:", countErr);
-      throw countErr;
+    // B. Check Redis Cache for historical stats
+    let cachedStats: any = null;
+    if (redis) {
+      try {
+        cachedStats = await redis.get("analytics:historical_stats");
+      } catch (cacheErr) {
+        console.error("Redis Cache Read Error:", cacheErr);
+      }
     }
 
-    // C. Fetch History and Aggregates (Pre-aggregated VIEW or limited fallback)
     let history: any[] = [];
     let totalActiveDays = 0;
     let busiestDay = "None";
     let busiestCount = 0;
+    let totalUniqueDailyVisitsAcrossHistory = 0;
 
-    // Try fetching aggregated stats from view (Super performant)
-    const { data: viewData, error: viewError } = await supabase
-      .from("analytics_daily_visits")
-      .select("visit_date, count")
-      .order("visit_date", { ascending: false });
-
-    if (!viewError && viewData) {
-      // SUCCESS: Using aggregated view
-      history = viewData.slice(0, 30).map(v => ({ date: v.visit_date, count: v.count }));
-      totalActiveDays = viewData.length;
-      viewData.forEach(v => {
-        if (v.count > busiestCount) {
-          busiestCount = v.count;
-          busiestDay = v.visit_date;
-        }
-      });
+    if (cachedStats) {
+      // SUCCESS: Load from Cache
+      history = cachedStats.history || [];
+      totalActiveDays = cachedStats.totalActiveDays || 0;
+      busiestDay = cachedStats.busiestDay || "None";
+      busiestCount = cachedStats.busiestCount || 0;
+      totalUniqueDailyVisitsAcrossHistory = cachedStats.totalUniqueDailyVisitsAcrossHistory || 0;
     } else {
-      // FALLBACK: View does not exist yet. Limit scan to last 90 days to protect memory & Disk I/O
-      console.log("[Analytics Cache Fallback] Querying last 90 days raw user_visits...");
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      const minDateStr = ninetyDaysAgo.toISOString().split('T')[0];
-
-      const { data: fallbackData } = await supabase
+      // FETCH & CALCULATE
+      // Fetch TOTAL unique daily visits across history
+      const { count: countVal, error: countErr } = await supabase
         .from("user_visits")
-        .select("visit_date")
-        .gte("visit_date", minDateStr)
-        .order("visit_date", { ascending: false })
-        .limit(10000);
+        .select("*", { count: "exact", head: true });
+      
+      if (countErr) {
+        console.error("Global Count Error:", countErr);
+        throw countErr;
+      }
+      totalUniqueDailyVisitsAcrossHistory = countVal || 0;
 
-      const dailyCounts: Record<string, number> = {};
-      (fallbackData || []).forEach((v: any) => {
-        dailyCounts[v.visit_date] = (dailyCounts[v.visit_date] || 0) + 1;
-      });
+      // Try fetching aggregated stats from view (Super performant)
+      const { data: viewData, error: viewError } = await supabase
+        .from("analytics_daily_visits")
+        .select("visit_date, count")
+        .order("visit_date", { ascending: false });
 
-      history = Object.entries(dailyCounts)
-        .map(([date, count]) => ({ date, count }))
-        .sort((a, b) => b.date.localeCompare(a.date))
-        .slice(0, 30);
+      if (!viewError && viewData) {
+        history = viewData.slice(0, 30).map(v => ({ date: v.visit_date, count: v.count }));
+        totalActiveDays = viewData.length;
+        viewData.forEach(v => {
+          if (v.count > busiestCount) {
+            busiestCount = v.count;
+            busiestDay = v.visit_date;
+          }
+        });
+      } else {
+        // FALLBACK: View does not exist yet. Limit scan to last 90 days to protect memory & Disk I/O
+        console.log("[Analytics Cache Fallback] Querying last 90 days raw user_visits...");
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const minDateStr = ninetyDaysAgo.toISOString().split('T')[0];
 
-      totalActiveDays = Object.keys(dailyCounts).length || 1;
-      Object.entries(dailyCounts).forEach(([date, count]) => {
-        if (count > busiestCount) {
-          busiestCount = count;
-          busiestDay = date;
+        const { data: fallbackData } = await supabase
+          .from("user_visits")
+          .select("visit_date")
+          .gte("visit_date", minDateStr)
+          .order("visit_date", { ascending: false })
+          .limit(10000);
+
+        const dailyCounts: Record<string, number> = {};
+        (fallbackData || []).forEach((v: any) => {
+          dailyCounts[v.visit_date] = (dailyCounts[v.visit_date] || 0) + 1;
+        });
+
+        history = Object.entries(dailyCounts)
+          .map(([date, count]) => ({ date, count }))
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .slice(0, 30);
+
+        totalActiveDays = Object.keys(dailyCounts).length || 1;
+        Object.entries(dailyCounts).forEach(([date, count]) => {
+          if (count > busiestCount) {
+            busiestCount = count;
+            busiestDay = date;
+          }
+        });
+      }
+
+      // Save to Redis cache for 15 minutes (900 seconds)
+      if (redis) {
+        try {
+          await redis.set(
+            "analytics:historical_stats",
+            {
+              history,
+              totalActiveDays,
+              busiestDay,
+              busiestCount,
+              totalUniqueDailyVisitsAcrossHistory
+            },
+            { ex: 900 }
+          );
+        } catch (cacheErr) {
+          console.error("Redis Cache Write Error:", cacheErr);
         }
-      });
+      }
     }
+
 
     // D. Fetch Profiles only for Today's Visitors
     const todayUserIds = Array.from(new Set((todayVisits || []).map(v => v.user_id)));

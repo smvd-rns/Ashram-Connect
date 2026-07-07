@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseYt } from "@/lib/supabase-yt";
+import { redis } from "@/lib/redis";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -114,6 +115,18 @@ export async function GET(request: NextRequest) {
 
   // Handle single video fetch if videoId is provided
   if (videoId) {
+    const videoCacheKey = `yt:video:${videoId}`;
+    if (redis) {
+      try {
+        const cached = await redis.get(videoCacheKey);
+        if (cached) {
+          return NextResponse.json(cached);
+        }
+      } catch (err) {
+        console.error("Redis Cache Read Error (video details):", err);
+      }
+    }
+
     try {
       // 1. Try DB first
       const { data: videoRecord } = await supabaseYt
@@ -123,14 +136,24 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
 
       if (videoRecord) {
-        return NextResponse.json({
+        const videoData = {
           id: videoRecord.video_id,
           title: videoRecord.title,
           thumbnail: videoRecord.thumbnail_url || `https://i.ytimg.com/vi/${videoRecord.video_id}/mqdefault.jpg`,
           date: videoRecord.published_at ? formatRelativeDate(videoRecord.published_at) : "",
           published: videoRecord.published_at ?? "",
           type: videoRecord.kind || "video"
-        });
+        };
+
+        if (redis) {
+          try {
+            await redis.set(videoCacheKey, videoData, { ex: 86400 }); // Cache details for 24 hours
+          } catch (cacheErr) {
+            console.error("Redis Cache Write Error (video details):", cacheErr);
+          }
+        }
+
+        return NextResponse.json(videoData);
       }
 
       // 2. Try YouTube API with Fallback rotation
@@ -146,7 +169,7 @@ export async function GET(request: NextRequest) {
       }
 
       const snippet = item.snippet;
-      return NextResponse.json({
+      const videoData = {
         id: item.id,
         title: snippet.title,
         thumbnail: snippet.thumbnails?.maxres?.url ?? 
@@ -156,12 +179,23 @@ export async function GET(request: NextRequest) {
         date: snippet.publishedAt ? formatRelativeDate(snippet.publishedAt) : "",
         published: snippet.publishedAt ?? "",
         type: "video"
-      });
+      };
+
+      if (redis) {
+        try {
+          await redis.set(videoCacheKey, videoData, { ex: 86400 }); // Cache details for 24 hours
+        } catch (cacheErr) {
+          console.error("Redis Cache Write Error (video details):", cacheErr);
+        }
+      }
+
+      return NextResponse.json(videoData);
     } catch (err) {
       console.error("Single video fetch error:", err);
       return NextResponse.json({ error: "Failed to fetch video details" }, { status: 500 });
     }
   }
+
 
   if (!channelId && !playlistId) {
     return NextResponse.json({ error: "Missing identity parameter" }, { status: 400 });
@@ -214,6 +248,19 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Private Channel: Access Restricted" }, { status: 403 });
           }
         }
+      }
+    }
+
+    const cacheKey = `yt:list:${channelId ?? ""}:${playlistId ?? ""}:${type}:${pageToken}:${maxResults}`;
+    if (redis) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          console.log(`[YouTube Cache] Serving cached result from Redis for key: ${cacheKey}`);
+          return NextResponse.json(cached);
+        }
+      } catch (err) {
+        console.error("Redis Cache Read Error (list):", err);
       }
     }
 
@@ -439,13 +486,23 @@ export async function GET(request: NextRequest) {
       responseNextToken = data.nextPageToken ?? "";
     }
 
+    const listResult = {
+      items: mappedItems,
+      nextPageToken: responseNextToken,
+      channelTitle,
+      channelLogo,
+    };
+
+    if (redis) {
+      try {
+        await redis.set(cacheKey, listResult, { ex: 1800 }); // Cache for 30 minutes
+      } catch (cacheErr) {
+        console.error("Redis Cache Write Error (list):", cacheErr);
+      }
+    }
+
     return NextResponse.json(
-      {
-        items: mappedItems,
-        nextPageToken: responseNextToken,
-        channelTitle,
-        channelLogo,
-      },
+      listResult,
       { headers: { "Cache-Control": `public, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=60` } }
     );
   } catch (error: any) {
